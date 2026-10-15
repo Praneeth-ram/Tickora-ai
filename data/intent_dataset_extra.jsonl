@@ -1,0 +1,62 @@
+
+{"text":"Count the days I was present at work this month","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Give me a monthly attendance total","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"How many working days did I attend this week?","target":{"intent":"attendance_summary","period":"this_week"}}
+{"text":"Summarize my presence at the office yesterday","target":{"intent":"attendance_summary","period":"yesterday"}}
+{"text":"What is my attendance percentage for this month?","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Show the total number of days I attended work","target":{"intent":"attendance_summary"}}
+{"text":"How many days was I late this month?","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Give me a summary of my attendance for last month","target":{"intent":"attendance_summary","period":"last_month"}}
+{"text":"How many days was I marked present in October?","target":{"intent":"attendance_summary","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}
+{"text":"Show my attendance statistics for the current week","target":{"intent":"attendance_summary","period":"this_week"}}
+{"text":"List every date on which I checked in this month","target":{"intent":"attendance_records","period":"this_month"}}
+{"text":"Show my daily check-in and check-out history","target":{"intent":"attendance_records"}}
+{"text":"What time did I arrive at work yesterday?","target":{"intent":"attendance_records","period":"yesterday"}}
+{"text":"Display the attendance entry for today","target":{"intent":"attendance_records","period":"today"}}
+{"text":"Retrieve my clock-in times for this week","target":{"intent":"attendance_records","period":"this_week"}}
+{"text":"Show the dates and times of my attendance this month","target":{"intent":"attendance_records","period":"this_month"}}
+{"text":"When did I leave work yesterday?","target":{"intent":"attendance_records","period":"yesterday"}}
+{"text":"List my daily attendance entries for last month","target":{"intent":"attendance_records","period":"last_month"}}
+{"text":"Find my clock-out record for today","target":{"intent":"attendance_records","period":"today"}}
+{"text":"Show my actual arrival and departure times","target":{"intent":"attendance_records"}}
+{"text":"How many hours did I log in my timesheet this month?","target":{"intent":"timesheet_lookup","period":"this_month"}}
+{"text":"List my work-hour submissions for today","target":{"intent":"timesheet_lookup","period":"today"}}
+{"text":"Show my recorded project hours this week","target":{"intent":"timesheet_lookup","period":"this_week"}}
+{"text":"Which timesheet entries have I submitted?","target":{"intent":"timesheet_lookup","status":"SUBMITTED"}}
+{"text":"Find my unsubmitted timesheet drafts","target":{"intent":"timesheet_lookup","status":"DRAFT"}}
+{"text":"How many hours did I record yesterday?","target":{"intent":"timesheet_lookup","period":"yesterday"}}
+{"text":"Display my weekly timesheet history","target":{"intent":"timesheet_lookup","period":"this_week"}}
+{"text":"Show the hours recorded in my timesheets last month","target":{"intent":"timesheet_lookup","period":"last_month"}}
+{"text":"Check whether my timesheet was approved","target":{"intent":"timesheet_lookup","status":"APPROVED"}}
+{"text":"Give me my work-hour entries for October","target":{"intent":"timesheet_lookup","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}
+{"text":"What are my scheduled working hours today?","target":{"intent":"schedule_lookup","period":"today"}}
+{"text":"When is my shift supposed to start tomorrow?","target":{"intent":"schedule_lookup","on_date":"2026-10-16"}}
+{"text":"Show the planned start and finish times for my shift","target":{"intent":"schedule_lookup","period":"today"}}
+{"text":"What time am I expected to begin work today?","target":{"intent":"schedule_lookup","period":"today"}}
+{"text":"Display my assigned shift for October 20","target":{"intent":"schedule_lookup","on_date":"2026-10-20"}}
+{"text":"What are my scheduled hours for yesterday?","target":{"intent":"schedule_lookup","period":"yesterday"}}
+{"text":"Tell me my expected work timings","target":{"intent":"schedule_lookup","period":"today"}}
+{"text":"Check my work schedule for October 14","target":{"intent":"schedule_lookup","on_date":"2026-10-14"}}
+{"text":"What is my shift timing today?","target":{"intent":"schedule_lookup","period":"today"}}
+{"text":"Am I scheduled to work on October 21?","target":{"intent":"schedule_lookup","on_date":"2026-10-21"}}
+{"text":"List my remote work requests for this month","target":{"intent":"wfh_status","period":"this_month"}}
+{"text":"Has my work from home application been approved?","target":{"intent":"wfh_status","status":"APPROVED"}}
+
+{"text":"Show all my work from home applications","target":{"intent":"wfh_status"}}
+{"text":"Did my WFH request get rejected?","target":{"intent":"wfh_status","status":"REJECTED"}}
+{"text":"List my remote work requests for yesterday","target":{"intent":"wfh_status","period":"yesterday"}}
+{"text":"Do I have any approved remote work days?","target":{"intent":"wfh_status","status":"APPROVED"}}
+{"text":"Check my work from home request status","target":{"intent":"wfh_status"}}
+{"text":"Show my pending remote work applications","target":{"intent":"wfh_status","status":"PENDING"}}
+{"text":"Which WFH requests were cancelled?","target":{"intent":"wfh_status","status":"CANCELLED"}}
+{"text":"Display my work from home history last month","target":{"intent":"wfh_status","period":"last_month"}}
+{"text":"Are there any public holidays in Chennai this month?","target":{"intent":"holiday_lookup","period":"this_month","region":"Chennai"}}
+{"text":"Show the holidays observed in India","target":{"intent":"holiday_lookup","region":"India"}}
+{"text":"List upcoming holidays for October","target":{"intent":"holiday_lookup","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}
+{"text":"Find the next public holiday","target":{"intent":"holiday_lookup"}}
+{"text":"What holidays are listed for Chennai?","target":{"intent":"holiday_lookup","region":"Chennai"}}
+{"text":"List all my leave applications","target":{"intent":"leave_status"}}
+{"text":"Show my pending leave applications for this month","target":{"intent":"leave_status","period":"this_month","status":"PENDING"}}
+{"text":"Which leave requests were approved?","target":{"intent":"leave_status","status":"APPROVED"}}
+{"text":"Check my rejected leave requests","target":{"intent":"leave_status","status":"REJECTED"}}
+{"text":"Display my leave history for last month","target":{"intent":"leave_status","period":"last_month"}}
