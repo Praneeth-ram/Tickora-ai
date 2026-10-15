@@ -1,0 +1,14 @@
+{"text": "Find holidays in India for October", "target": {"intent": "holiday_lookup", "period": "custom", "start_date": "2026-10-01", "end_date": "2026-10-31", "region": "India"}}
+{"text": "List my timesheet entries from today", "target": {"intent": "timesheet_lookup", "period": "today"}}
+{"text": "What is my work schedule on October 20?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-20"}}
+{"text": "What leave applications are awaiting a decision?", "target": {"intent": "leave_status", "status": "PENDING"}}
+{"text": "How many days was I present in September?", "target": {"intent": "attendance_summary", "period": "custom", "start_date": "2026-09-01", "end_date": "2026-09-30"}}
+{"text": "Show my approved timesheets this month", "target": {"intent": "timesheet_lookup", "period": "this_month", "status": "APPROVED"}}
+{"text": "Show public holidays in India", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "Check my leave status for October", "target": {"intent": "leave_status", "period": "custom", "start_date": "2026-10-01", "end_date": "2026-10-31"}}
+{"text": "What are my working hours for yesterday?", "target": {"intent": "schedule_lookup", "period": "yesterday"}}
+{"text": "How many days did I attend work this week?", "target": {"intent": "attendance_summary", "period": "this_week"}}
+{"text": "Are any of my WFH requests pending?", "target": {"intent": "wfh_status", "status": "PENDING"}}
+{"text": "Show my detailed attendance records for today", "target": {"intent": "attendance_records", "period": "today"}}
+{"text": "Show my work from home requests", "target": {"intent": "wfh_status"}}
+{"text": "List my attendance records for yesterday", "target": {"intent": "attendance_records", "period": "yesterday"}}

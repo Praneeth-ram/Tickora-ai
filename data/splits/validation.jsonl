@@ -1,0 +1,7 @@
+{"text": "Were any of my WFH requests rejected?", "target": {"intent": "wfh_status", "status": "REJECTED"}}
+{"text": "Which timesheets are awaiting approval?", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
+{"text": "Show my attendance entries from last month", "target": {"intent": "attendance_records", "period": "last_month"}}
+{"text": "Show my attendance for this month", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "When is the next holiday in Chennai?", "target": {"intent": "holiday_lookup", "region": "Chennai"}}
+{"text": "Show my leave requests for this month", "target": {"intent": "leave_status", "period": "this_month"}}
+{"text": "What are my working hours today?", "target": {"intent": "schedule_lookup", "period": "today"}}

@@ -6,10 +6,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.143.1",
+    "numpy>=2.5.4",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.16.0",
     "python-dotenv>=1.2.4",
     "sqlalchemy>=2.1.4",
+    "torch>=2.14.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
