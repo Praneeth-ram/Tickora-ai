@@ -1,0 +1,21 @@
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Tooling
+.vscode/
+.idea/
+
+# Local data and model artifacts
+*.log
+*.pt
+*.pth
+*.ckpt
