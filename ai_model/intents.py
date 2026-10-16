@@ -52,6 +52,7 @@ class IntentRequest(BaseModel):
 
     status: StatusName | None = None
     region: str | None = None
+    requested_metric: str | None = None
 
     @model_validator(mode="after")
     def validate_parameters(self):

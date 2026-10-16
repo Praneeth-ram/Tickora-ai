@@ -69,3 +69,17 @@
 {"text":"Check my assigned work schedule for October 14","target":{"intent":"schedule_lookup","on_date":"2026-10-14"}}
 {"text":"What are my working hours today?","target":{"intent":"schedule_lookup","period":"today"}}
 {"text":"Retrieve my shift schedule for October 21","target":{"intent":"schedule_lookup","on_date":"2026-10-21"}}
+
+{"text":"Give me my attendance summary for this month","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Give me an overview of my attendance this month","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Show me the monthly attendance totals","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Provide my attendance statistics for this month","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"What is my overall attendance this month?","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Give me a summary of my attendance for October","target":{"intent":"attendance_summary","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}
+{"text":"Give me my detailed attendance records for this month","target":{"intent":"attendance_records","period":"this_month"}}
+{"text":"List every attendance entry for this month","target":{"intent":"attendance_records","period":"this_month"}}
+{"text":"Show the individual attendance records for October","target":{"intent":"attendance_records","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}
+{"text":"Retrieve my clock-in and clock-out history for this month","target":{"intent":"attendance_records","period":"this_month"}}
+{"text":"Display each day of my attendance this month","target":{"intent":"attendance_records","period":"this_month"}}
+{"text":"Give me the full list of my attendance entries for October","target":{"intent":"attendance_records","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}
+

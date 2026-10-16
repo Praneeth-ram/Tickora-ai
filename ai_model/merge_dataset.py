@@ -88,6 +88,9 @@ FILES = [
     Path("data/intent_dataset.jsonl"),
     Path("data/intent_dataset_extra.jsonl"),
     Path("data/intent_dataset_expansion.jsonl"),
+    Path("data/intent_dataset_contrastive.jsonl"),
+    Path("data/intent_dataset_contrastive_v2.jsonl"),
+    Path("data/intent_dataset_contrastive_v3.jsonl"),
 ]
 OUTPUT = Path("data/intent_dataset_merged.jsonl")
 

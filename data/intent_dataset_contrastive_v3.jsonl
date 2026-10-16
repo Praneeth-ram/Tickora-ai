@@ -1,0 +1,28 @@
+{"text":"Can you calculate my attendance rate this month?","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Calculate the percentage of working days I attended this month","target":{"intent":"attendance_summary","period":"this_month","status":"PRESENT"}}
+{"text":"How many days was I present compared with absent this month?","target":{"intent":"attendance_summary","period":"this_month"}}
+{"text":"Give me the total number of late arrivals this month","target":{"intent":"attendance_summary","period":"this_month","status":"LATE"}}
+{"text":"Can I get the attendance totals for 5 October 2026?","target":{"intent":"attendance_summary","on_date":"2026-10-05"}}
+{"text":"Summarize my attendance status for yesterday","target":{"intent":"attendance_summary","period":"yesterday"}}
+{"text":"Show the attendance count by status for this week","target":{"intent":"attendance_summary","period":"this_week"}}
+{"text":"Give me a date-wise attendance log","target":{"intent":"attendance_records"}}
+{"text":"List every attendance entry with its date and status","target":{"intent":"attendance_records"}}
+{"text":"Retrieve each clock-in and clock-out record for this month","target":{"intent":"attendance_records","period":"this_month"}}
+{"text":"Show the individual attendance rows for 5 October 2026","target":{"intent":"attendance_records","on_date":"2026-10-05"}}
+{"text":"Display the daily attendance history rather than totals","target":{"intent":"attendance_records"}}
+{"text":"Retrieve my remote-work application history","target":{"intent":"wfh_status"}}
+{"text":"List my work-from-home request records","target":{"intent":"wfh_status"}}
+{"text":"Show my remote working requests from last month","target":{"intent":"wfh_status","period":"last_month"}}
+{"text":"Was my work-from-home application approved?","target":{"intent":"wfh_status","status":"APPROVED"}}
+{"text":"Check the status of my remote-work request","target":{"intent":"wfh_status"}}
+{"text":"List all my WFH applications that are pending","target":{"intent":"wfh_status","status":"PENDING"}}
+{"text":"Show my leave application history","target":{"intent":"leave_status"}}
+{"text":"List my approved time-off requests","target":{"intent":"leave_status","status":"APPROVED"}}
+{"text":"Were any of my vacation requests rejected?","target":{"intent":"leave_status","status":"REJECTED"}}
+{"text":"Retrieve my time-off requests from last month","target":{"intent":"leave_status","period":"last_month"}}
+{"text":"Show all approved leave applications","target":{"intent":"leave_status","status":"APPROVED"}}
+{"text":"List the status of my vacation applications","target":{"intent":"leave_status"}}
+{"text":"Show the hours recorded in my timesheet","target":{"intent":"timesheet_lookup"}}
+{"text":"List the time entries I submitted for work","target":{"intent":"timesheet_lookup"}}
+{"text":"How many hours did I log in my timesheet yesterday?","target":{"intent":"timesheet_lookup","period":"yesterday"}}
+{"text":"Show my submitted project hours for this month","target":{"intent":"timesheet_lookup","period":"this_month"}}

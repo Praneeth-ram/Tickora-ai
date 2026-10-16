@@ -59,7 +59,7 @@
 {"text": "How many days did I attend work last month?", "target": {"intent": "attendance_summary", "period": "last_month"}}
 {"text": "Summarize my attendance between October 1 and October 15, 2026", "target": {"intent": "attendance_summary"}}
 {"text": "Tell me the total number of days I was present yesterday", "target": {"intent": "attendance_summary", "period": "yesterday", "status": "PRESENT"}}
-{"text": "Can you calculate my attendance rate this month?", "target": {"intent": "attendance_summary", "period": "this_month", "status": "LATE"}}
+{"text": "Can you calculate my attendance rate this month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
 {"text": "Show the count of each attendance status this week", "target": {"intent": "attendance_summary", "period": "this_week"}}
 {"text": "Give me an attendance summary for 2026-10-01 to 2026-10-15", "target": {"intent": "attendance_summary", "start_date": "2026-10-01", "end_date": "2026-10-01", "period": "custom"}}
 {"text": "How many days were marked on leave this month?", "target": {"intent": "attendance_summary", "period": "this_month", "status": "ON_LEAVE"}}
@@ -77,7 +77,7 @@
 {"text": "How many days did I work during the current month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
 {"text": "Summarize my attendance for the last seven days", "target": {"intent": "attendance_summary"}}
 {"text": "Show my total absences for the current month", "target": {"intent": "attendance_summary", "period": "this_month"}}
-{"text": "Can I get the attendance totals for 5 October 2026?", "target": {"intent": "attendance_summary"}}
+{"text": "Can I get the attendance totals for 5 October 2026?", "target": {"intent": "attendance_summary", "on_date": "2026-10-05"}}
 {"text": "Show my submitted timesheets for this month", "target": {"intent": "timesheet_lookup", "period": "this_month", "status": "SUBMITTED"}}
 {"text": "List timesheet entries from yesterday", "target": {"intent": "timesheet_lookup", "period": "yesterday"}}
 {"text": "Retrieve my timesheet for this week", "target": {"intent": "timesheet_lookup", "period": "this_week"}}

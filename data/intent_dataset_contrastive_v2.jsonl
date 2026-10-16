@@ -1,0 +1,24 @@
+{"text":"Show every attendance record for this week","target":{"intent":"attendance_records","period":"this_week"}}
+{"text":"List my clock-in and clock-out entries for yesterday","target":{"intent":"attendance_records","period":"yesterday"}}
+{"text":"Retrieve the attendance rows recorded during September","target":{"intent":"attendance_records","period":"custom","start_date":"2026-09-01","end_date":"2026-09-30"}}
+{"text":"Display each date with its attendance status this week","target":{"intent":"attendance_records","period":"this_week"}}
+{"text":"Give me the individual attendance entries for October","target":{"intent":"attendance_records","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}
+{"text":"When were my attendance events recorded this month?","target":{"intent":"attendance_records","period":"this_month"}}
+{"text":"Show the raw attendance records rather than a summary","target":{"intent":"attendance_records"}}
+{"text":"Retrieve each date and clock-in timestamp from my attendance history","target":{"intent":"attendance_records"}}
+{"text":"How many absent days did I have this month?","target":{"intent":"attendance_summary","period":"this_month","status":"ABSENT"}}
+{"text":"Calculate my attendance totals for this week","target":{"intent":"attendance_summary","period":"this_week"}}
+{"text":"Give me the number of late arrivals this month","target":{"intent":"attendance_summary","period":"this_month","status":"LATE"}}
+{"text":"Summarize the count of each attendance status for October","target":{"intent":"attendance_summary","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}
+{"text":"What percentage of working days was I present this month?","target":{"intent":"attendance_summary","period":"this_month","status":"PRESENT"}}
+{"text":"Count my present and absent days for September","target":{"intent":"attendance_summary","period":"custom","start_date":"2026-09-01","end_date":"2026-09-30"}}
+{"text":"Provide aggregate statistics for my attendance history","target":{"intent":"attendance_summary"}}
+{"text":"How many days was I marked present last month?","target":{"intent":"attendance_summary","period":"last_month","status":"PRESENT"}}
+{"text":"What are my assigned working hours today?","target":{"intent":"schedule_lookup","period":"today"}}
+{"text":"Tell me my expected shift hours for yesterday","target":{"intent":"schedule_lookup","period":"yesterday"}}
+{"text":"Which hours am I scheduled to work today?","target":{"intent":"schedule_lookup","period":"today"}}
+{"text":"Show my planned work schedule for October 21, 2026","target":{"intent":"schedule_lookup","on_date":"2026-10-21"}}
+{"text":"How many hours did I actually log on my timesheet yesterday?","target":{"intent":"timesheet_lookup","period":"yesterday"}}
+{"text":"Retrieve the hours submitted in my timesheet this week","target":{"intent":"timesheet_lookup","period":"this_week"}}
+{"text":"Show my recorded time entries rather than my assigned schedule","target":{"intent":"timesheet_lookup"}}
+{"text":"List the total hours recorded on my timesheet for October","target":{"intent":"timesheet_lookup","period":"custom","start_date":"2026-10-01","end_date":"2026-10-31"}}

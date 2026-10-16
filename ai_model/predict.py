@@ -2,6 +2,7 @@ import torch
 from ai_model.model import TickoraTransformer
 from ai_model.tokenizer import SimpleTokenizer
 from ai_model.parameter_extractor import parse_request
+import re
 
 CHECKPOINT_PATH = "data/artifacts/tickora_intent_model.pt"
 MAX_LENGTH = 64
@@ -45,16 +46,39 @@ def predict(question, model, tokenizer, intents):
     return intents[predicted_id], confidence
 
 
+OUT_OF_SCOPE_PATTERNS = [
+    r"\b(?:tell|say|make|write)\s+me\s+a\s+joke\b",
+    r"\bweather\s+(?:today|tomorrow|forecast)\b",
+    r"\bwho\s+is\s+the\s+president\b",
+    r"\bsolve\s+(?:this\s+)?coding\s+problem\b",
+    r"\bwrite\s+(?:me\s+)?(?:a\s+)?(?:python|javascript|java)\s+program\b",
+]
+
+
+def is_clearly_out_of_scope(question: str) -> bool:
+    """Detect a few clearly unrelated requests before intent classification."""
+    normalized = question.strip().lower()
+    return any(
+        re.search(pattern, normalized)
+        for pattern in OUT_OF_SCOPE_PATTERNS
+    )
+
 def process_question(question, model, tokenizer, intents):
-    # Step 1: Predict the intent using the trained Transformer.
+    # Reject clearly unrelated questions before model classification.
+    if is_clearly_out_of_scope(question):
+        return "out_of_scope", 1.0, {
+            "error": "This question is outside Tickora AI's scope.",
+            "details": [],
+        }
+
     intent, confidence = predict(
         question, model, tokenizer, intents
     )
 
-    # Step 2: Extract parameters and validate the request.
     result = parse_request(question, intent)
 
     return intent, confidence, result
+
 
 def main():
     model, tokenizer, intents = load_model()

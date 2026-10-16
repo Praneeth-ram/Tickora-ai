@@ -156,12 +156,45 @@ def extract_region(text: str):
 
     return None
 
+def extract_requested_metric(text: str, intent: str) -> str | None:
+    """Identify the information requested by the user."""
+    text = text.lower()
+
+    metric_patterns = {
+        "absent_days": r"\babsent\b|\babsence\b",
+        "present_days": r"\bpresent\b",
+        "late_days": r"\blate\b",
+        "half_days": r"\bhalf[- ]days?\b",
+        "leave_days": r"\bleave days?\b",
+        "wfh_days": r"\bwfh days?\b|work[- ]from[- ]home days?",
+        "recorded_days": r"\brecorded days?\b",
+    }
+
+    if intent in {"attendance_summary", "attendance_records"}:
+        for metric, pattern in metric_patterns.items():
+            if re.search(pattern, text):
+                return metric
+
+    count_question = re.search(
+        r"\bhow many\b|\bcount\b|\bnumber of\b|\btotal number\b",
+        text,
+    )
+
+    if count_question:
+        return "record_count"
+
+    return None
+
 def extract_parameters(text: str, intent: str) -> dict:
     """
     Extract candidate parameters only.
     The returned values must still pass IntentRequest validation.
     """
     result = {"intent": intent}
+    requested_metric = extract_requested_metric(text, intent)
+
+    if requested_metric:
+        result["requested_metric"] = requested_metric
 
     period = extract_period(text)
     status = None

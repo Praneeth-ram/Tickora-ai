@@ -15,12 +15,34 @@ from backend.repositories.calendar_repository import (
     get_work_schedules,
 )
 
+from pydantic import BaseModel, Field
+from fastapi.encoders import jsonable_encoder
+from backend.services.chat_service import run_chat
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Tickora AI API",
     description="Attendance data API for the Tickora assistant",
     version="0.1.0",
 )
+
+# Add CORS middleware to allow frontend to call this backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # React dev server
+        "http://localhost:5174",
+        # Add any other origins (e.g., deployed frontend URL)
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
+    # Stable per-chat identifier so clarification replies retain context.
+    session_id: str = Field(min_length=1, max_length=100)
 
 def find_employee_id(employee_code: str) -> int:
     # Resolve a sample employee code to its database ID.
@@ -187,3 +209,24 @@ def work_schedules(
         "on_date": on_date,
         "records": records,
     }
+
+@app.post("/api/chat/{employee_code}")
+def chat_with_tickora(
+    employee_code: str,
+    body: ChatRequest,
+):
+    employee_id = find_employee_id(employee_code)
+
+    try:
+        result = run_chat(
+            question=body.question.strip(),
+            employee_id=employee_id,
+            session_id=body.session_id,
+        )
+        return jsonable_encoder(result)
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
