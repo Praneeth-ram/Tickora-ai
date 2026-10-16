@@ -397,6 +397,7 @@
 from datetime import date, timedelta
 from functools import lru_cache
 from threading import Lock
+from typing import Any
 import re
 
 from ai_model.predict import load_model, process_question
@@ -518,6 +519,47 @@ def get_date_range(request, today: date) -> tuple[date, date] | None:
     return resolve_period(request.period, today)
 
 
+def should_show_table(
+    intent: str | None,
+    data: Any,
+    question: str = "",
+    requested_metric: str | None = None,
+) -> bool:
+    """Determine if a detailed UI table is truly necessary for the query."""
+    if not isinstance(data, list) or not data:
+        return False
+
+    # Metric inquiries (e.g., how many late days) need no table.
+    if requested_metric:
+        return False
+
+    q_lower = question.lower()
+
+    # Work schedules are fixed recurring shifts (already clearly presented in bullet points).
+    if intent == "schedule_lookup":
+        return False
+
+    # Targeted questions asking for reason or single-status confirmation need no table.
+    if re.search(r"\b(?:reason|why|approved|accepted|pending|rejected)\b", q_lower):
+        return False
+
+    # Single records are already fully displayed in 1-2 clean lines; no table needed.
+    if len(data) <= 1:
+        return False
+
+    # Show table for multi-row records where comparing rows across columns is valuable.
+    if intent in {
+        "attendance_records",
+        "timesheet_lookup",
+        "leave_status",
+        "wfh_status",
+        "holiday_lookup",
+    }:
+        return True
+
+    return False
+
+
 def failure_response(
     message: str,
     intent: str | None = None,
@@ -636,40 +678,22 @@ def run_chat(question: str, employee_id: int, session_id: str | None = None) -> 
     start_date = date_range[0] if date_range else None
     end_date = date_range[1] if date_range else None
 
-    # 5. Require a date range for period-based queries.
+    # 5. Smart defaults: Retrieve data instead of blocking when a date is not specified.
     if request.intent in {
         "attendance_records",
         "attendance_summary",
         "timesheet_lookup",
     } and date_range is None:
-        _save_session(
-            session_id,
-            employee_id,
-            {"pending_question": effective_question, "pending_intent": request.intent},
-        )
-        return failure_response(
-            message=(
-                "Please specify a period, such as today, this month, "
-                "last month, or a date range."
-            ),
-            intent=request.intent,
-            confidence=confidence,
-        )
+        # Default to the current month so the user gets their data immediately.
+        date_range = resolve_period("this_month", today)
+        if date_range:
+            start_date, end_date = date_range
 
     if request.intent == "holiday_lookup" and date_range is None:
-        _save_session(
-            session_id,
-            employee_id,
-            {"pending_question": effective_question, "pending_intent": request.intent},
-        )
-        return failure_response(
-            message=(
-                "Please specify when you want to check holidays, "
-                "such as this month or a specific date."
-            ),
-            intent=request.intent,
-            confidence=confidence,
-        )
+        # Default to upcoming holidays from today through the rest of the year.
+        start_date = today
+        end_date = date(today.year, 12, 31)
+        date_range = (start_date, end_date)
 
     # 6. Route the validated request to the correct repository.
     if request.intent == "attendance_records":
@@ -748,11 +772,9 @@ def run_chat(question: str, employee_id: int, session_id: str | None = None) -> 
                 schedule_date = resolved_range[0]
 
         if schedule_date is None:
-            return failure_response(
-                message="Please specify the date for your work schedule.",
-                intent=request.intent,
-                confidence=confidence,
-            )
+            # Smart default: If a multi-day period (e.g., this month) or no date is specified,
+            # retrieve the active schedule as of today.
+            schedule_date = today
 
         data = get_work_schedules(
             employee_id,
@@ -787,6 +809,7 @@ def run_chat(question: str, employee_id: int, session_id: str | None = None) -> 
     # 8. Format the response for the user while preserving structured data.
     result = {
         "success": True,
+        "question": effective_question,
         "message": message,
         "intent": request.intent,
         "confidence": round(confidence, 4),
@@ -803,4 +826,18 @@ def run_chat(question: str, employee_id: int, session_id: str | None = None) -> 
         "data": data,
     }
 
-    return format_chat_response(result)
+    formatted = format_chat_response(result)
+
+    # Show the UI table only for necessary multi-row comparison questions.
+    show_table = should_show_table(
+        intent=request.intent,
+        data=data,
+        question=effective_question,
+        requested_metric=request.requested_metric,
+    )
+    formatted["show_table"] = show_table
+    formatted["raw_data"] = data
+    if not show_table and isinstance(data, list):
+        formatted["data"] = []
+
+    return formatted

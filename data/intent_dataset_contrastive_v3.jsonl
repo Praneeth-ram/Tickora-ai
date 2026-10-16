@@ -26,3 +26,48 @@
 {"text":"List the time entries I submitted for work","target":{"intent":"timesheet_lookup"}}
 {"text":"How many hours did I log in my timesheet yesterday?","target":{"intent":"timesheet_lookup","period":"yesterday"}}
 {"text":"Show my submitted project hours for this month","target":{"intent":"timesheet_lookup","period":"this_month"}}
+{"text":"What is my work schedule in this month?","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"What is my work schedule this month?","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Show my work schedule for this month","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Can you show my work schedule in this month?","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Check my work schedule for the current month","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Display my assigned work schedule this month","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Retrieve my work shift schedule for this month","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"What are my scheduled shift hours this month?","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Show my working schedule this month","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Tell me my work schedule for this month","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"What are my scheduled work days this month?","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Show my assigned shift timings for this month","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"Can I see my work schedule this month?","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"View my work schedule this month","target":{"intent":"schedule_lookup","period":"this_month"}}
+{"text":"What is my work schedule this week?","target":{"intent":"schedule_lookup","period":"this_week"}}
+{"text":"Show my work schedule for this week","target":{"intent":"schedule_lookup","period":"this_week"}}
+{"text":"What is my work schedule?","target":{"intent":"schedule_lookup"}}
+{"text":"Show my current work schedule","target":{"intent":"schedule_lookup"}}
+{"text":"Check my shift schedule","target":{"intent":"schedule_lookup"}}
+{"text":"What are my active shift timings?","target":{"intent":"schedule_lookup"}}
+{"text":"Show my assigned work shift","target":{"intent":"schedule_lookup"}}
+{"text":"What shift am I assigned to?","target":{"intent":"schedule_lookup"}}
+{"text":"Display my working hours and schedule","target":{"intent":"schedule_lookup"}}
+{"text":"When do I start and end my shift?","target":{"intent":"schedule_lookup"}}
+{"text":"Was I absent in this month?","target":{"intent":"attendance_summary","period":"this_month","requested_metric":"absent_days"}}
+{"text":"Was I absent this month?","target":{"intent":"attendance_summary","period":"this_month","requested_metric":"absent_days"}}
+{"text":"Was I marked absent in this month?","target":{"intent":"attendance_summary","period":"this_month","requested_metric":"absent_days"}}
+{"text":"Did I have any absence this month?","target":{"intent":"attendance_summary","period":"this_month","requested_metric":"absent_days"}}
+{"text":"Have I been absent this month?","target":{"intent":"attendance_summary","period":"this_month","requested_metric":"absent_days"}}
+{"text":"Was I absent today?","target":{"intent":"attendance_summary","period":"today","requested_metric":"absent_days"}}
+{"text":"Was I absent yesterday?","target":{"intent":"attendance_summary","period":"yesterday","requested_metric":"absent_days"}}
+{"text":"Was I late in this month?","target":{"intent":"attendance_summary","period":"this_month","requested_metric":"late_days"}}
+{"text":"Was I late this month?","target":{"intent":"attendance_summary","period":"this_month","requested_metric":"late_days"}}
+{"text":"Did I have any late days this month?","target":{"intent":"attendance_summary","period":"this_month","requested_metric":"late_days"}}
+{"text":"What was my reason for applying WFH?","target":{"intent":"wfh_status"}}
+{"text":"What was my reason for applying for work from home?","target":{"intent":"wfh_status"}}
+{"text":"What reason did I give for my WFH request?","target":{"intent":"wfh_status"}}
+{"text":"Show the reason for my WFH application","target":{"intent":"wfh_status"}}
+{"text":"Why did I apply for WFH?","target":{"intent":"wfh_status"}}
+{"text":"Why did I request work from home?","target":{"intent":"wfh_status"}}
+{"text":"What was the reason for my remote work request?","target":{"intent":"wfh_status"}}
+{"text":"What was my reason for applying leave?","target":{"intent":"leave_status"}}
+{"text":"What reason did I give for my leave request?","target":{"intent":"leave_status"}}
+{"text":"Why did I apply for time off?","target":{"intent":"leave_status"}}
+{"text":"Show the reason for my leave application","target":{"intent":"leave_status"}}

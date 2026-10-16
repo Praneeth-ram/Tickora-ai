@@ -5,18 +5,18 @@ from pydantic import ValidationError
 from ai_model.intents import IntentRequest
 
 MONTHS = {
-    "january": 1,
-    "february": 2,
-    "march": 3,
-    "april": 4,
+    "january": 1, "jan": 1,
+    "february": 2, "feb": 2,
+    "march": 3, "mar": 3,
+    "april": 4, "apr": 4,
     "may": 5,
-    "june": 6,
-    "july": 7,
-    "august": 8,
-    "september": 9,
-    "october": 10,
-    "november": 11,
-    "december": 12,
+    "june": 6, "jun": 6,
+    "july": 7, "jul": 7,
+    "august": 8, "aug": 8,
+    "september": 9, "sep": 9, "sept": 9,
+    "october": 10, "oct": 10,
+    "november": 11, "nov": 11,
+    "december": 12, "dec": 12,
 }
 
 STATUS_PATTERNS = {
@@ -70,9 +70,43 @@ def extract_status(text: str):
     return None
 
 def extract_explicit_date(text: str):
-    # ISO format: 2026-10-21
+    month_pattern = "|".join(sorted(MONTHS.keys(), key=len, reverse=True))
+
+    # 1. Day first with Month: 15 oct 2026, 15th october 2026, 15 oct, 15th oct
+    day_month_match = re.search(
+        rf"\b(\d{{1,2}})(?:st|nd|rd|th)?[\s\-_]+({month_pattern})"
+        rf"(?:[\s\-_,]+(20\d{{2}}))?\b",
+        text,
+        re.IGNORECASE,
+    )
+    if day_month_match:
+        day = int(day_month_match.group(1))
+        month = MONTHS[day_month_match.group(2).lower()]
+        year = int(day_month_match.group(3)) if day_month_match.group(3) else date.today().year
+        try:
+            return date(year, month, day)
+        except ValueError:
+            pass
+
+    # 2. Month first with Day: October 21 or Oct 21 or October 21, 2026
+    month_day_match = re.search(
+        rf"\b({month_pattern})[\s\-_]+(\d{{1,2}})(?:st|nd|rd|th)?"
+        rf"(?:[\s\-_,]+(20\d{{2}}))?\b",
+        text,
+        re.IGNORECASE,
+    )
+    if month_day_match:
+        month = MONTHS[month_day_match.group(1).lower()]
+        day = int(month_day_match.group(2))
+        year = int(month_day_match.group(3)) if month_day_match.group(3) else date.today().year
+        try:
+            return date(year, month, day)
+        except ValueError:
+            pass
+
+    # 3. ISO format: 2026-10-21 or 2026/10/21
     iso_match = re.search(
-        r"\b(20\d{2})-(\d{1,2})-(\d{1,2})\b",
+        r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b",
         text,
     )
     if iso_match:
@@ -83,41 +117,21 @@ def extract_explicit_date(text: str):
                 int(iso_match.group(3)),
             )
         except ValueError:
-            return None
+            pass
 
-    # Month name and day: October 21 or October 21, 2026
-    month_pattern = "|".join(MONTHS)
-    month_match = re.search(
-        rf"\b({month_pattern})\s+(\d{{1,2}})"
-        rf"(?:,?\s+(20\d{{2}}))?\b",
-        text,
-        re.IGNORECASE,
-    )
-
-    if month_match:
-        month = MONTHS[month_match.group(1).lower()]
-        day = int(month_match.group(2))
-        year = int(month_match.group(3)) if month_match.group(3) else date.today().year
-
-        try:
-            return date(year, month, day)
-        except ValueError:
-            return None
-
-    # Numeric format: 21/10/2026
+    # 4. Numeric format: 21/10/2026 or 21-10-2026
     numeric_match = re.search(
-        r"\b(\d{1,2})/(\d{1,2})/(20\d{2})\b",
+        r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b",
         text,
     )
     if numeric_match:
+        day = int(numeric_match.group(1))
+        month = int(numeric_match.group(2))
+        year = int(numeric_match.group(3)) if numeric_match.group(3) else date.today().year
         try:
-            return date(
-                int(numeric_match.group(3)),
-                int(numeric_match.group(2)),
-                int(numeric_match.group(1)),
-            )
+            return date(year, month, day)
         except ValueError:
-            return None
+            pass
 
     return None
 

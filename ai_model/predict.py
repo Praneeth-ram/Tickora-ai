@@ -52,6 +52,12 @@ OUT_OF_SCOPE_PATTERNS = [
     r"\bwho\s+is\s+the\s+president\b",
     r"\bsolve\s+(?:this\s+)?coding\s+problem\b",
     r"\bwrite\s+(?:me\s+)?(?:a\s+)?(?:python|javascript|java)\s+program\b",
+    r"\b(?:what|which)\s+(?:is|are)\s+my\s+(?:department|dept|team)\b",
+    r"\b(?:department|dept)\b",
+    r"\b(?:salary|payroll|payslip|pay\s*slip|compensation|ctc)\b",
+    r"\b(?:who\s+is\s+my|my)\s+(?:manager|boss|supervisor|lead)\b",
+    r"\b(?:performance|appraisal|promotion|bonus)\b",
+    r"\b(?:what\s+is\s+my|my)\s+(?:designation|job\s*title|role)\b",
 ]
 
 

@@ -72,10 +72,16 @@ class IntentRequest(BaseModel):
                 )
 
         if self.intent == "schedule_lookup" and self.on_date is None:
-            if self.period not in {"today", "yesterday"}:
+            if self.period is not None and self.period not in {
+                "today",
+                "yesterday",
+                "this_week",
+                "this_month",
+                "last_month",
+            }:
                 raise ValueError(
                     "Schedule lookup requires on_date "
-                    "or a supported single-day period"
+                    "or a supported period"
                 )
 
         if self.region is not None and not self.region.strip():
