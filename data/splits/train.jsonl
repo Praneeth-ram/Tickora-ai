@@ -160,7 +160,7 @@
 {"text": "Find the next public holiday for Chennai", "target": {"intent": "holiday_lookup", "region": "Chennai"}}
 {"text": "Retrieve the holiday calendar for India", "target": {"intent": "holiday_lookup", "region": "India"}}
 {"text": "Are any of my timesheets still in draft?", "target": {"intent": "timesheet_lookup", "status": "DRAFT"}}
-{"text": "Tell me whether my latest leave request was approved", "target": {"intent": "leave_status", "status": "LATE"}}
+{"text": "Check the status of my latest leave request", "target": {"intent": "leave_status"}}
 {"text": "Can you retrieve my remote-work application history?", "target": {"intent": "wfh_status"}}
 {"text": "Give me my attendance summary for today", "target": {"intent": "attendance_summary", "period": "today"}}
 {"text": "Give me the detailed attendance history for today", "target": {"intent": "attendance_records", "period": "today"}}
@@ -203,7 +203,7 @@
 {"text": "List my attendance records for yesterday", "target": {"intent": "attendance_records", "period": "yesterday"}}
 {"text": "Show holidays for this month in India", "target": {"intent": "holiday_lookup", "period": "this_month", "region": "India"}}
 {"text": "Show the leave applications I cancelled", "target": {"intent": "leave_status", "status": "CANCELLED"}}
-{"text": "List the timesheets I have not submitted yet", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
+{"text": "List the timesheets I have not submitted yet", "target": {"intent": "timesheet_lookup", "status": "DRAFT"}}
 {"text": "Get my leave requests from October 1 to October 15, 2026", "target": {"intent": "leave_status"}}
 {"text": "Which leave applications are still awaiting a decision?", "target": {"intent": "leave_status"}}
 {"text": "Check my work schedule for October 14", "target": {"intent": "schedule_lookup", "on_date": "2026-10-14"}}
@@ -307,7 +307,7 @@
 {"text": "Which WFH requests were cancelled?", "target": {"intent": "wfh_status", "status": "CANCELLED"}}
 {"text": "Display my half-day attendance entries", "target": {"intent": "attendance_records"}}
 {"text": "Display my timesheet records for October 2026", "target": {"intent": "timesheet_lookup"}}
-{"text": "Display leave requests between 2026-10-01 and 2026-10-15", "target": {"intent": "leave_status", "period": "custom", "start_date": "2026-10-01", "end_date": "2026-10-01"}}
+{"text": "Display leave requests between 2026-10-01 and 2026-10-15", "target": {"intent": "leave_status", "period": "custom", "start_date": "2026-10-01", "end_date": "2026-10-15"}}
 {"text": "Find leave requests marked cancelled", "target": {"intent": "leave_status", "status": "CANCELLED"}}
 {"text": "Can you calculate my attendance rate this month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
 {"text": "Show every attendance record for this week", "target": {"intent": "attendance_records", "period": "this_week"}}
@@ -316,7 +316,7 @@
 {"text": "Tell me my work schedule for this month", "target": {"intent": "schedule_lookup", "period": "this_month"}}
 {"text": "Give me the holiday dates for this year", "target": {"intent": "holiday_lookup"}}
 {"text": "Show my pending annual leave applications", "target": {"intent": "leave_status", "status": "PENDING"}}
-{"text": "Display WFH requests between 2026-10-01 and 2026-10-15", "target": {"intent": "wfh_status", "period": "custom", "start_date": "2026-10-01", "end_date": "2026-10-01"}}
+{"text": "Display WFH requests between 2026-10-01 and 2026-10-15", "target": {"intent": "wfh_status", "period": "custom", "start_date": "2026-10-01", "end_date": "2026-10-15"}}
 {"text": "Show the individual attendance records for October", "target": {"intent": "attendance_records", "period": "custom", "start_date": "2026-10-01", "end_date": "2026-10-31"}}
 {"text": "Show my attendance for this month", "target": {"intent": "attendance_summary", "period": "this_month"}}
 {"text": "What's the count of absent days for October?", "target": {"intent": "attendance_summary", "status": "ABSENT"}}

@@ -118,10 +118,18 @@ def format_attendance_summary(data: dict, requested_metric: str | None = None, q
 
     if requested_metric == "wfh_days":
         count = data.get("wfh_days", 0)
+        if re.search(r"\b(?:is|was|were|did|have i been)\b", q_lower) and not re.search(r"\b(?:how many|number of|count)\b", q_lower):
+            if count == 0:
+                return "No, you have 0 work-from-home days recorded for this period."
+            return f"Yes, you have {count} work-from-home day(s) recorded for this period."
         return f"You have {count} work-from-home day(s) recorded for this period."
 
     if requested_metric == "leave_days":
         count = data.get("leave_days", 0)
+        if re.search(r"\b(?:is|was|were|did|have i been|did i take)\b", q_lower) and not re.search(r"\b(?:how many|number of|count)\b", q_lower):
+            if count == 0:
+                return "No, you have 0 leave days recorded for this period."
+            return f"Yes, you have {count} leave day(s) recorded for this period."
         return f"You have {count} leave day(s) recorded for this period."
 
     if requested_metric == "recorded_days":
@@ -302,6 +310,55 @@ def format_holidays(data: list[dict], region: str | None = None, question: str =
     return "\n".join(lines)
 
 
+def format_requested_field(
+    field: str | None,
+    data: Any,
+) -> str | None:
+    """Format a specifically requested timestamp from database results."""
+    if not field:
+        return None
+
+    labels = {
+        "submitted_at": "Submission time",
+        "approved_at": "Approval time",
+        "clock_in": "Clock-in time",
+        "clock_out": "Clock-out time",
+        "created_at": "Creation time",
+    }
+
+    label = labels.get(field)
+    if label is None:
+        return None
+
+    if not isinstance(data, list) or not data:
+        return f"No records were found for the requested {label.lower()}."
+
+    answers = []
+
+    for record in data:
+        value = record.get(field)
+
+        if value is None:
+            formatted_value = "Not recorded"
+        elif isinstance(value, datetime):
+            formatted_value = value.strftime("%d %b %Y at %I:%M %p")
+        elif isinstance(value, date):
+            formatted_value = value.strftime("%d %b %Y")
+        elif isinstance(value, time):
+            formatted_value = value.strftime("%I:%M %p")
+        else:
+            formatted_value = str(value)
+
+        identifier = record.get(
+            "timesheet_id",
+            record.get("attendance_id"),
+        )
+        prefix = f"Record {identifier}: " if identifier is not None else ""
+
+        answers.append(f"{prefix}{label}: {formatted_value}")
+
+    return "\n".join(answers)
+
 def format_chat_response(result: dict) -> dict:
     """Add a polished, human-readable answer while preserving structured data for the frontend."""
     if not result.get("success"):
@@ -313,8 +370,14 @@ def format_chat_response(result: dict) -> dict:
     intent = result.get("intent")
     data = result.get("data", [])
     requested_metric = result.get("requested_metric")
+    requested_field = result.get("requested_field")
     question = result.get("question", "")
     status = result.get("status")
+
+    field_answer = format_requested_field(requested_field, data)
+    if field_answer is not None:
+        result["answer"] = field_answer
+        return result
 
     if intent == "attendance_summary":
         answer = format_attendance_summary(data, requested_metric, question)

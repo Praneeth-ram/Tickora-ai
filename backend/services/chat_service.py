@@ -814,6 +814,7 @@ def run_chat(question: str, employee_id: int, session_id: str | None = None) -> 
         "intent": request.intent,
         "confidence": round(confidence, 4),
         "requested_metric": request.requested_metric,
+        "requested_field": request.requested_field,
         "status": request.status,
         "period": {
             "start_date": (

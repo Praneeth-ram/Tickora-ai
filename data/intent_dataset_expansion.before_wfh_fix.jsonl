@@ -1,0 +1,282 @@
+{"text": "Show every attendance entry for this week", "target": {"intent": "attendance_records", "period": "this_week"}}
+{"text": "List my clock-in and clock-out records this month", "target": {"intent": "attendance_records", "period": "this_month"}}
+{"text": "Can I see the attendance log for yesterday?", "target": {"intent": "attendance_records", "period": "yesterday"}}
+{"text": "Fetch my daily attendance entries for October", "target": {"intent": "attendance_records"}}
+{"text": "Display the dates when I clocked in last month", "target": {"intent": "attendance_records", "period": "last_month"}}
+{"text": "Show my recorded check-in times for this week", "target": {"intent": "attendance_records", "period": "this_week"}}
+{"text": "Give me the detailed attendance history for today", "target": {"intent": "attendance_records", "period": "today"}}
+{"text": "Which attendance entries have been recorded this month?", "target": {"intent": "attendance_records", "period": "this_month"}}
+{"text": "Retrieve my attendance rows from last month", "target": {"intent": "attendance_records", "period": "last_month"}}
+{"text": "Show the attendance record for 21 October 2026", "target": {"intent": "attendance_records"}}
+{"text": "Open my attendance log between October 1 and October 15, 2026", "target": {"intent": "attendance_records"}}
+{"text": "List each day with my recorded clock-in time", "target": {"intent": "attendance_records"}}
+{"text": "Can you pull my attendance transactions for this month?", "target": {"intent": "attendance_records", "period": "this_month"}}
+{"text": "Show the attendance details, not just the total", "target": {"intent": "attendance_records"}}
+{"text": "Find my attendance entries where the status was present", "target": {"intent": "attendance_records", "status": "PRESENT"}}
+{"text": "List days marked absent in my attendance records", "target": {"intent": "attendance_records", "status": "ABSENT"}}
+{"text": "Show attendance records marked late this month", "target": {"intent": "attendance_records", "period": "this_month", "status": "LATE"}}
+{"text": "Display my half-day attendance entries", "target": {"intent": "attendance_records"}}
+{"text": "Find attendance records that show on leave", "target": {"intent": "attendance_records", "status": "ON_LEAVE"}}
+{"text": "Show the attendance log for Monday", "target": {"intent": "attendance_records"}}
+{"text": "Retrieve my attendance entries from 01/10/2026 to 15/10/2026", "target": {"intent": "attendance_records"}}
+{"text": "Show my attendance record for yesterday", "target": {"intent": "attendance_records", "period": "yesterday"}}
+{"text": "Give me all daily attendance rows for this week", "target": {"intent": "attendance_records", "period": "this_week"}}
+{"text": "Which dates have clock-in data for me?", "target": {"intent": "attendance_records"}}
+{"text": "List my clock-out records for this month", "target": {"intent": "attendance_records", "period": "this_month"}}
+{"text": "Show the raw attendance entries for the previous month", "target": {"intent": "attendance_records", "period": "last_month"}}
+{"text": "Pull up my attendance details for the current month", "target": {"intent": "attendance_records", "period": "this_month"}}
+{"text": "Display each attendance status recorded this week", "target": {"intent": "attendance_records", "period": "this_week"}}
+{"text": "Find my attendance records for 5 October 2026", "target": {"intent": "attendance_records"}}
+{"text": "Show attendance entries between 2026-10-01 and 2026-10-10", "target": {"intent": "attendance_records", "start_date": "2026-10-01", "end_date": "2026-10-01", "period": "custom"}}
+{"text": "List the individual days in my attendance history", "target": {"intent": "attendance_records"}}
+{"text": "Get my attendance details for today, including clock times", "target": {"intent": "attendance_records", "period": "today"}}
+{"text": "Can you retrieve my check-in history for last month?", "target": {"intent": "attendance_records", "period": "last_month"}}
+{"text": "Show every attendance row from this week", "target": {"intent": "attendance_records", "period": "this_week"}}
+{"text": "Give me the date-wise attendance log", "target": {"intent": "attendance_records"}}
+{"text": "Find my recorded attendance for 12/10/2026", "target": {"intent": "attendance_records"}}
+{"text": "List my attendance entries with their work locations", "target": {"intent": "attendance_records"}}
+{"text": "Show my daily attendance data for October 2026", "target": {"intent": "attendance_records"}}
+{"text": "Retrieve the attendance details for the last seven days", "target": {"intent": "attendance_records"}}
+{"text": "Can I inspect my attendance records for this month?", "target": {"intent": "attendance_records", "period": "this_month"}}
+{"text": "How many days have I been present this week?", "target": {"intent": "attendance_summary", "period": "this_week", "status": "PRESENT"}}
+{"text": "Give me the attendance totals for this month", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "What is my attendance percentage for October?", "target": {"intent": "attendance_summary"}}
+{"text": "Summarize my attendance for yesterday", "target": {"intent": "attendance_summary", "period": "yesterday"}}
+{"text": "How many absences do I have this month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "Count my present days from last month", "target": {"intent": "attendance_summary", "period": "last_month", "status": "PRESENT"}}
+{"text": "Tell me my present and absent totals for this week", "target": {"intent": "attendance_summary", "period": "this_week", "status": "PRESENT"}}
+{"text": "What's my attendance overview for today?", "target": {"intent": "attendance_summary", "period": "today"}}
+{"text": "Calculate my attendance summary for October 2026", "target": {"intent": "attendance_summary", "status": "LATE"}}
+{"text": "How many working days did I miss this month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "Give me a high-level attendance report for last month", "target": {"intent": "attendance_summary", "period": "last_month"}}
+{"text": "How many days was I marked late this month?", "target": {"intent": "attendance_summary", "period": "this_month", "status": "LATE"}}
+{"text": "Summarize the number of half days this month", "target": {"intent": "attendance_summary", "period": "this_month", "status": "HALF_DAY"}}
+{"text": "Show the total present days for the current month", "target": {"intent": "attendance_summary", "period": "this_month", "status": "PRESENT"}}
+{"text": "How many days have attendance been recorded this week?", "target": {"intent": "attendance_summary", "period": "this_week"}}
+{"text": "Provide my monthly attendance statistics", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "What's the count of absent days for October?", "target": {"intent": "attendance_summary", "status": "ABSENT"}}
+{"text": "Give me a weekly attendance breakdown", "target": {"intent": "attendance_summary", "period": "this_week"}}
+{"text": "How many days did I attend work last month?", "target": {"intent": "attendance_summary", "period": "last_month"}}
+{"text": "Summarize my attendance between October 1 and October 15, 2026", "target": {"intent": "attendance_summary"}}
+{"text": "Tell me the total number of days I was present yesterday", "target": {"intent": "attendance_summary", "period": "yesterday", "status": "PRESENT"}}
+{"text": "Can you calculate my attendance rate this month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "Show the count of each attendance status this week", "target": {"intent": "attendance_summary", "period": "this_week"}}
+{"text": "Give me an attendance summary for 2026-10-01 to 2026-10-15", "target": {"intent": "attendance_summary", "start_date": "2026-10-01", "end_date": "2026-10-01", "period": "custom"}}
+{"text": "How many days were marked on leave this month?", "target": {"intent": "attendance_summary", "period": "this_month", "status": "ON_LEAVE"}}
+{"text": "What's my attendance performance for this month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "Count the days I was absent last month", "target": {"intent": "attendance_summary", "period": "last_month", "status": "ABSENT"}}
+{"text": "Show a summary rather than individual attendance entries", "target": {"intent": "attendance_summary"}}
+{"text": "How many present days are in my attendance history this week?", "target": {"intent": "attendance_summary", "period": "this_week", "status": "PRESENT"}}
+{"text": "Give me the totals for present, absent, and late days", "target": {"intent": "attendance_summary", "status": "PRESENT"}}
+{"text": "Summarize attendance for the previous month", "target": {"intent": "attendance_summary", "period": "last_month"}}
+{"text": "How many working days have I attended so far this month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "Show my attendance statistics for yesterday", "target": {"intent": "attendance_summary", "period": "yesterday"}}
+{"text": "What's the monthly count of my late arrivals?", "target": {"intent": "attendance_summary", "period": "this_month", "status": "LATE"}}
+{"text": "Calculate the number of days I was present this week", "target": {"intent": "attendance_summary", "period": "this_week", "status": "PRESENT"}}
+{"text": "Give me the overall attendance summary for October 2026", "target": {"intent": "attendance_summary"}}
+{"text": "How many days did I work during the current month?", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "Summarize my attendance for the last seven days", "target": {"intent": "attendance_summary"}}
+{"text": "Show my total absences for the current month", "target": {"intent": "attendance_summary", "period": "this_month"}}
+{"text": "Can I get the attendance totals for 5 October 2026?", "target": {"intent": "attendance_summary", "on_date": "2026-10-05"}}
+{"text": "Show my submitted timesheets for this month", "target": {"intent": "timesheet_lookup", "period": "this_month", "status": "SUBMITTED"}}
+{"text": "List timesheet entries from yesterday", "target": {"intent": "timesheet_lookup", "period": "yesterday"}}
+{"text": "Retrieve my timesheet for this week", "target": {"intent": "timesheet_lookup", "period": "this_week"}}
+{"text": "Which timesheets did I submit last month?", "target": {"intent": "timesheet_lookup", "period": "last_month"}}
+{"text": "Show the hours entered in my timesheets today", "target": {"intent": "timesheet_lookup", "period": "today"}}
+{"text": "List timesheets waiting for approval", "target": {"intent": "timesheet_lookup"}}
+{"text": "Show my approved timesheet entries this month", "target": {"intent": "timesheet_lookup", "period": "this_month", "status": "APPROVED"}}
+{"text": "Which timesheets were rejected last month?", "target": {"intent": "timesheet_lookup", "period": "last_month", "status": "REJECTED"}}
+{"text": "Display my timesheet records for October 2026", "target": {"intent": "timesheet_lookup"}}
+{"text": "Get timesheet entries from October 1 to October 15, 2026", "target": {"intent": "timesheet_lookup"}}
+{"text": "Show the work hours I logged this week", "target": {"intent": "timesheet_lookup", "period": "this_week"}}
+{"text": "Can I review my time entries for yesterday?", "target": {"intent": "timesheet_lookup", "period": "yesterday"}}
+{"text": "Find my submitted time logs for the current month", "target": {"intent": "timesheet_lookup", "period": "this_month", "status": "SUBMITTED"}}
+{"text": "List my timesheets with status pending", "target": {"intent": "timesheet_lookup", "status": "PENDING"}}
+{"text": "Show all draft time entries from this month", "target": {"intent": "timesheet_lookup", "period": "this_month", "status": "DRAFT"}}
+{"text": "Retrieve my approved timesheets for last month", "target": {"intent": "timesheet_lookup", "period": "last_month", "status": "APPROVED"}}
+{"text": "Which time reports have been submitted today?", "target": {"intent": "timesheet_lookup", "period": "today", "status": "SUBMITTED"}}
+{"text": "Show my timesheet details, not attendance details", "target": {"intent": "timesheet_lookup"}}
+{"text": "Give me the timesheet records for 2026-10-01 to 2026-10-15", "target": {"intent": "timesheet_lookup", "start_date": "2026-10-01", "end_date": "2026-10-01", "period": "custom"}}
+{"text": "List the hours I recorded on my timesheet this month", "target": {"intent": "timesheet_lookup", "period": "this_month"}}
+{"text": "Find my cancelled timesheet entries", "target": {"intent": "timesheet_lookup", "status": "CANCELLED"}}
+{"text": "Show timesheet submissions that are still pending", "target": {"intent": "timesheet_lookup", "status": "PENDING"}}
+{"text": "Pull my weekly timesheet data", "target": {"intent": "timesheet_lookup", "period": "this_week"}}
+{"text": "Can you display my time-sheet entries for 5 October 2026?", "target": {"intent": "timesheet_lookup"}}
+{"text": "List every timesheet row for the current week", "target": {"intent": "timesheet_lookup", "period": "this_week"}}
+{"text": "Show timesheets marked rejected", "target": {"intent": "timesheet_lookup", "status": "REJECTED"}}
+{"text": "Retrieve the time tracking entries I created yesterday", "target": {"intent": "timesheet_lookup", "period": "yesterday"}}
+{"text": "Open my timesheet history for the previous month", "target": {"intent": "timesheet_lookup", "period": "last_month"}}
+{"text": "Find timesheet entries submitted between October 1 and October 10, 2026", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
+{"text": "Display my time reports for today", "target": {"intent": "timesheet_lookup", "period": "today"}}
+{"text": "Show my timesheet status for this month", "target": {"intent": "timesheet_lookup", "period": "this_month"}}
+{"text": "List the timesheets I have not submitted yet", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
+{"text": "Can I see my logged work hours from last week?", "target": {"intent": "timesheet_lookup"}}
+{"text": "Find approved time reports for October", "target": {"intent": "timesheet_lookup", "status": "APPROVED"}}
+{"text": "Show timesheet records with the submitted status", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
+{"text": "Retrieve my daily time-entry list for this week", "target": {"intent": "timesheet_lookup", "period": "this_week"}}
+{"text": "List my timesheets for the current month by status", "target": {"intent": "timesheet_lookup", "period": "this_month"}}
+{"text": "Get my time tracking report for yesterday", "target": {"intent": "timesheet_lookup", "period": "yesterday"}}
+{"text": "Check the status of my leave applications", "target": {"intent": "leave_status"}}
+{"text": "List my pending leave requests this week", "target": {"intent": "leave_status", "period": "this_week", "status": "PENDING"}}
+{"text": "Show leave applications that were rejected", "target": {"intent": "leave_status", "status": "REJECTED"}}
+{"text": "Was my leave request approved this month?", "target": {"intent": "leave_status", "period": "this_month", "status": "APPROVED"}}
+{"text": "Find my cancelled leave requests", "target": {"intent": "leave_status", "status": "CANCELLED"}}
+{"text": "Which leave applications are still awaiting a decision?", "target": {"intent": "leave_status"}}
+{"text": "Show my approved leave requests for October", "target": {"intent": "leave_status", "status": "APPROVED"}}
+{"text": "List leave requests submitted this month", "target": {"intent": "leave_status", "period": "this_month", "status": "SUBMITTED"}}
+{"text": "Get my leave requests from October 1 to October 15, 2026", "target": {"intent": "leave_status"}}
+{"text": "Show my pending annual leave applications", "target": {"intent": "leave_status", "status": "PENDING"}}
+{"text": "Tell me whether my latest leave request was approved", "target": {"intent": "leave_status", "status": "LATE"}}
+{"text": "Find leave requests marked cancelled", "target": {"intent": "leave_status", "status": "CANCELLED"}}
+{"text": "List my rejected leave applications from last month", "target": {"intent": "leave_status", "period": "last_month", "status": "REJECTED"}}
+{"text": "Show leave requests with pending status", "target": {"intent": "leave_status", "status": "PENDING"}}
+{"text": "Check my leave application status for today", "target": {"intent": "leave_status", "period": "today"}}
+{"text": "Which leave requests were approved last month?", "target": {"intent": "leave_status", "period": "last_month", "status": "APPROVED"}}
+{"text": "Retrieve my leave request records for October 2026", "target": {"intent": "leave_status"}}
+{"text": "Show all my leave applications, including their status", "target": {"intent": "leave_status"}}
+{"text": "Find leave requests that are still pending this month", "target": {"intent": "leave_status", "period": "this_month", "status": "PENDING"}}
+{"text": "Was my time-off application rejected?", "target": {"intent": "leave_status", "status": "REJECTED"}}
+{"text": "List my approved time-off requests", "target": {"intent": "leave_status", "status": "APPROVED"}}
+{"text": "Show the leave applications I cancelled", "target": {"intent": "leave_status", "status": "CANCELLED"}}
+{"text": "Get the status of my leave request from yesterday", "target": {"intent": "leave_status", "period": "yesterday"}}
+{"text": "Display leave requests between 2026-10-01 and 2026-10-15", "target": {"intent": "leave_status", "start_date": "2026-10-01", "end_date": "2026-10-15", "period": "custom"}}
+{"text": "Are any of my leave applications awaiting approval?", "target": {"intent": "leave_status"}}
+{"text": "Show all rejected time-off requests", "target": {"intent": "leave_status", "status": "REJECTED"}}
+{"text": "Find my leave requests for the current month", "target": {"intent": "leave_status", "period": "this_month"}}
+{"text": "Which of my leave applications have been approved?", "target": {"intent": "leave_status", "status": "APPROVED"}}
+{"text": "Check my leave request status for 5 October 2026", "target": {"intent": "leave_status"}}
+{"text": "List pending vacation requests", "target": {"intent": "leave_status", "status": "PENDING"}}
+{"text": "Show the leave requests I submitted last month", "target": {"intent": "leave_status", "period": "last_month", "status": "SUBMITTED"}}
+{"text": "Can you retrieve my time-off application history?", "target": {"intent": "leave_status"}}
+{"text": "Give me my leave request details for this week", "target": {"intent": "leave_status", "period": "this_week"}}
+{"text": "Show leave applications marked approved", "target": {"intent": "leave_status", "status": "APPROVED"}}
+{"text": "Have any leave requests been cancelled this month?", "target": {"intent": "leave_status", "period": "this_month", "status": "CANCELLED"}}
+{"text": "Find my pending leave applications from last month", "target": {"intent": "leave_status", "period": "last_month", "status": "PENDING"}}
+{"text": "List the status of each leave request", "target": {"intent": "leave_status"}}
+{"text": "Show my rejected leave applications for October 2026", "target": {"intent": "leave_status", "status": "REJECTED"}}
+{"text": "Check whether my leave request is still pending", "target": {"intent": "leave_status", "status": "PENDING"}}
+{"text": "Retrieve my leave requests for yesterday", "target": {"intent": "leave_status", "period": "yesterday"}}
+{"text": "List all leave applications with their current status", "target": {"intent": "leave_status"}}
+{"text": "Show cancelled time-off applications from this month", "target": {"intent": "leave_status", "period": "this_month", "status": "CANCELLED"}}
+{"text": "Which leave requests have a rejected status?", "target": {"intent": "leave_status", "status": "REJECTED"}}
+{"text": "Check the status of my work-from-home requests", "target": {"intent": "wfh_status"}}
+{"text": "List my pending WFH applications this month", "target": {"intent": "wfh_status", "period": "this_month", "status": "PENDING"}}
+{"text": "Show remote-work requests that were rejected", "target": {"intent": "wfh_status", "status": "REJECTED"}}
+{"text": "Was my WFH request approved?", "target": {"intent": "wfh_status", "status": "APPROVED"}}
+{"text": "Find my cancelled work-from-home requests", "target": {"intent": "wfh_status", "status": "CANCELLED"}}
+{"text": "Display my WFH request history for last month", "target": {"intent": "wfh_status", "period": "last_month"}}
+{"text": "Which remote-work applications are waiting for approval?", "target": {"intent": "wfh_status"}}
+{"text": "Show my approved WFH requests for October", "target": {"intent": "wfh_status", "status": "APPROVED"}}
+{"text": "Have any of my WFH requests been rejected?", "target": {"intent": "wfh_status", "status": "REJECTED"}}
+{"text": "List work-from-home requests submitted this month", "target": {"intent": "wfh_status", "period": "this_month", "status": "SUBMITTED"}}
+{"text": "Get my WFH requests from October 1 to October 15, 2026", "target": {"intent": "wfh_status"}}
+{"text": "Show pending remote-work applications", "target": {"intent": "wfh_status", "status": "PENDING"}}
+{"text": "Tell me whether my latest WFH request was approved", "target": {"intent": "wfh_status", "status": "LATE"}}
+{"text": "Find WFH requests marked cancelled", "target": {"intent": "wfh_status", "status": "CANCELLED"}}
+{"text": "List rejected work-from-home applications from last month", "target": {"intent": "wfh_status", "period": "last_month", "status": "REJECTED"}}
+{"text": "Show my WFH requests with pending status", "target": {"intent": "wfh_status", "status": "PENDING"}}
+{"text": "Check my remote-work application status for today", "target": {"intent": "wfh_status", "period": "today"}}
+{"text": "Which WFH requests were approved last month?", "target": {"intent": "wfh_status", "period": "last_month", "status": "APPROVED"}}
+{"text": "Retrieve my work-from-home request records for October 2026", "target": {"intent": "wfh_status"}}
+{"text": "Show all my remote-work applications and their statuses", "target": {"intent": "wfh_status"}}
+{"text": "Find WFH requests still awaiting a decision this month", "target": {"intent": "wfh_status", "period": "this_month"}}
+{"text": "Was my remote-working application rejected?", "target": {"intent": "wfh_status", "status": "REJECTED"}}
+{"text": "List my approved work-from-home requests", "target": {"intent": "wfh_status", "status": "APPROVED"}}
+{"text": "Show the WFH applications I cancelled", "target": {"intent": "wfh_status", "status": "CANCELLED"}}
+{"text": "Get the status of my WFH request from yesterday", "target": {"intent": "wfh_status", "period": "yesterday"}}
+{"text": "Display WFH requests between 2026-10-01 and 2026-10-15", "target": {"intent": "wfh_status", "start_date": "2026-10-01", "end_date": "2026-10-15", "period": "custom"}}
+{"text": "Are any of my remote-work requests awaiting approval?", "target": {"intent": "wfh_status"}}
+{"text": "Show all rejected WFH applications", "target": {"intent": "wfh_status", "status": "REJECTED"}}
+{"text": "Find my work-from-home requests for the current month", "target": {"intent": "wfh_status", "period": "this_month"}}
+{"text": "Which remote-work applications have been approved?", "target": {"intent": "wfh_status", "status": "APPROVED"}}
+{"text": "Check my WFH request status for 5 October 2026", "target": {"intent": "wfh_status"}}
+{"text": "List pending work-from-home applications", "target": {"intent": "wfh_status", "status": "PENDING"}}
+{"text": "Show WFH requests I submitted last month", "target": {"intent": "wfh_status", "period": "last_month", "status": "SUBMITTED"}}
+{"text": "Can you retrieve my remote-work application history?", "target": {"intent": "wfh_status"}}
+{"text": "Give me my WFH request details for this week", "target": {"intent": "wfh_status", "period": "this_week"}}
+{"text": "Show remote-work applications marked approved", "target": {"intent": "wfh_status", "status": "APPROVED"}}
+{"text": "Have any WFH requests been cancelled this month?", "target": {"intent": "wfh_status", "period": "this_month", "status": "CANCELLED"}}
+{"text": "Find pending WFH requests from last month", "target": {"intent": "wfh_status", "period": "last_month", "status": "PENDING"}}
+{"text": "List the status of each remote-work request", "target": {"intent": "wfh_status"}}
+{"text": "Show rejected WFH applications for October 2026", "target": {"intent": "wfh_status", "status": "REJECTED"}}
+{"text": "Which public holidays are coming up in India?", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "List holidays in Tamil Nadu this month", "target": {"intent": "holiday_lookup", "period": "this_month", "region": "Tamil Nadu"}}
+{"text": "Are there any holidays tomorrow?", "target": {"intent": "holiday_lookup"}}
+{"text": "Show the holiday calendar for October 2026", "target": {"intent": "holiday_lookup"}}
+{"text": "Find public holidays in Chennai this year", "target": {"intent": "holiday_lookup", "region": "Chennai"}}
+{"text": "Is 21 October 2026 a holiday?", "target": {"intent": "holiday_lookup"}}
+{"text": "Tell me the next holiday in India", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "Show holidays for this month in India", "target": {"intent": "holiday_lookup", "period": "this_month", "region": "India"}}
+{"text": "Which holidays fall next week?", "target": {"intent": "holiday_lookup"}}
+{"text": "List the official holidays for Tamil Nadu", "target": {"intent": "holiday_lookup", "region": "Tamil Nadu"}}
+{"text": "Are there any holidays between October 1 and October 31, 2026?", "target": {"intent": "holiday_lookup"}}
+{"text": "Check the holiday on 5 October 2026", "target": {"intent": "holiday_lookup"}}
+{"text": "Show me upcoming holidays in Karnataka", "target": {"intent": "holiday_lookup", "region": "Karnataka"}}
+{"text": "Give me the holiday dates for this year", "target": {"intent": "holiday_lookup"}}
+{"text": "Which days are listed as holidays this month?", "target": {"intent": "holiday_lookup", "period": "this_month"}}
+{"text": "Find holidays in India for next month", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "Display the public holiday schedule for Maharashtra", "target": {"intent": "holiday_lookup", "region": "Maharashtra"}}
+{"text": "Is tomorrow a public holiday in Tamil Nadu?", "target": {"intent": "holiday_lookup", "region": "Tamil Nadu"}}
+{"text": "Show the holiday list for the current month", "target": {"intent": "holiday_lookup", "period": "this_month"}}
+{"text": "Tell me whether October 21 is a holiday in India", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "List all holidays in 2026 for India", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "Are any public holidays scheduled this week?", "target": {"intent": "holiday_lookup", "period": "this_week"}}
+{"text": "Find the next public holiday for Chennai", "target": {"intent": "holiday_lookup", "region": "Chennai"}}
+{"text": "Show holidays in Delhi this month", "target": {"intent": "holiday_lookup", "period": "this_month", "region": "Delhi"}}
+{"text": "Which dates are holidays in October 2026?", "target": {"intent": "holiday_lookup"}}
+{"text": "Retrieve the holiday calendar for India", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "Check whether 2026-10-15 is a holiday", "target": {"intent": "holiday_lookup"}}
+{"text": "List public holidays for the UK this month", "target": {"intent": "holiday_lookup", "period": "this_month", "region": "UK"}}
+{"text": "Show national holidays for the USA this year", "target": {"intent": "holiday_lookup", "region": "USA"}}
+{"text": "Are there any holidays next month in Tamil Nadu?", "target": {"intent": "holiday_lookup", "region": "Tamil Nadu"}}
+{"text": "Give me the holiday dates between 01/10/2026 and 31/10/2026", "target": {"intent": "holiday_lookup"}}
+{"text": "Find holidays for the current year in Karnataka", "target": {"intent": "holiday_lookup", "region": "Karnataka"}}
+{"text": "Is there a holiday today in India?", "target": {"intent": "holiday_lookup", "period": "today", "region": "India"}}
+{"text": "Show upcoming public holidays for Maharashtra", "target": {"intent": "holiday_lookup", "region": "Maharashtra"}}
+{"text": "Which holidays are observed in India in November 2026?", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "List holidays for the current month in Delhi", "target": {"intent": "holiday_lookup", "period": "this_month", "region": "Delhi"}}
+{"text": "Can you check the holiday calendar for 2026?", "target": {"intent": "holiday_lookup"}}
+{"text": "Tell me if October 5, 2026 is a holiday in Tamil Nadu", "target": {"intent": "holiday_lookup", "region": "Tamil Nadu"}}
+{"text": "Show public holidays in India next week", "target": {"intent": "holiday_lookup", "region": "India"}}
+{"text": "Find the holidays scheduled for this month", "target": {"intent": "holiday_lookup", "period": "this_month"}}
+{"text": "What is my work schedule today?", "target": {"intent": "schedule_lookup", "period": "today"}}
+{"text": "Show my assigned work schedule on October 21, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "What are my working hours on October 17, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-17"}}
+{"text": "Display my work schedule for October 21, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Am I scheduled to work on 5 October 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-05"}}
+{"text": "Show my schedule for yesterday", "target": {"intent": "schedule_lookup", "period": "yesterday"}}
+{"text": "Which work schedule is assigned to me on October 22, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-22"}}
+{"text": "Retrieve my work schedule for October 23, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-23"}}
+{"text": "What is my shift schedule for today?", "target": {"intent": "schedule_lookup", "period": "today"}}
+{"text": "Show my assigned working hours this month on October 21, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Am I scheduled to work on October 17, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-17"}}
+{"text": "List my assigned work schedule for October 24, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-24"}}
+{"text": "Tell me my schedule for 2026-10-21", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Show my working schedule for last month on October 21, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Which shift am I rostered for on October 25, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-25"}}
+{"text": "Get my scheduled hours for today", "target": {"intent": "schedule_lookup", "period": "today"}}
+{"text": "Display my shift plan for this week on October 21, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Am I supposed to work on 12 October 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-12"}}
+{"text": "Show my assigned work schedule on October 26, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-26"}}
+{"text": "Find my working schedule for yesterday", "target": {"intent": "schedule_lookup", "period": "yesterday"}}
+{"text": "What is my roster for October 20, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-20"}}
+{"text": "List the weekdays in my assigned work schedule on October 21, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Show my schedule on 21/10/2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Can you check my working hours on October 17, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-17"}}
+{"text": "Retrieve the shift schedule assigned to me this month on October 21, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "What work schedule is assigned to me on October 27, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-27"}}
+{"text": "Show my work calendar entry for October 19, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-19"}}
+{"text": "Tell me my assigned shift for today", "target": {"intent": "schedule_lookup", "period": "today"}}
+{"text": "Am I on the schedule for 2026-10-15?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-15"}}
+{"text": "Show my assigned work schedule on October 28, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-28"}}
+{"text": "Show my roster for October 29, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-29"}}
+{"text": "What is my planned work schedule on October 30, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-30"}}
+{"text": "Check my schedule for 5 October 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-05"}}
+{"text": "Give me the work schedule assigned for today", "target": {"intent": "schedule_lookup", "period": "today"}}
+{"text": "Am I expected to work on October 20, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-20"}}
+{"text": "Show my scheduled hours for yesterday", "target": {"intent": "schedule_lookup", "period": "yesterday"}}
+{"text": "Retrieve my roster for October 2026 on October 21, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Am I scheduled for work on October 15 on October 21, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
+{"text": "Display my assigned work schedule on October 31, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-31"}}
+{"text": "What's my shift on October 17, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-17"}}
+

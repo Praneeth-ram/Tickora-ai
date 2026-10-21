@@ -109,7 +109,7 @@
 {"text": "Find timesheet entries submitted between October 1 and October 10, 2026", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
 {"text": "Display my time reports for today", "target": {"intent": "timesheet_lookup", "period": "today"}}
 {"text": "Show my timesheet status for this month", "target": {"intent": "timesheet_lookup", "period": "this_month"}}
-{"text": "List the timesheets I have not submitted yet", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
+{"text": "List the timesheets I have not submitted yet", "target": {"intent": "timesheet_lookup", "status": "DRAFT"}}
 {"text": "Can I see my logged work hours from last week?", "target": {"intent": "timesheet_lookup"}}
 {"text": "Find approved time reports for October", "target": {"intent": "timesheet_lookup", "status": "APPROVED"}}
 {"text": "Show timesheet records with the submitted status", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
@@ -126,7 +126,7 @@
 {"text": "List leave requests submitted this month", "target": {"intent": "leave_status", "period": "this_month", "status": "SUBMITTED"}}
 {"text": "Get my leave requests from October 1 to October 15, 2026", "target": {"intent": "leave_status"}}
 {"text": "Show my pending annual leave applications", "target": {"intent": "leave_status", "status": "PENDING"}}
-{"text": "Tell me whether my latest leave request was approved", "target": {"intent": "leave_status", "status": "LATE"}}
+{"text": "Check the status of my latest leave request", "target": {"intent": "leave_status"}}
 {"text": "Find leave requests marked cancelled", "target": {"intent": "leave_status", "status": "CANCELLED"}}
 {"text": "List my rejected leave applications from last month", "target": {"intent": "leave_status", "period": "last_month", "status": "REJECTED"}}
 {"text": "Show leave requests with pending status", "target": {"intent": "leave_status", "status": "PENDING"}}
@@ -139,7 +139,7 @@
 {"text": "List my approved time-off requests", "target": {"intent": "leave_status", "status": "APPROVED"}}
 {"text": "Show the leave applications I cancelled", "target": {"intent": "leave_status", "status": "CANCELLED"}}
 {"text": "Get the status of my leave request from yesterday", "target": {"intent": "leave_status", "period": "yesterday"}}
-{"text": "Display leave requests between 2026-10-01 and 2026-10-15", "target": {"intent": "leave_status", "start_date": "2026-10-01", "end_date": "2026-10-01", "period": "custom"}}
+{"text": "Display leave requests between 2026-10-01 and 2026-10-15", "target": {"intent": "leave_status", "start_date": "2026-10-01", "end_date": "2026-10-15", "period": "custom"}}
 {"text": "Are any of my leave applications awaiting approval?", "target": {"intent": "leave_status"}}
 {"text": "Show all rejected time-off requests", "target": {"intent": "leave_status", "status": "REJECTED"}}
 {"text": "Find my leave requests for the current month", "target": {"intent": "leave_status", "period": "this_month"}}
@@ -171,7 +171,7 @@
 {"text": "List work-from-home requests submitted this month", "target": {"intent": "wfh_status", "period": "this_month", "status": "SUBMITTED"}}
 {"text": "Get my WFH requests from October 1 to October 15, 2026", "target": {"intent": "wfh_status"}}
 {"text": "Show pending remote-work applications", "target": {"intent": "wfh_status", "status": "PENDING"}}
-{"text": "Tell me whether my latest WFH request was approved", "target": {"intent": "wfh_status", "status": "LATE"}}
+{"text": "Check the status of my latest WFH request", "target": {"intent": "wfh_status"}}
 {"text": "Find WFH requests marked cancelled", "target": {"intent": "wfh_status", "status": "CANCELLED"}}
 {"text": "List rejected work-from-home applications from last month", "target": {"intent": "wfh_status", "period": "last_month", "status": "REJECTED"}}
 {"text": "Show my WFH requests with pending status", "target": {"intent": "wfh_status", "status": "PENDING"}}
@@ -184,7 +184,7 @@
 {"text": "List my approved work-from-home requests", "target": {"intent": "wfh_status", "status": "APPROVED"}}
 {"text": "Show the WFH applications I cancelled", "target": {"intent": "wfh_status", "status": "CANCELLED"}}
 {"text": "Get the status of my WFH request from yesterday", "target": {"intent": "wfh_status", "period": "yesterday"}}
-{"text": "Display WFH requests between 2026-10-01 and 2026-10-15", "target": {"intent": "wfh_status", "start_date": "2026-10-01", "end_date": "2026-10-01", "period": "custom"}}
+{"text": "Display WFH requests between 2026-10-01 and 2026-10-15", "target": {"intent": "wfh_status", "start_date": "2026-10-01", "end_date": "2026-10-15", "period": "custom"}}
 {"text": "Are any of my remote-work requests awaiting approval?", "target": {"intent": "wfh_status"}}
 {"text": "Show all rejected WFH applications", "target": {"intent": "wfh_status", "status": "REJECTED"}}
 {"text": "Find my work-from-home requests for the current month", "target": {"intent": "wfh_status", "period": "this_month"}}
@@ -279,4 +279,3 @@
 {"text": "Am I scheduled for work on October 15 on October 21, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-21"}}
 {"text": "Display my assigned work schedule on October 31, 2026", "target": {"intent": "schedule_lookup", "on_date": "2026-10-31"}}
 {"text": "What's my shift on October 17, 2026?", "target": {"intent": "schedule_lookup", "on_date": "2026-10-17"}}
-

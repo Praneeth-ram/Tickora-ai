@@ -46,7 +46,7 @@
 {"text": "Show my recorded time entries rather than my assigned schedule", "target": {"intent": "timesheet_lookup"}}
 {"text": "Show the leave requests I submitted last month", "target": {"intent": "leave_status", "period": "last_month", "status": "SUBMITTED"}}
 {"text": "Retrieve my daily time-entry list for this week", "target": {"intent": "timesheet_lookup", "period": "this_week"}}
-{"text": "Tell me whether my latest WFH request was approved", "target": {"intent": "wfh_status", "status": "LATE"}}
+{"text": "Check the status of my latest WFH request", "target": {"intent": "wfh_status"}}
 {"text": "Give me the attendance totals for this month", "target": {"intent": "attendance_summary", "period": "this_month"}}
 {"text": "Which timesheets are awaiting approval?", "target": {"intent": "timesheet_lookup", "status": "SUBMITTED"}}
 {"text": "Which holidays are observed in India in November 2026?", "target": {"intent": "holiday_lookup", "region": "India"}}

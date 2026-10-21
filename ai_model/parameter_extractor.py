@@ -170,6 +170,70 @@ def extract_region(text: str):
 
     return None
 
+def extract_requested_field(text: str, intent: str) -> str | None:
+    """Identify the specific database field requested by the user."""
+    text = text.lower()
+
+    field_patterns = [
+        (
+            "submitted_at",
+            r"\bsubmitted\s+(?:at|on|time|timestamp|date)\b"
+            r"|\bsubmission\s+(?:time|timestamp|date)\b"
+            r"|\bwhen\s+(?:was|were)\b.*\bsubmitted\b",
+        ),
+        (
+            "approved_at",
+            r"\bapproved\s+(?:at|on|time|timestamp|date)\b"
+            r"|\bapproval\s+(?:time|timestamp|date)\b"
+            r"|\bwhen\s+(?:was|were)\b.*\bapproved\b",
+        ),
+        (
+            "clock_in",
+            r"\bclock(?:ed)?[\s-]*in\b"
+            r"|\bcheck(?:ed)?[\s-]*in\b"
+            r"|\bclock[\s-]*in\s+(?:time|timestamp)\b",
+        ),
+        (
+            "clock_out",
+            r"\bclock(?:ed)?[\s-]*out\b"
+            r"|\bcheck(?:ed)?[\s-]*out\b"
+            r"|\bclock[\s-]*out\s+(?:time|timestamp)\b",
+        ),
+        (
+            "created_at",
+            r"\bcreated\s+(?:at|on|time|timestamp|date)\b"
+            r"|\bcreation\s+(?:time|timestamp|date)\b",
+        ),
+    ]
+
+    matches = [
+        field
+        for field, pattern in field_patterns
+        if re.search(pattern, text)
+    ]
+
+    # Do not guess if the question refers to multiple timestamps.
+    if len(matches) != 1:
+        return None
+
+    field = matches[0]
+
+    # Restrict fields to relevant intents.
+    allowed_fields = {
+        "timesheet_lookup": {"submitted_at", "approved_at", "created_at"},
+        "attendance_records": {"clock_in", "clock_out", "created_at"},
+        "attendance_summary": set(),
+        "leave_status": {"created_at"},
+        "wfh_status": {"created_at"},
+        "holiday_lookup": {"created_at"},
+        "schedule_lookup": {"created_at"},
+    }
+
+    if field not in allowed_fields.get(intent, set()):
+        return None
+
+    return field
+
 def extract_requested_metric(text: str, intent: str) -> str | None:
     """Identify the information requested by the user."""
     text = text.lower()
@@ -179,8 +243,19 @@ def extract_requested_metric(text: str, intent: str) -> str | None:
         "present_days": r"\bpresent\b",
         "late_days": r"\blate\b",
         "half_days": r"\bhalf[- ]days?\b",
-        "leave_days": r"\bleave days?\b",
-        "wfh_days": r"\bwfh days?\b|work[- ]from[- ]home days?",
+        "leave_days": (
+            r"\bleave\s*days?\b"
+            r"|\b(?:days?\b.*(?:took|taken|on|of)?\s*leave)\b"
+            r"|\b(?:took|taken)\s+leave\b"
+            r"|\bon\s+leave\b"
+            r"|\b(?:take\s+(?:any\s+)?leave)\b"
+        ),
+        "wfh_days": (
+            r"\bwfh\s*days?\b"
+            r"|work[- ]from[- ]home\s*days?"
+            r"|\b(?:days?\b.*(?:wfh|work[- ]from[- ]home))\b"
+            r"|\b(?:worked\s+from\s+home)\b"
+        ),
         "recorded_days": r"\brecorded days?\b",
     }
 
@@ -205,6 +280,11 @@ def extract_parameters(text: str, intent: str) -> dict:
     The returned values must still pass IntentRequest validation.
     """
     result = {"intent": intent}
+
+    requested_field = extract_requested_field(text, intent)
+    if requested_field:
+        result["requested_field"] = requested_field
+
     requested_metric = extract_requested_metric(text, intent)
 
     if requested_metric:

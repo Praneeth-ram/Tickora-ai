@@ -69,8 +69,58 @@ def is_clearly_out_of_scope(question: str) -> bool:
         for pattern in OUT_OF_SCOPE_PATTERNS
     )
 
+def resolve_intent(question: str, predicted_intent: str) -> str:
+    """Resolve clear attendance-versus-request wording ambiguities."""
+    text = question.lower().strip()
+
+    # Leave requests or applications explicitly refer to request/application workflows.
+    leave_request_question = re.search(
+        r"\b(?:leave requests?|leave applications?|applied for leave|applied leave|pending leave)\b",
+        text,
+    )
+
+    # Questions asking about days taken on leave, leave day counts, or whether the user took leave/was on leave
+    # refer to attendance records/summary rather than leave application records.
+    leave_attendance_question = re.search(
+        r"\b(?:what\s+(?:is|are)\s+my|how many|number of|count(?: of)?|total)\b.*\b(?:days?\b.*(?:took|taken|on|of)?\s*leave|leave\s*days?)\b"
+        r"|\b(?:days?\s+(?:i\s+)?(?:took|taken|was\s+on)\s+leave|days\s+on\s+leave|days\s+of\s+leave)\b"
+        r"|\b(?:did|was|were|have)\b.*\b(?:take\s+(?:any\s+)?leave|on\s+leave|taken\s+leave)\b"
+        r"|\bleave days?\b.*\b(?:in my attendance|recorded in attendance)\b",
+        text,
+    )
+
+    if leave_attendance_question and not leave_request_question:
+        return "attendance_summary"
+
+    # WFH requests or applications explicitly refer to request/application workflows.
+    wfh_request_question = re.search(
+        r"\b(?:wfh requests?|wfh applications?|work from home requests?|applied for wfh|pending wfh)\b",
+        text,
+    )
+
+    wfh_attendance_question = re.search(
+        r"\b(?:what\s+(?:is|are)\s+my|how many|number of|count(?: of)?|total)\b.*\b(?:days?\b.*(?:wfh|work[- ]from[- ]home)|wfh\s*days?|work[- ]from[- ]home\s*days?)\b"
+        r"|\b(?:days?\s+(?:i\s+)?worked\s+from\s+home|days\s+wfh)\b"
+        r"|\b(?:wfh|work[- ]from[- ]home)\s*days?\b.*\b(?:in my attendance|recorded in attendance)\b",
+        text,
+    )
+
+    if wfh_attendance_question and not wfh_request_question:
+        return "attendance_summary"
+
+    # Explicit half-day questions refer to attendance, not holidays.
+    half_day_question = re.search(
+        r"\bhalf[- ]days?\b",
+        text,
+    )
+
+    if half_day_question:
+        return "attendance_summary"
+
+    return predicted_intent
+
 def process_question(question, model, tokenizer, intents):
-    # Reject clearly unrelated questions before model classification.
+    # Reject clearly unrelated questions before intent classification.
     if is_clearly_out_of_scope(question):
         return "out_of_scope", 1.0, {
             "error": "This question is outside Tickora AI's scope.",
@@ -81,10 +131,9 @@ def process_question(question, model, tokenizer, intents):
         question, model, tokenizer, intents
     )
 
+    intent = resolve_intent(question, intent)
     result = parse_request(question, intent)
-
     return intent, confidence, result
-
 
 def main():
     model, tokenizer, intents = load_model()
