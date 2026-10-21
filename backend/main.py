@@ -1,5 +1,6 @@
 from datetime import date
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
+from backend.dependencies.auth import get_current_employee
 from sqlalchemy import text
 from backend.db import engine
 from backend.repositories.attendance_repository import (
@@ -19,6 +20,10 @@ from pydantic import BaseModel, Field
 from fastapi.encoders import jsonable_encoder
 from backend.services.chat_service import run_chat
 from fastapi.middleware.cors import CORSMiddleware
+from backend.services.auth_service import (
+    verify_password,
+    create_access_token,
+)
 
 app = FastAPI(
     title="Tickora AI API",
@@ -43,6 +48,9 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     # Stable per-chat identifier so clarification replies retain context.
     session_id: str = Field(min_length=1, max_length=100)
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
 
 def find_employee_id(employee_code: str) -> int:
     # Resolve a sample employee code to its database ID.
@@ -68,17 +76,81 @@ def find_employee_id(employee_code: str) -> int:
 
     return employee_id
 
+def require_matching_employee(
+    requested_employee_code: str,
+    current_employee: dict,
+) -> int:
+    if (
+        requested_employee_code.strip().upper()
+        != current_employee["employee_code"].upper()
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You cannot access another employee's data",
+        )
+
+    return current_employee["employee_id"]
+
+
+@app.post("/api/auth/login")
+def login(body: LoginRequest):
+    email = body.email.strip().lower()
+
+    query = text("""
+        SELECT
+            e.employee_id,
+            e.employee_code,
+            e.full_name,
+            e.email,
+            c.password_hash
+        FROM public.employees AS e
+        JOIN public.employee_credentials AS c
+            ON c.employee_id = e.employee_id
+        WHERE LOWER(e.email) = :email
+          AND e.is_active = TRUE
+          AND c.is_enabled = TRUE
+    """)
+
+    with engine.connect() as connection:
+        employee = connection.execute(
+            query,
+            {"email": email},
+        ).mappings().one_or_none()
+
+    if employee is None or not verify_password(
+        body.password, employee["password_hash"]
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+        )
+
+    token = create_access_token(
+        employee_id=employee["employee_id"],
+        employee_code=employee["employee_code"],
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "employee": {
+            "employee_id": employee["employee_id"],
+            "employee_code": employee["employee_code"],
+            "full_name": employee["full_name"],
+            "email": employee["email"],
+        },
+    }
 
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "tickora-ai"}
-
 
 @app.get("/api/attendance/{employee_code}")
 def attendance_records(
     employee_code: str,
     start_date: date = Query(...),
     end_date: date = Query(...),
+    current_employee: dict = Depends(get_current_employee),
 ):
     if start_date > end_date:
         raise HTTPException(
@@ -86,24 +158,27 @@ def attendance_records(
             detail="start_date cannot be after end_date",
         )
 
-    employee_id = find_employee_id(employee_code)
+    employee_id = require_matching_employee(
+        employee_code, current_employee
+    )
 
     records = get_attendance_records(
         employee_id, start_date, end_date
     )
 
     return {
-        "employee_code": employee_code,
+        "employee_code": current_employee["employee_code"],
         "start_date": start_date,
         "end_date": end_date,
         "records": records,
     }
 
-@app.get("/api/attendance/{employee_code}/summary")
-def attendance_summary(
+@app.get("/api/attendance/{employee_code}")
+def attendance_records(
     employee_code: str,
     start_date: date = Query(...),
     end_date: date = Query(...),
+    current_employee: dict = Depends(get_current_employee),
 ):
     if start_date > end_date:
         raise HTTPException(
@@ -111,25 +186,27 @@ def attendance_summary(
             detail="start_date cannot be after end_date",
         )
 
-    employee_id = find_employee_id(employee_code)
+    employee_id = require_matching_employee(
+        employee_code, current_employee
+    )
 
-    summary = get_attendance_summary(
+    records = get_attendance_records(
         employee_id, start_date, end_date
     )
 
     return {
-        "employee_code": employee_code,
+        "employee_code": current_employee["employee_code"],
         "start_date": start_date,
         "end_date": end_date,
-        "summary": summary,
+        "records": records,
     }
-
 
 @app.get("/api/timesheets/{employee_code}")
 def timesheets(
     employee_code: str,
     start_date: date = Query(...),
     end_date: date = Query(...),
+    current_employee: dict = Depends(get_current_employee),
 ):
     if start_date > end_date:
         raise HTTPException(
@@ -137,14 +214,15 @@ def timesheets(
             detail="start_date cannot be after end_date",
         )
 
-    employee_id = find_employee_id(employee_code)
+    employee_id = require_matching_employee(
+        employee_code, current_employee
+    )
     records = get_timesheets(employee_id, start_date, end_date)
 
     return {
-        "employee_code": employee_code,
+        "employee_code": current_employee["employee_code"],
         "records": records,
     }
-
 
 @app.get("/api/leave/{employee_code}")
 def leave_requests(
@@ -152,15 +230,25 @@ def leave_requests(
     start_date: date | None = None,
     end_date: date | None = None,
     status: str | None = None,
+    current_employee: dict = Depends(get_current_employee),
 ):
+    employee_id = require_matching_employee(
+        employee_code, current_employee
+    )
+
     try:
-        employee_id = find_employee_id(employee_code)
         records = get_leave_requests(
             employee_id, start_date, end_date, status
         )
-        return {"employee_code": employee_code, "records": records}
+        return {
+            "employee_code": current_employee["employee_code"],
+            "records": records,
+        }
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400, detail=str(exc)
+        ) from exc
+
 
 
 @app.get("/api/wfh/{employee_code}")
@@ -169,15 +257,43 @@ def wfh_requests(
     start_date: date | None = None,
     end_date: date | None = None,
     status: str | None = None,
+    current_employee: dict = Depends(get_current_employee),
 ):
+    employee_id = require_matching_employee(
+        employee_code, current_employee
+    )
+
     try:
-        employee_id = find_employee_id(employee_code)
         records = get_wfh_requests(
             employee_id, start_date, end_date, status
         )
-        return {"employee_code": employee_code, "records": records}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    if not records:
+        if status:
+            message = (
+                f"No WFH requests found with status '{status}' "
+                "for the selected date range."
+            )
+        else:
+            message = (
+                "No WFH requests found for the selected date range."
+            )
+
+        raise HTTPException(
+            status_code=404,
+            detail=message,
+        )
+
+    return {
+        "employee_code": current_employee["employee_code"],
+        "records": records,
+    }
+
 
 
 @app.get("/api/holidays")
@@ -200,12 +316,15 @@ def holidays(
 def work_schedules(
     employee_code: str,
     on_date: date = Query(...),
+    current_employee: dict = Depends(get_current_employee),
 ):
-    employee_id = find_employee_id(employee_code)
+    employee_id = require_matching_employee(
+        employee_code, current_employee
+    )
     records = get_work_schedules(employee_id, on_date)
 
     return {
-        "employee_code": employee_code,
+        "employee_code": current_employee["employee_code"],
         "on_date": on_date,
         "records": records,
     }
@@ -214,8 +333,11 @@ def work_schedules(
 def chat_with_tickora(
     employee_code: str,
     body: ChatRequest,
+    current_employee: dict = Depends(get_current_employee),
 ):
-    employee_id = find_employee_id(employee_code)
+    employee_id = require_matching_employee(
+        employee_code, current_employee
+    )
 
     try:
         result = run_chat(
