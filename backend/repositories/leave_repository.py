@@ -8,31 +8,33 @@ def get_leave_requests(
     end_date: date | None = None,
     status: str | None = None,
 ) -> list[dict]:
-    # Retrieve leave requests, optionally filtered by dates and status.
+    """Retrieve an employee's leave requests."""
 
     if start_date and end_date and start_date > end_date:
         raise ValueError("start_date cannot be after end_date")
 
     if status is not None:
-        status = status.upper()
-        if status not in {"PENDING", "APPROVED", "REJECTED", "CANCELLED"}:
+        status = status.strip().lower()
+        if status not in {"pending", "approved", "rejected", "cancelled"}:
             raise ValueError("Invalid leave-request status")
 
     query = text("""
         SELECT
-            l.leave_request_id,
+            l.id AS leave_request_id,
             e.employee_code,
             e.full_name,
-            l.leave_type,
+            lt.name AS leave_type,
             l.start_date,
             l.end_date,
+            l.requested_days,
             l.reason,
             l.status,
-            l.requested_at,
-            l.reviewed_at
+            l.applied_at
         FROM public.leave_requests AS l
         JOIN public.employees AS e
-            ON e.employee_id = l.employee_id
+            ON e.id = l.employee_id
+        JOIN public.leave_types AS lt
+            ON lt.id = l.leave_type_id
         WHERE l.employee_id = :employee_id
           AND (
               CAST(:start_date AS DATE) IS NULL

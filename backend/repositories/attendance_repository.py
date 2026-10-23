@@ -7,27 +7,30 @@ def get_attendance_records(
     start_date: date,
     end_date: date,
 ) -> list[dict]:
-    # Return attendance records for one employee within a date range.
+    """Return attendance records for one employee within a date range."""
 
     if start_date > end_date:
         raise ValueError("start_date cannot be after end_date")
 
     query = text("""
         SELECT
-            a.attendance_id,
+            a.id AS attendance_id,
             e.employee_code,
             e.full_name,
-            a.work_date,
+            a.attendance_date,
             a.clock_in,
             a.clock_out,
             a.status,
-            a.work_location
+            a.work_location,
+            a.worked_minutes,
+            a.overtime_minutes,
+            a.is_late
         FROM public.attendance_records AS a
         JOIN public.employees AS e
-            ON e.employee_id = a.employee_id
+            ON e.id = a.employee_id
         WHERE a.employee_id = :employee_id
-          AND a.work_date BETWEEN :start_date AND :end_date
-        ORDER BY a.work_date ASC
+          AND a.attendance_date BETWEEN :start_date AND :end_date
+        ORDER BY a.attendance_date ASC
     """)
 
     with engine.connect() as connection:
@@ -42,13 +45,12 @@ def get_attendance_records(
 
     return [dict(row) for row in rows]
 
-
 def get_attendance_summary(
     employee_id: int,
     start_date: date,
     end_date: date,
 ) -> dict:
-    """Return attendance totals grouped by status."""
+    """Return attendance totals for one employee within a date range."""
 
     if start_date > end_date:
         raise ValueError("start_date cannot be after end_date")
@@ -56,27 +58,38 @@ def get_attendance_summary(
     query = text("""
         SELECT
             COUNT(*) AS recorded_days,
+
             COUNT(*) FILTER (
-                WHERE status IN ('PRESENT', 'LATE')
-            ) AS present_days,
+                WHERE status IN ('present', 'late', 'half_day')
+            ) AS attended_days,
+
             COUNT(*) FILTER (
-                WHERE status = 'ABSENT'
+                WHERE status = 'absent'
             ) AS absent_days,
+
             COUNT(*) FILTER (
-                WHERE status = 'LATE'
+                WHERE status = 'late'
             ) AS late_days,
+
             COUNT(*) FILTER (
-                WHERE status = 'HALF_DAY'
+                WHERE status = 'half_day'
             ) AS half_days,
+
             COUNT(*) FILTER (
-                WHERE status = 'ON_LEAVE'
+                WHERE status = 'on_leave'
             ) AS leave_days,
+
             COUNT(*) FILTER (
-                WHERE work_location = 'WFH'
-            ) AS wfh_days
+                WHERE work_location = 'remote'
+            ) AS remote_days,
+
+            COALESCE(SUM(worked_minutes), 0) AS total_worked_minutes,
+
+            COALESCE(SUM(overtime_minutes), 0) AS total_overtime_minutes
+
         FROM public.attendance_records
         WHERE employee_id = :employee_id
-          AND work_date BETWEEN :start_date AND :end_date
+          AND attendance_date BETWEEN :start_date AND :end_date
     """)
 
     with engine.connect() as connection:

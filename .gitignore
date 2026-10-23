@@ -6,16 +6,29 @@
 
 # Python
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Tooling
 .vscode/
 .idea/
+.mypy_cache/
+.ruff_cache/
 
-# Local data and model artifacts
+# Logs and temporary files
 *.log
+*.tmp
+
+# Local database exports and backups
+*.sql
+*.dump
+*.bak
+
+# Model checkpoints and weights
 *.pt
 *.pth
 *.ckpt

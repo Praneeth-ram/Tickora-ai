@@ -13,6 +13,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 )
 
+if JWT_ALGORITHM != "HS256":
+    raise RuntimeError(
+        "Unsupported JWT_ALGORITHM. This application requires HS256."
+    )
+
 if not JWT_SECRET_KEY:
     raise RuntimeError(
         "JWT_SECRET_KEY is missing. Configure it in the backend .env file."

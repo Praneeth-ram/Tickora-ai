@@ -97,18 +97,19 @@ def login(body: LoginRequest):
     email = body.email.strip().lower()
 
     query = text("""
-        SELECT
-            e.employee_id,
-            e.employee_code,
-            e.full_name,
-            e.email,
-            c.password_hash
-        FROM public.employees AS e
-        JOIN public.employee_credentials AS c
-            ON c.employee_id = e.employee_id
-        WHERE LOWER(e.email) = :email
-          AND e.is_active = TRUE
-          AND c.is_enabled = TRUE
+    SELECT
+        e.id AS employee_id,
+        e.organization_id,
+        e.employee_code,
+        e.full_name,
+        e.email,
+        c.password_hash
+    FROM public.employees AS e
+    JOIN public.employee_credentials AS c
+        ON c.employee_id = e.id
+    WHERE LOWER(e.email) = :email
+      AND e.is_active = TRUE
+      AND c.is_enabled = TRUE
     """)
 
     with engine.connect() as connection:
@@ -144,34 +145,6 @@ def login(body: LoginRequest):
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "tickora-ai"}
-
-@app.get("/api/attendance/{employee_code}")
-def attendance_records(
-    employee_code: str,
-    start_date: date = Query(...),
-    end_date: date = Query(...),
-    current_employee: dict = Depends(get_current_employee),
-):
-    if start_date > end_date:
-        raise HTTPException(
-            status_code=400,
-            detail="start_date cannot be after end_date",
-        )
-
-    employee_id = require_matching_employee(
-        employee_code, current_employee
-    )
-
-    records = get_attendance_records(
-        employee_id, start_date, end_date
-    )
-
-    return {
-        "employee_code": current_employee["employee_code"],
-        "start_date": start_date,
-        "end_date": end_date,
-        "records": records,
-    }
 
 @app.get("/api/attendance/{employee_code}")
 def attendance_records(
@@ -249,8 +222,6 @@ def leave_requests(
             status_code=400, detail=str(exc)
         ) from exc
 
-
-
 @app.get("/api/wfh/{employee_code}")
 def wfh_requests(
     employee_code: str,
@@ -294,8 +265,6 @@ def wfh_requests(
         "records": records,
     }
 
-
-
 @app.get("/api/holidays")
 def holidays(
     start_date: date = Query(...),
@@ -310,7 +279,6 @@ def holidays(
 
     records = get_holidays(start_date, end_date, region)
     return {"records": records}
-
 
 @app.get("/api/schedules/{employee_code}")
 def work_schedules(
