@@ -1,34 +1,41 @@
-
-# Environment and secrets
+# Environment secrets
 .env
 .env.*
 !.env.example
 
-# Python
+# Python virtual environments
 .venv/
+.venv-*/
 venv/
+
+# Python cache and test artifacts
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.coverage
-htmlcov/
-
-# Tooling
-.vscode/
-.idea/
 .mypy_cache/
 .ruff_cache/
 
-# Logs and temporary files
+# Local logs
 *.log
-*.tmp
 
-# Local database exports and backups
-*.sql
-*.dump
-*.bak
-
-# Model checkpoints and weights
+# Model weights and checkpoints
+models/
+data/artifacts/
+*.safetensors
 *.pt
 *.pth
-*.ckpt
+*.bin
+
+# Local datasets and generated data
+data/*.jsonl
+
+# Frontend dependencies and build output
+node_modules/
+dist/
+build/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,233 @@
+[
+  {
+    "operation_id": "attendance.count",
+    "entity": "attendance",
+    "operation": "count",
+    "fields": [],
+    "filters": [
+      "attendance_date",
+      "status",
+      "work_location",
+      "is_late"
+    ],
+    "date_field": "attendance_date",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  },
+  {
+    "operation_id": "attendance.group_by",
+    "entity": "attendance",
+    "operation": "group_by",
+    "fields": [],
+    "filters": [
+      "attendance_date",
+      "status",
+      "work_location",
+      "is_late"
+    ],
+    "date_field": "attendance_date",
+    "aggregate_fields": [
+      "worked_minutes",
+      "overtime_minutes"
+    ],
+    "group_by_fields": [
+      "status",
+      "work_location",
+      "is_late"
+    ]
+  },
+  {
+    "operation_id": "attendance.list",
+    "entity": "attendance",
+    "operation": "list",
+    "fields": [
+      "attendance_date",
+      "clock_in",
+      "clock_out",
+      "status",
+      "work_location",
+      "worked_minutes",
+      "overtime_minutes",
+      "is_late"
+    ],
+    "filters": [
+      "attendance_date",
+      "status",
+      "work_location",
+      "is_late"
+    ],
+    "date_field": "attendance_date",
+    "aggregate_fields": [
+      "worked_minutes",
+      "overtime_minutes"
+    ],
+    "group_by_fields": [
+      "status",
+      "work_location",
+      "is_late"
+    ]
+  },
+  {
+    "operation_id": "attendance.sum",
+    "entity": "attendance",
+    "operation": "sum",
+    "fields": [],
+    "filters": [
+      "attendance_date",
+      "status",
+      "work_location",
+      "is_late"
+    ],
+    "date_field": "attendance_date",
+    "aggregate_fields": [
+      "worked_minutes",
+      "overtime_minutes"
+    ],
+    "group_by_fields": [
+      "status",
+      "work_location",
+      "is_late"
+    ]
+  },
+  {
+    "operation_id": "holiday.count",
+    "entity": "holiday",
+    "operation": "count",
+    "fields": [],
+    "filters": [
+      "holiday_date",
+      "holiday_type"
+    ],
+    "date_field": "holiday_date",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  },
+  {
+    "operation_id": "holiday.list",
+    "entity": "holiday",
+    "operation": "list",
+    "fields": [
+      "holiday_date",
+      "name",
+      "holiday_type"
+    ],
+    "filters": [
+      "holiday_date",
+      "holiday_type"
+    ],
+    "date_field": "holiday_date",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  },
+  {
+    "operation_id": "leave_request.count",
+    "entity": "leave_request",
+    "operation": "count",
+    "fields": [],
+    "filters": [
+      "start_date",
+      "end_date",
+      "status",
+      "leave_type_id",
+      "applied_at"
+    ],
+    "date_field": "start_date",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  },
+  {
+    "operation_id": "leave_request.list",
+    "entity": "leave_request",
+    "operation": "list",
+    "fields": [
+      "start_date",
+      "end_date",
+      "requested_days",
+      "reason",
+      "status",
+      "applied_at"
+    ],
+    "filters": [
+      "start_date",
+      "end_date",
+      "status",
+      "leave_type_id",
+      "applied_at"
+    ],
+    "date_field": "start_date",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  },
+  {
+    "operation_id": "timesheet.count",
+    "entity": "timesheet",
+    "operation": "count",
+    "fields": [],
+    "filters": [
+      "period_start",
+      "period_end",
+      "status",
+      "submitted_at"
+    ],
+    "date_field": "period_start",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  },
+  {
+    "operation_id": "timesheet.list",
+    "entity": "timesheet",
+    "operation": "list",
+    "fields": [
+      "period_start",
+      "period_end",
+      "status",
+      "submitted_at",
+      "approved_at"
+    ],
+    "filters": [
+      "period_start",
+      "period_end",
+      "status",
+      "submitted_at"
+    ],
+    "date_field": "period_start",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  },
+  {
+    "operation_id": "wfh_request.count",
+    "entity": "wfh_request",
+    "operation": "count",
+    "fields": [],
+    "filters": [
+      "start_date",
+      "end_date",
+      "status",
+      "applied_at"
+    ],
+    "date_field": "start_date",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  },
+  {
+    "operation_id": "wfh_request.list",
+    "entity": "wfh_request",
+    "operation": "list",
+    "fields": [
+      "start_date",
+      "end_date",
+      "reason",
+      "status",
+      "applied_at"
+    ],
+    "filters": [
+      "start_date",
+      "end_date",
+      "status",
+      "applied_at"
+    ],
+    "date_field": "start_date",
+    "aggregate_fields": [],
+    "group_by_fields": []
+  }
+]

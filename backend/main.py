@@ -24,6 +24,11 @@ from backend.services.auth_service import (
     verify_password,
     create_access_token,
 )
+import os
+from backend.services.llm_chat_service import (
+    run_llm_chat,
+    ModelServiceError,
+)
 
 app = FastAPI(
     title="Tickora AI API",
@@ -297,6 +302,7 @@ def work_schedules(
         "records": records,
     }
 
+
 @app.post("/api/chat/{employee_code}")
 def chat_with_tickora(
     employee_code: str,
@@ -304,17 +310,34 @@ def chat_with_tickora(
     current_employee: dict = Depends(get_current_employee),
 ):
     employee_id = require_matching_employee(
-        employee_code, current_employee
+        employee_code,
+        current_employee,
     )
 
     try:
-        result = run_chat(
-            question=body.question.strip(),
-            employee_id=employee_id,
-            session_id=body.session_id,
-        )
+        use_llm = os.getenv(
+            "TICKORA_LLM_CHAT_ENABLED", "true"
+        ).lower() == "true"
+
+        if use_llm:
+            result = run_llm_chat(
+                question=body.question.strip(),
+                employee_id=employee_id,
+            )
+        else:
+            result = run_chat(
+                question=body.question.strip(),
+                employee_id=employee_id,
+                session_id=body.session_id,
+            )
+
         return jsonable_encoder(result)
 
+    except ModelServiceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
