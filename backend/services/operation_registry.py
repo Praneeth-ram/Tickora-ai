@@ -39,6 +39,7 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
     },
     "leave_requests": {
         "entity": "leave_request",
+        "date_fields": ["start_date", "applied_at"],
         "scope": "employee_id",
         "list_fields": [
             "start_date",
@@ -60,6 +61,7 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
     },
     "wfh_requests": {
         "entity": "wfh_request",
+        "date_fields": ["start_date", "applied_at"],
         "scope": "employee_id",
         "list_fields": [
             "start_date",
@@ -223,7 +225,14 @@ def build_operation_registry(
                 "aggregate_fields": aggregate_fields,
                 "group_by_fields": group_by_fields,
             }
-
+    
+    for entry in registry.values():
+        policy = ENTITY_POLICIES[entry["table"]]
+        available = {column["name"] for column in catalog[entry["table"]]["columns"]}
+        entry["date_fields"] = [
+            field for field in policy.get("date_fields", [policy["date_field"]])
+            if field in available
+        ]
 
     return registry
 

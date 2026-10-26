@@ -153,12 +153,13 @@ def execute_query_plan(
         raise QueryPlanError("Unknown access scope.")
 
     date_field = definition.get("date_field")
+    allowed_date_fields = definition.get("date_fields") or [date_field]
 
     for field, value in filters.items():
         quoted_field = preparer.quote(field)
 
         if isinstance(value, dict):
-            if field != date_field:
+            if field not in allowed_date_fields:
                 raise QueryPlanError(
                     "Range filters are allowed only on the approved date field."
                 )
@@ -172,13 +173,13 @@ def execute_query_plan(
                 params[f"{field}_gte"] = _parse_date(
                     value["gte"], f"{field}.gte"
                 )
-                conditions.append(f"{quoted_field} >= :{field}_gte")
+                conditions.append(f"CAST({quoted_field} AS DATE) >= :{field}_gte")
 
             if "lte" in value:
                 params[f"{field}_lte"] = _parse_date(
                     value["lte"], f"{field}.lte"
                 )
-                conditions.append(f"{quoted_field} <= :{field}_lte")
+                conditions.append(f"CAST({quoted_field} AS DATE) <= :{field}_lte")
 
             if (
                 "gte" in value
