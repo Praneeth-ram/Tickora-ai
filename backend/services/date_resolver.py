@@ -66,6 +66,115 @@ def _ordered_or_none(a: date | None, b: date | None):
         return None
     return a, b
 
+def _number_word_value(text: str) -> int | None:
+    """Parse English cardinal numbers, including compound forms like thirty-five."""
+    units = {
+        "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+        "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+        "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+        "fourteen": 14, "fifteen": 15, "sixteen": 16,
+        "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    }
+    tens = {
+        "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+        "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+    }
+    total = 0
+    current = 0
+    for token in re.split(r"[\s-]+", text.lower().strip()):
+        if token == "and":
+            continue
+        if token in units:
+            current += units[token]
+        elif token in tens:
+            current += tens[token]
+        elif token == "hundred":
+            current = max(current, 1) * 100
+        elif token in {"thousand", "thousands"}:
+            total += max(current, 1) * 1000
+            current = 0
+        else:
+            return None
+    return total + current if total + current > 0 else None
+
+
+def resolve_discrete_dates(question: str, today: date) -> list[date] | None:
+    """Resolve multiple explicit dates without treating them as a continuous range."""
+    q = " ".join(question.lower().split())
+    candidates: list[tuple[int, int, int, int, int | None]] = []
+
+    patterns = (
+        (re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b", re.I), "iso"),
+        (re.compile(rf"\b({_MON})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s*(20\d{{2}}))?\b", re.I), "month_first"),
+        (re.compile(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({_MON})\.?(?:,?\s*(20\d{{2}}))?\b", re.I), "day_first"),
+        (re.compile(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b", re.I), "numeric"),
+    )
+
+    for pattern, kind in patterns:
+        for match in pattern.finditer(q):
+            if kind == "iso":
+                year, month, day = map(int, match.groups())
+            elif kind == "month_first":
+                month = _month_number(match.group(1))
+                day = int(match.group(2))
+                year = int(match.group(3)) if match.group(3) else None
+            elif kind == "day_first":
+                day = int(match.group(1))
+                month = _month_number(match.group(2))
+                year = int(match.group(3)) if match.group(3) else None
+            else:
+                day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            candidates.append((match.start(), match.end(), day, month, year))
+
+    # Shared-month syntax: "the 5th and 15th of October 2026".
+    shared = re.search(
+        rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s*(?:,|and|&)\s*"
+        rf"(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({_MON})\.?(?:,?\s*(20\d{{2}}))?\b",
+        q,
+        re.I,
+    )
+    if shared:
+        month = _month_number(shared.group(3))
+        year = int(shared.group(4)) if shared.group(4) else None
+        candidates = [
+            item for item in candidates
+            if not (item[0] >= shared.start() and item[1] <= shared.end())
+        ]
+        candidates.extend([
+            (shared.start(1), shared.end(1), int(shared.group(1)), month, year),
+            (shared.start(2), shared.end(2), int(shared.group(2)), month, year),
+        ])
+
+    candidates.sort(key=lambda item: item[0])
+    unique: list[tuple[int, int, int, int, int | None]] = []
+    for item in candidates:
+        if not unique or item[0] >= unique[-1][1]:
+            unique.append(item)
+
+    if len(unique) < 2:
+        return None
+
+    # A date list needs a list/comparison connector, not a range connector.
+    between = q[unique[0][1]:unique[1][0]]
+    is_list_connector = bool(re.search(r"(?:\band\b|,|&|\bversus\b|\bvs\.?\b)", between))
+    is_range_connector = bool(re.search(
+        r"\b(?:to|through|thru|till|until)\b|\s-\s|\bbetween\b", between
+    ))
+    if not is_list_connector or is_range_connector:
+        return None
+
+    explicit_years = [item[4] for item in unique if item[4] is not None]
+    default_year = explicit_years[-1] if explicit_years else today.year
+    dates: list[date] = []
+    for start, end, day, month, year in unique:
+        try:
+            parsed = date(year or default_year, month, day)
+        except ValueError as exc:
+            raise InvalidDateError(q[start:end]) from exc
+        if parsed not in dates:
+            dates.append(parsed)
+    return sorted(dates)
+
 
 def resolve_date_spec(question: str, today: date) -> DateSpec | None:
     """Return the date span a question refers to, or None if it names no date."""
@@ -152,6 +261,27 @@ def resolve_date_spec(question: str, today: date) -> DateSpec | None:
         if span:
             return DateSpec(span[0], span[1], "range")
 
+    # Ordinal week windows within a named month (weeks are seven-day blocks).
+    week_match = re.search(
+        rf"\b(first|second|third|fourth|last)\s+week\s+of\s+({_MON})\.?(?:,?\s*(\d{{4}}))?\b",
+        q,
+    )
+    if week_match:
+        ordinal, month_name, year_text = week_match.groups()
+        year = int(year_text) if year_text else today.year
+        month = _month_number(month_name)
+        month_start, month_end = _month_bounds(year, month)
+        if ordinal == "last":
+            end = month_end
+            start = max(month_start, end - timedelta(days=6))
+        else:
+            week_number = {"first": 1, "second": 2, "third": 3, "fourth": 4}[ordinal]
+            start = month_start + timedelta(days=(week_number - 1) * 7)
+            if start > month_end:
+                return None
+            end = min(start + timedelta(days=6), month_end)
+        return DateSpec(start, end, "week")
+
     # 4. Single day with month name, either order: "19 oct 2026", "oct 19", "october 19th, 2026"
     m = re.search(rf"\b{_DAY}\s*(?:of\s+)?({_MON})\.?{_YEAR_OPT}", q)
     if m:
@@ -167,6 +297,20 @@ def resolve_date_spec(question: str, today: date) -> DateSpec | None:
         if d is None:
             raise InvalidDateError(m.group(0))
         return DateSpec(d, d, "day")
+    
+    # Relative day windows: numeric or written cardinal quantities.
+    m = re.search(
+        r"\b(?:last|past|previous)\s+"
+        r"(\d+|[a-z]+(?:[\s-]+(?:and[\s-]+)?[a-z]+)*)\s+days?\b",
+        q,
+    )
+    if m:
+        token = m.group(1)
+        number_of_days = int(token) if token.isdigit() else _number_word_value(token)
+        if number_of_days is None or number_of_days < 1:
+            raise InvalidDateError(token)
+        start = today - timedelta(days=number_of_days - 1)
+        return DateSpec(start, today, "relative")
 
     # 5. Relative phrases
     if re.search(r"\btoday\b", q):

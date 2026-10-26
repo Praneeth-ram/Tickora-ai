@@ -16,7 +16,7 @@ from backend.services.answer_builder import (
     status_list_answer,
     status_records_answer
 )
-from backend.services.date_resolver import InvalidDateError, resolve_date_spec
+from backend.services.date_resolver import InvalidDateError, resolve_date_spec, resolve_discrete_dates
 from backend.services.dynamic_query_service import QueryPlanError, execute_query_plan
 from backend.services.request_answer_builder import (
     as_date,
@@ -65,7 +65,7 @@ SUM_QUESTION_RE = re.compile(
     r"\b(?:total\s+(?:worked\s+)?(?:minutes|hours|time)|how\s+much\s+overtime|"
     r"total\s+overtime|sum\s+of\s+(?:worked\s+)?minutes|calculate\s+(?:my\s+)?total\s+worked|"
     r"how\s+many\s+(?:hours|minutes)|hours\s+(?:did\s+i\s+|i\s+)?(?:have\s+)?work(?:ed)?|"
-    r"worked\s+hours)\b"
+    r"worked\s+hours|working\s+hours)\b"
 )
 THIRD_PARTY_MESSAGE = (
     "I can only show your own records. I can't access another employee's attendance, "
@@ -218,8 +218,11 @@ def question_kind(question: str) -> str:
     return "list"
 
 def question_wants_list(question: str) -> bool:
+    """Detect requests for records or date-by-date results."""
     return bool(re.search(
-        r"\b(?:show|list|all|details?|every|each|table|breakdown|day[- ]by[- ]day)\b",
+        r"\b(?:show|list|all|details?|every|each|table|breakdown|"
+        r"day[- ]by[- ]day|which\s+days?|which\s+dates?|"
+        r"what\s+dates?|when\s+did\s+i)\b",
         question.lower(),
     ))
 
@@ -357,6 +360,13 @@ def normalize_and_correct_plan(
         end = _last_day_of_month(start)
         date_range = (start, end)
         filters[date_field] = {"gte": start.isoformat(), "lte": end.isoformat()}
+    elif (
+        date_range is None
+        and op_id.startswith(("leave_request.", "wfh_request."))
+        and UPCOMING_RE.search(q)
+    ):
+        filters["start_date"] = {"gte": today.isoformat()}
+        date_range = (today, date(today.year, 12, 31))
     elif date_range is None and op_id == "holiday.list":
         if UPCOMING_RE.search(q):
             date_range = (today, date(today.year, 12, 31))
@@ -475,6 +485,41 @@ def _attended_sentence(rows, span):
     where = f" {span}" if span else ""
     return f"You attended {total} {noun}{where}" + (f" ({detail})." if detail else ".")
 
+def _daily_working_hours_answer(rows, requested_dates, tz):
+    lines = []
+    for day in requested_dates:
+        row = next(
+            (
+                r for r in rows
+                if (r.get("attendance_date") or r.get("work_date")) == day
+            ),
+            None,
+        )
+        if row is None:
+            lines.append(
+                f"- {day.day} {day:%B %Y}: no attendance record."
+            )
+            continue
+        minutes = row.get("worked_minutes")
+        if minutes is None:
+            cin = row.get("clock_in")
+            cout = row.get("clock_out")
+            if not isinstance(cin, datetime) or not isinstance(cout, datetime):
+                lines.append(
+                    f"- {day.day} {day:%B %Y}: working hours unavailable."
+                )
+                continue
+            if cin.tzinfo is not None:
+                cin = cin.astimezone(tz)
+            if cout.tzinfo is not None:
+                cout = cout.astimezone(tz)
+            minutes = int((cout - cin).total_seconds() // 60)
+        hours, remainder = divmod(int(minutes), 60)
+        lines.append(
+            f"- {day.day} {day:%B %Y}: {hours} hours "
+            f"and {remainder} minutes."
+        )
+    return "Your working hours for the requested dates:\\n" + "\\n".join(lines)
 
 def _hours_sentence(rows, span, overtime):
     field = "overtime_minutes" if overtime else "worked_minutes"
@@ -492,6 +537,78 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
     start = date.fromisoformat(period["start_date"])
     end = date.fromisoformat(period["end_date"])
     is_single_day = start == end
+    discrete_dates = resolve_discrete_dates(normalized_question, get_current_date())
+
+    # A list of separately named dates is not a continuous range. Query each
+    # requested date independently so dates between them are never returned.
+    if discrete_dates:
+        requested_rows = []
+        for requested_day in discrete_dates:
+            one_day_result = _execute(
+                {"operation_id": "attendance.list", "filters": {
+                    "attendance_date": {"gte": requested_day.isoformat(), "lte": requested_day.isoformat()}
+                }, "fields": ATTENDANCE_FIELDS},
+                employee_id,
+                limit=5,
+            )
+            day_rows = normalize_result_fields("attendance.list", one_day_result["data"])
+            row = day_rows[0] if day_rows else None
+            requested_rows.extend(day_rows)
+        q_lower = normalized_question.lower()
+        asks_working_hours = bool(re.search(
+            r"\b(?:working|worked)\s+hours?\b|\btotal\s+worked\s+time\b",
+            q_lower,
+        ))
+        asks_if_late = bool(re.search(
+            r"\b(?:was|were|am|did)\s+i\b.{0,40}\b(?:late|arrive\s+late)\b",
+            q_lower,
+        ))
+
+        def row_for_day(requested_day):
+            for item in requested_rows:
+                value = item.get("attendance_date") or item.get("work_date")
+                if isinstance(value, str):
+                    try:
+                        value = date.fromisoformat(value[:10])
+                    except ValueError:
+                        continue
+                if value == requested_day:
+                    return item
+            return None
+
+        if asks_working_hours:
+            answer = _daily_working_hours_answer(requested_rows, discrete_dates, tz)
+        elif asks_if_late:
+            lines = []
+            for requested_day in discrete_dates:
+                row = row_for_day(requested_day)
+                day_label = f"{requested_day.day} {requested_day:%B %Y}"
+                if row is None:
+                    lines.append(
+                        f"I couldn't verify whether you were late on {day_label}, "
+                        "because no attendance record was found."
+                    )
+                elif (
+                    str(row.get("status") or "").upper() == "LATE"
+                    or row.get("is_late") is True
+                ):
+                    lines.append(f"Yes, you were marked late on {day_label}.")
+                else:
+                    lines.append(f"No, you were not marked late on {day_label}.")
+            answer = "\n".join(lines)
+        elif kind in {"clock_in", "clock_out", "clock_both"}:
+            answer = "\n".join(
+                single_day_answer(kind, requested_day, row_for_day(requested_day), tz)
+                for requested_day in discrete_dates
+            )
+        else:
+            answer = "\n".join(
+                single_day_answer("status", requested_day, row_for_day(requested_day), tz)
+                for requested_day in discrete_dates
+            )
+        return _result(question, answer, "attendance_records",
+            {"start_date": discrete_dates[0].isoformat(), "end_date": discrete_dates[-1].isoformat()},
+            False, [])
 
     filters: dict[str, Any] = {"attendance_date": {"gte": start.isoformat(), "lte": end.isoformat()}}
     if not is_single_day and plan.get("filters", {}).get("status"):
@@ -503,8 +620,45 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         limit=5 if is_single_day else 100,
     )
     rows = normalize_result_fields("attendance.list", result["data"])
-    span = period_phrase(start, end)
     period_out = {"start_date": start.isoformat(), "end_date": end.isoformat()}
+    q = normalized_question.lower()
+
+    asks_if_late = bool(
+        re.search(
+            r"\b(?:was|were|am|did)\s+i\b.{0,40}\b(?:late|arrive\s+late)\b",
+            q,
+        )
+    )
+
+    if asks_if_late and is_single_day:
+        row = rows[0] if rows else None
+        if row is None:
+            answer = (
+                f"I couldn't verify whether you were late on "
+                f"{start.day} {start:%B %Y}, because no attendance "
+                f"record was found."
+            )
+        else:
+            late = (
+                str(row.get("status") or "").upper() == "LATE"
+                or row.get("is_late") is True
+            )
+            if late:
+                answer = (
+                    f"Yes, you were marked late on "
+                    f"{start.day} {start:%B %Y}."
+                )
+            else:
+                answer = (
+                    f"No, you were not marked late on "
+                    f"{start.day} {start:%B %Y}."
+                )
+
+        return _result(
+            question, answer, "attendance_records",
+            period_out, False, [],
+        )
+    span = period_phrase(start, end)
 
     if ATTENDED_RE.search(normalized_question.lower()):
         return _result(question, _attended_sentence(rows, span), "attendance_summary",
@@ -545,7 +699,10 @@ def _answer_requests(question, normalized_question, plan, period, employee_id):
     operation_id = plan["operation_id"]
     kind = "leave" if operation_id.startswith("leave_") else "wfh"
     intent = "leave_status" if kind == "leave" else "wfh_status"
-    wants_list = question_wants_list(normalized_question)
+    wants_list = (
+        question_wants_list(normalized_question)
+        or bool(UPCOMING_RE.search(normalized_question.lower()))
+    )
 
     result = _execute(
         {"operation_id": operation_id, "filters": dict(plan.get("filters", {}))},
@@ -681,7 +838,37 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
     if operation_id == "holiday.list":
         return _answer_holidays(question, normalized_question, plan, period, employee_id)
 
-    query_result = _execute(plan, employee_id, limit=50)
+    asks_latest_timesheet = bool(
+        operation_id == "timesheet.list"
+        and re.search(
+            r"\b(?:latest|most\s+recent|last|current)\s+timesheet\b",
+            normalized_question.lower(),
+        )
+    )
+    asks_pending_timesheets = bool(
+        operation_id == "timesheet.list"
+        and re.search(r"\bpending\b", normalized_question.lower())
+    )
+
+    execution_plan = dict(plan)
+    if asks_pending_timesheets:
+        execution_plan["filters"] = {
+            key: value
+            for key, value in plan.get("filters", {}).items()
+            if key != "status"
+        }
+
+    query_result = _execute(
+        execution_plan,
+        employee_id,
+        limit=1 if asks_latest_timesheet else 100 if asks_pending_timesheets else 50,
+    )
+    if asks_pending_timesheets:
+        query_result["data"] = [
+            row for row in query_result.get("data", [])
+            if str(row.get("status") or "").strip().lower() in {"draft", "submitted"}
+        ]
+
     operation = query_result["operation"]
     entity = query_result["entity"]
     data = normalize_result_fields(operation_id, query_result["data"])
@@ -763,7 +950,30 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
         return _result(question, answer, intent, period, False, data)
 
     if operation_id == "timesheet.list":
-        message = format_timesheet_response(query_result["data"])
+        timesheet_rows = query_result["data"] if isinstance(query_result["data"], list) else []
+        if asks_latest_timesheet:
+            if not timesheet_rows:
+                message = "You don't have any timesheet records."
+            else:
+                row = timesheet_rows[0]
+                start_date = row.get("period_start", row.get("work_date"))
+                end_date = row.get("period_end")
+                status = str(
+                    row.get("status") or row.get("submission_status") or "unknown"
+                ).replace("_", " ").title()
+                if start_date and end_date:
+                    period_text = (
+                        f"for {start_date:%d %B %Y} to {end_date:%d %B %Y}"
+                    )
+                elif start_date:
+                    period_text = f"for {start_date:%d %B %Y}"
+                else:
+                    period_text = "for the period on record"
+                message = f"Your latest timesheet {period_text} has a status of {status}."
+        elif asks_pending_timesheets and not timesheet_rows:
+            message = "You don't have any pending timesheets."
+        else:
+            message = format_timesheet_response(timesheet_rows)
     elif isinstance(data, list):
         message = f"Found {len(data)} matching record(s)." if data else "No matching records were found."
     else:
