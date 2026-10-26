@@ -17,7 +17,7 @@ MONTHS: dict[str, int] = {
 }
 # Longest names first so "september" wins over "sep".
 _MON = "|".join(sorted(MONTHS, key=len, reverse=True))
-_TO = r"(?:to|through|thru|till|until|and|-)"
+_TO = r"(?:\s+(?:to|through|thru|till|until|and)\s+|\s*-\s*)"
 _DAY = r"(\d{1,2})(?:st|nd|rd|th)?(?!\d)"
 _YEAR_OPT = r"(?:,?\s*(\d{4}))?"
 
@@ -72,7 +72,7 @@ def resolve_date_spec(question: str, today: date) -> DateSpec | None:
     q = " ".join(question.lower().split())
 
     # 1. ISO dates: 2026-10-19 and 2026-10-01 to 2026-10-15
-    m = re.search(r"\b(\d{4}-\d{2}-\d{2})\s*" + _TO + r"\s*(\d{4}-\d{2}-\d{2})\b", q)
+    m = re.search(r"\b(\d{4}-\d{2}-\d{2})" + _TO + r"(\d{4}-\d{2}-\d{2})\b", q)
     if m:
         span = _ordered_or_none(_valid_iso(m.group(1)), _valid_iso(m.group(2)))
         if span:
@@ -85,7 +85,7 @@ def resolve_date_spec(question: str, today: date) -> DateSpec | None:
 
     # 2. Numeric day-first dates: 19/10/2026, 19-10-2026, 19.10.2026
     numeric = r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})"
-    m = re.search(numeric + r"\s*" + _TO + r"\s*" + numeric, q)
+    m = re.search(numeric + _TO + numeric, q)
     if m:
         s = _valid(int(m.group(3)), int(m.group(2)), int(m.group(1)))
         e = _valid(int(m.group(6)), int(m.group(5)), int(m.group(4)))
@@ -99,17 +99,56 @@ def resolve_date_spec(question: str, today: date) -> DateSpec | None:
             raise InvalidDateError(m.group(0))
         return DateSpec(d, d, "day")
 
-    # 3. Day-month ranges: "1 to 15 oct 2026", "1 oct to 15 oct 2026"
+    # 3. Month-first date ranges: "june 1 to june 5", "june 1 to 5", "from june 1 to 5 2026", "june 28 to july 4"
     m = re.search(
-        rf"\b{_DAY}\s*(?:of\s+)?(?:({_MON})\.?\s*)?{_TO}\s*{_DAY}\s*(?:of\s+)?({_MON})\.?{_YEAR_OPT}",
+        rf"\b({_MON})\.?\s+{_DAY}(?:,?\s*(\d{{4}}))?{_TO}(?:({_MON})\.?\s+)?{_DAY}(?:,?\s*(\d{{4}}))?\b",
         q,
     )
     if m:
-        d1, m1, d2, m2, yr = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)
-        year = int(yr) if yr else today.year
+        m1, d1, yr1, m2, d2, yr2 = m.groups()
+        mo1 = _month_number(m1)
+        mo2 = _month_number(m2) if m2 else mo1
+        y2 = int(yr2) if yr2 else (int(yr1) if yr1 else today.year)
+        y1 = int(yr1) if yr1 else y2
+        if mo2 < mo1 and not yr1 and not yr2:
+            y2 += 1
+        span = _ordered_or_none(_valid(y1, mo1, int(d1)), _valid(y2, mo2, int(d2)))
+        if span:
+            return DateSpec(span[0], span[1], "range")
+
+    # 4. Day-first date ranges: "1 to 15 oct 2026", "1 oct to 15 oct 2026", "1 oct 2026 to 15 oct 2026", "28 june to 4 july"
+    m = re.search(
+        rf"\b{_DAY}\s*(?:of\s+)?(?:({_MON})\.?(?:,?\s*(\d{{4}}))?\s*)?{_TO}{_DAY}\s*(?:of\s+)?({_MON})\.?(?:,?\s*(\d{{4}}))?\b",
+        q,
+    )
+    if m:
+        d1, m1, yr1, d2, m2, yr2 = m.groups()
         mo2 = _month_number(m2)
         mo1 = _month_number(m1) if m1 else mo2
-        span = _ordered_or_none(_valid(year, mo1, int(d1)), _valid(year, mo2, int(d2)))
+        y2 = int(yr2) if yr2 else (int(yr1) if yr1 else today.year)
+        y1 = int(yr1) if yr1 else y2
+        if mo2 < mo1 and not yr1 and not yr2:
+            y2 += 1
+        span = _ordered_or_none(_valid(y1, mo1, int(d1)), _valid(y2, mo2, int(d2)))
+        if span:
+            return DateSpec(span[0], span[1], "range")
+
+    # 5. Month-to-month ranges: "june to august", "from june to august 2026", "between june and august"
+    m = re.search(
+        rf"\b(?:from\s+|between\s+)?({_MON})\.?(?:,?\s*(\d{{4}}))?{_TO}({_MON})\.?(?:,?\s*(\d{{4}}))?\b",
+        q,
+    )
+    if m:
+        m1, yr1, m2, yr2 = m.groups()
+        mo1 = _month_number(m1)
+        mo2 = _month_number(m2)
+        y2 = int(yr2) if yr2 else (int(yr1) if yr1 else today.year)
+        y1 = int(yr1) if yr1 else y2
+        if mo2 < mo1 and not yr1 and not yr2:
+            y2 += 1
+        s = date(y1, mo1, 1)
+        e = _month_bounds(y2, mo2)[1]
+        span = _ordered_or_none(s, e)
         if span:
             return DateSpec(span[0], span[1], "range")
 

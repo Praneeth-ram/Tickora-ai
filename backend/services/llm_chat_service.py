@@ -13,6 +13,8 @@ from backend.services.answer_builder import (
     range_list_answer,
     range_summary_answer,
     single_day_answer,
+    status_list_answer,
+    status_records_answer
 )
 from backend.services.date_resolver import InvalidDateError, resolve_date_spec
 from backend.services.dynamic_query_service import QueryPlanError, execute_query_plan
@@ -158,18 +160,34 @@ _DOMAIN_RE = re.compile(
     r"status|late|absent|present|timesheets?|applied)\b"
 )
 
+def _primary_topic(part: str) -> str | None:
+    q = part.lower()
+    if _WFH_RE.search(q):
+        return "wfh"
+    if _LEAVE_RE.search(q):
+        return "leave"
+    if _HOLIDAY_RE.search(q):
+        return "holiday"
+    if _ATTENDANCE_RE.search(q) or re.search(r"\b(?:clock|check|punch|attend)", q):
+        return "attendance"
+    return None
+
 
 def split_compound_question(question: str) -> list[str]:
-    """Split 'X and Y' into separate questions only when both parts name a domain topic."""
+    """Split only when the parts are about different topics, e.g. leave and holidays.
+
+    'clock in and clock out' stays one question: both parts are attendance.
+    """
     parts = [
         part.strip(" ?.!")
         for part in re.split(r"\s+(?:and|also|plus)\s+|[?;]\s*", question, flags=re.IGNORECASE)
     ]
     parts = [part for part in parts if part]
-    if len(parts) > 1 and all(_DOMAIN_RE.search(part.lower()) for part in parts):
-        return parts
+    if len(parts) > 1:
+        topics = [_primary_topic(part) for part in parts]
+        if all(topics) and len(set(topics)) > 1:
+            return parts
     return [question]
-
 
 def resolve_date_range_from_question(question: str, today: date) -> tuple[date, date] | None:
     spec = resolve_date_spec(question, today)
@@ -177,17 +195,27 @@ def resolve_date_range_from_question(question: str, today: date) -> tuple[date, 
         return None
     return spec.start, spec.end
 
+ALLOWED_FILTERS = {
+    "attendance": {"status", "is_late", "work_location"},
+    "leave_request": {"status"},
+    "wfh_request": {"status"},
+    "timesheet": {"status"},
+    "holiday": {"holiday_type"},
+}
 
 def question_kind(question: str) -> str:
     q = question.lower()
-    if re.search(r"\b(?:clock[- ]?out|check[- ]?out|punch[- ]?out)\b", q):
+    asks_in = bool(re.search(r"\b(?:clock[- ]?in|check[- ]?in|punch[- ]?in)\b", q))
+    asks_out = bool(re.search(r"\b(?:clock[- ]?out|check[- ]?out|punch[- ]?out)\b", q))
+    if asks_in and asks_out:
+        return "clock_both"
+    if asks_out:
         return "clock_out"
-    if re.search(r"\b(?:clock[- ]?in|check[- ]?in|punch[- ]?in)\b", q):
+    if asks_in:
         return "clock_in"
     if re.search(r"\bstatus\b", q):
         return "status"
     return "list"
-
 
 def question_wants_list(question: str) -> bool:
     return bool(re.search(
@@ -269,29 +297,50 @@ def normalize_and_correct_plan(
         for key in ("group_by_field", "aggregate_function", "aggregate_field", "fields"):
             normalized.pop(key, None)
 
-    # Filters: keep the model's non-date filters only. Every date filter is set below, in code.
+    entity = op_id.split(".")[0] if op_id else ""
+    allowed_filters = ALLOWED_FILTERS.get(entity, set())
     filters = {
         key: value
         for key, value in (normalized.get("filters") or {}).items()
-        if key not in ALL_DATE_FILTER_KEYS and key != "employee_id" and not isinstance(value, dict)
+        if key in allowed_filters and key not in ALL_DATE_FILTER_KEYS and not isinstance(value, dict)
     }
 
+    valid_statuses_by_entity = {
+        "attendance": {"present", "late", "absent", "half_day", "on_leave", "work_from_home"},
+        "leave_request": {"pending", "approved", "rejected", "cancelled"},
+        "wfh_request": {"pending", "approved", "rejected", "cancelled"},
+        "timesheet": {"draft", "submitted", "approved", "rejected"},
+    }
     status_keywords = {
         "late": "late", "absent": "absent", "present": "present",
         "half day": "half_day", "half-day": "half_day", "pending": "pending",
         "approved": "approved", "rejected": "rejected", "cancelled": "cancelled",
         "draft": "draft", "submitted": "submitted",
     }
+
+    explicit_status = None
     for word, status_value in status_keywords.items():
         if re.search(r"\b" + re.escape(word) + r"\b", q):
-            if op_id in {
-                "attendance.list", "attendance.count", "attendance.group_by",
-                "leave_request.list", "leave_request.count",
-                "wfh_request.list", "wfh_request.count",
-                "timesheet.list", "timesheet.count",
-            } and not (op_id == "attendance.group_by" and normalized.get("group_by_field") == "status"):
-                filters["status"] = status_value
+            explicit_status = status_value
             break
+
+    if explicit_status:
+        if op_id in {
+            "attendance.list", "attendance.count", "attendance.group_by",
+            "leave_request.list", "leave_request.count",
+            "wfh_request.list", "wfh_request.count",
+            "timesheet.list", "timesheet.count",
+        } and not (op_id == "attendance.group_by" and normalized.get("group_by_field") == "status"):
+            filters["status"] = explicit_status
+    else:
+        # If the user didn't name a specific status (e.g. asking "what is the status of my leave request?"),
+        # do not filter by status; remove any model-hallucinated status filter like "your_status".
+        filters.pop("status", None)
+
+    # Validate that any remaining status filter is allowed for this entity
+    entity_statuses = valid_statuses_by_entity.get(entity)
+    if entity_statuses and filters.get("status") not in entity_statuses:
+        filters.pop("status", None)
 
     if is_attended_query:
         filters.pop("status", None)
@@ -464,13 +513,24 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         return _result(question, _hours_sentence(rows, span, "overtime" in normalized_question.lower()),
                        "attendance_summary", period_out, False, [])
 
+    # Status-filtered questions (e.g. "late") list only matching records.
+    status_filter = filters.get("status")
+    if not is_single_day and status_filter:
+        label = str(status_filter).replace("_", " ").lower()
+        if wants_list:
+            answer = status_list_answer(rows, start, end, label, tz)
+            show_table = bool(rows)
+            return _result(question, answer, "attendance_records", period_out, show_table, rows)
+        answer = status_records_answer(rows, span, label)
+        return _result(question, answer, "attendance_records", period_out, False, [])
+
     if is_single_day:
-        answer_kind = kind if kind in {"clock_in", "clock_out"} else "status"
+        answer_kind = kind if kind in {"clock_in", "clock_out", "clock_both"} else "status"
         answer = single_day_answer(answer_kind, start, rows[0] if rows else None, tz)
         show_table = False
-    elif kind in {"clock_in", "clock_out"}:
+    elif kind in {"clock_in", "clock_out", "clock_both"}:
         answer = range_clock_answer(rows, start, end, kind, tz)
-        show_table = False
+        show_table = wants_list and bool(rows)
     elif wants_list:
         answer = range_list_answer(rows, start, end, tz)
         show_table = bool(rows)
@@ -596,6 +656,7 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
     entity = request_entity(normalized_question) if status_target else None
     if entity:
         raw_plan = {"operation_id": f"{entity}.list", "filters": {}}
+    logger.info("question=%r plan=%r", normalized_question, raw_plan)
 
     if raw_plan.get("operation_id") not in set(OPERATION_DATE_FIELDS) | {"attendance.group_by"}:
         if isinstance(model_error, ModelUnavailableError):

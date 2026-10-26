@@ -1,11 +1,17 @@
-"""Build plain-language answers for attendance questions."""
+"""Build plain-language answers for attendance questions.
+
+Answers answer the question that was asked. A single-day question gets one
+sentence. A range question gets a summary sentence by default, and a day-by-day
+list only when the user explicitly asks to see it.
+"""
 
 from collections import Counter
 from datetime import date, datetime, time, timedelta
 from typing import Any
-from datetime import date, datetime, time, timedelta
 
 MAX_LIST_ROWS = 31
+# An empty range up to this many days is listed day by day; longer empty ranges get one sentence.
+EMPTY_DAY_LISTING_LIMIT = 7
 
 STATUS_LABELS = {
     "PRESENT": "Present",
@@ -65,7 +71,10 @@ def status_text(status: str | None, location: str | None) -> str:
 
 
 def single_day_answer(kind: str, day: date, row: dict[str, Any] | None, tz) -> str:
-    """One sentence answering a question about a single day. kind: clock_in, clock_out, status."""
+    """One sentence answering a question about a single day.
+
+    kind: 'clock_in', 'clock_out', 'clock_both', or 'status'.
+    """
     when = fmt_day(day)
     if row is None:
         return f"I couldn't find an attendance record for {when}."
@@ -74,6 +83,12 @@ def single_day_answer(kind: str, day: date, row: dict[str, Any] | None, tz) -> s
     cin = fmt_clock(row.get("clock_in"), tz)
     cout = fmt_clock(row.get("clock_out"), tz)
     status_desc = status_text(status, row.get("work_location"))
+
+    if kind == "clock_both":
+        return (
+            f"Your clock-in time on {when} was {cin or 'not recorded'}, "
+            f"and your clock-out time was {cout or 'not recorded'}."
+        )
 
     if kind == "clock_in":
         if cin:
@@ -97,6 +112,7 @@ def single_day_answer(kind: str, day: date, row: dict[str, Any] | None, tz) -> s
 
 
 def range_summary_answer(rows: list[dict[str, Any]], start: date, end: date) -> str:
+    """Summary sentence for a month or range, without the day-by-day list."""
     span = fmt_range(start, end)
     if not rows:
         return f"I couldn't find any attendance records for {span}."
@@ -113,6 +129,7 @@ def range_summary_answer(rows: list[dict[str, Any]], start: date, end: date) -> 
         f"{', '.join(parts)}. "
         "Ask me to show the list if you want the day-by-day details."
     )
+
 
 def _days_in_range(start: date, end: date) -> list[date]:
     days = []
@@ -139,11 +156,11 @@ def _day_label(day: date) -> str:
 def range_list_answer(rows: list[dict[str, Any]], start: date, end: date, tz) -> str:
     """One line per day in the range. Days with no record are shown as such."""
     span = fmt_range(start, end)
-    if not rows:
-        return f"I couldn't find any attendance records for {span}."
-
     by_day = _rows_by_day(rows)
     days = _days_in_range(start, end)
+    if not rows and len(days) > EMPTY_DAY_LISTING_LIMIT:
+        return f"I couldn't find any attendance records for {span}."
+
     note = ""
     if len(days) > MAX_LIST_ROWS:
         days = sorted(by_day)
@@ -167,15 +184,19 @@ def range_list_answer(rows: list[dict[str, Any]], start: date, end: date, tz) ->
 
 
 def range_clock_answer(rows: list[dict[str, Any]], start: date, end: date, kind: str, tz) -> str:
-    """One line per day in the range with the clock-in or clock-out time."""
+    """One line per day in the range with the clock-in, clock-out, or both times."""
     span = fmt_range(start, end)
-    label = "clock-in" if kind == "clock_in" else "clock-out"
-    field = "clock_in" if kind == "clock_in" else "clock_out"
-    if not rows:
-        return f"I couldn't find any attendance records for {span}."
-
+    if kind == "clock_both":
+        label = "clock-in and clock-out"
+    elif kind == "clock_in":
+        label = "clock-in"
+    else:
+        label = "clock-out"
     by_day = _rows_by_day(rows)
     days = _days_in_range(start, end)
+    if not rows and len(days) > EMPTY_DAY_LISTING_LIMIT:
+        return f"I couldn't find any attendance records for {span}."
+
     note = ""
     if len(days) > MAX_LIST_ROWS:
         days = sorted(by_day)
@@ -186,94 +207,42 @@ def range_clock_answer(rows: list[dict[str, Any]], start: date, end: date, kind:
         row = by_day.get(day)
         if row is None:
             lines.append(f"- {_day_label(day)}: no attendance record")
-            continue
-        value = fmt_clock(row.get(field), tz)
-        lines.append(f"- {_day_label(day)}: {value or 'no ' + label + ' recorded'}")
+        elif kind == "clock_both":
+            cin = fmt_clock(row.get("clock_in"), tz) or "no clock-in"
+            cout = fmt_clock(row.get("clock_out"), tz) or "no clock-out"
+            lines.append(f"- {_day_label(day)}: In {cin} | Out {cout}")
+        else:
+            field = "clock_in" if kind == "clock_in" else "clock_out"
+            value = fmt_clock(row.get(field), tz)
+            lines.append(f"- {_day_label(day)}: {value or 'no ' + label + ' recorded'}")
     if note:
         lines.append(note)
     return "\n".join(lines)
-    
-def range_clock_answer(rows: list[dict[str, Any]], start: date, end: date, kind: str, tz) -> str:
+
+
+def status_records_answer(rows: list[dict[str, Any]], span: str, label: str) -> str:
+    """Summary of records with one status, e.g. late, with their dates."""
+    if not rows:
+        return f"You had no {label} records {span}.".replace("  ", " ")
+    dates = sorted(d for d in (_row_date(r) for r in rows) if d)
+    noun = f"{label} record" if len(rows) == 1 else f"{label} records"
+    listed = ", ".join(_day_label(d) for d in dates)
+    return f"You had {len(rows)} {noun} {span}: {listed}."
+
+
+def status_list_answer(rows: list[dict[str, Any]], start: date, end: date, label: str, tz) -> str:
+    """Only the records with one status, one line each. Days without a match are not shown."""
     span = fmt_range(start, end)
-    label = "clock-in" if kind == "clock_in" else "clock-out"
-    field = "clock_in" if kind == "clock_in" else "clock_out"
     if not rows:
-        return f"I couldn't find any attendance records for {span}."
-
-    shown = rows[:MAX_LIST_ROWS]
-    lines = [f"Your {label} times for {span}:"]
-    for row in shown:
-        d = _row_date(row)
-        day_text = f"{d.day} {d.strftime('%b %Y')}" if d else "Unknown date"
-        value = fmt_clock(row.get(field), tz)
-        lines.append(f"- {day_text}: {value or 'no ' + label + ' recorded'}")
-    if len(rows) > len(shown):
-        lines.append(f"Showing {len(shown)} of {len(rows)} records.")
-    return "\n".join(lines)
-
-def group_by_summary_answer(rows: list[dict[str, Any]], span: str, group_key: str, total: int) -> str:
-    """
-    Build a summary answer for group_by operations.
-    
-    Args:
-        rows: List of aggregated results (should already be grouped)
-        span: The date range text (e.g., "this month", "October 2026")
-        group_key: The field that was grouped by (e.g., "status")
-        total: Total number of records
-    """
-    if not rows:
-        return f"No attendance records found for {span}."
-
-    # Determine the type of data we're working with
-    first_row = rows[0]
-    is_numeric = isinstance(first_row.get('count'), (int, float))
-    
-    # Build human-readable group key header
-    group_key_display = group_key.replace('_', ' ').title()
-    
-    # Determine if we have a nested summary (e.g., status -> location)
-    has_nested = False
-    nested_key = None
-    if len(first_row) > 1:
-        # Find the nested key (anything other than 'count' or the group_key)
-        for key in first_row.keys():
-            if key != 'count' and key != group_key:
-                has_nested = True
-                nested_key = key
-                break
-
-    # Build header
-    lines = [f"Your attendance summary for {span}:"]
-    lines.append(f"Grouped by: {group_key_display}")
-    if total > 0:
-        lines.append(f"Total records: {total}")
-    
-    # Build item rows
-    if is_numeric:
-        # Numeric aggregation (e.g., sum of hours)
-        for row in rows:
-            group_value = row.get(group_key, 'Unknown')
-            count = row.get('count', 0)
-            total_value = row.get('total', 0)
-            
-            if has_nested and nested_key:
-                nested_value = row.get(nested_key, 'Unknown')
-                nested_label = nested_value.replace('_', ' ').title() if isinstance(nested_value, str) else nested_value
-                lines.append(f"- {group_value} ({nested_label}): {total_value} hours")
-            else:
-                lines.append(f"- {group_value}: {total_value} hours")
-    else:
-        # Non-numeric aggregation (e.g., counts)
-        for row in rows:
-            group_value = row.get(group_key, 'Unknown')
-            count = row.get('count', 0)
-            
-            if has_nested and nested_key:
-                nested_value = row.get(nested_key, 'Unknown')
-                nested_label = nested_value.replace('_', ' ').title() if isinstance(nested_value, str) else nested_value
-                lines.append(f"- {group_value} ({nested_label}): {count} {'day' if count == 1 else 'days'}")
-            else:
-                label = group_value.replace('_', ' ').title() if isinstance(group_value, str) else group_value
-                lines.append(f"- {label}: {count} {'day' if count == 1 else 'days'}")
-
+        return f"I couldn't find any {label} records for {span}."
+    lines = [f"Your {label} records for {span}:"]
+    for row in sorted(rows, key=lambda r: _row_date(r) or date.min):
+        day = _row_date(row)
+        day_text = _day_label(day) if day else "Unknown date"
+        cin = fmt_clock(row.get("clock_in"), tz) or "-"
+        cout = fmt_clock(row.get("clock_out"), tz) or "-"
+        lines.append(
+            f"- {day_text}: {status_text(row.get('status'), row.get('work_location'))} "
+            f"| In: {cin} | Out: {cout}"
+        )
     return "\n".join(lines)

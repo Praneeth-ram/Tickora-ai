@@ -81,6 +81,7 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
     },
     "timesheets": {
         "entity": "timesheet",
+        "date_fields": ["period_start", "submitted_at"],
         "scope": "employee_id",
         "list_fields": [
             "period_start",
@@ -155,6 +156,12 @@ def build_operation_registry(
             if configured_date_field in available
             else None
         )
+        date_fields = [
+            f for f in policy.get("date_fields", [])
+            if f in available
+        ]
+        if not date_fields and date_field:
+            date_fields = [date_field]
  
         registry[f"{policy['entity']}.list"] = {
             "entity": policy["entity"],
@@ -164,6 +171,7 @@ def build_operation_registry(
             "fields": fields,
             "filters": filters,
             "date_field": date_field,
+            "date_fields": date_fields,
             "aggregate_fields": [
                 field
                 for field in policy.get("aggregate_fields", [])
@@ -185,6 +193,7 @@ def build_operation_registry(
                 "fields": [],
                 "filters": filters,
                 "date_field": date_field,
+                "date_fields": date_fields,
                 "aggregate_fields": [],
                 "group_by_fields": [],
             }
