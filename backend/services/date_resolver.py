@@ -1,10 +1,8 @@
 """Deterministic date resolution for employee questions.
-
 Every date in a question is resolved here, in code, never by the language model.
 Rules are ordered from most specific to least specific so that a phrase such as
 "19 oct 2026" resolves to one day, not to the whole month.
 """
-
 import re
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -20,12 +18,8 @@ _MON = "|".join(sorted(MONTHS, key=len, reverse=True))
 _TO = r"(?:\s+(?:to|through|thru|till|until|and)\s+|\s*-\s*)"
 _DAY = r"(\d{1,2})(?:st|nd|rd|th)?(?!\d)"
 _YEAR_OPT = r"(?:,?\s*(\d{4}))?"
-
-
 class InvalidDateError(ValueError):
     """Raised when a question names a date that does not exist, such as 31 February."""
-
-
 @dataclass(frozen=True)
 class DateSpec:
     start: date
@@ -36,13 +30,11 @@ class DateSpec:
     def is_single_day(self) -> bool:
         return self.start == self.end
 
-
 def _valid(year: int, month: int, day: int) -> date | None:
     try:
         return date(year, month, day)
     except ValueError:
         return None
-
 
 def _valid_iso(text: str) -> date | None:
     try:
@@ -50,16 +42,13 @@ def _valid_iso(text: str) -> date | None:
     except ValueError:
         return None
 
-
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
     start = date(year, month, 1)
     nxt = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
     return start, nxt - timedelta(days=1)
 
-
 def _month_number(word: str) -> int:
     return MONTHS[word.lower().rstrip(".")]
-
 
 def _ordered_or_none(a: date | None, b: date | None):
     if a is None or b is None or a > b:
@@ -96,7 +85,6 @@ def _number_word_value(text: str) -> int | None:
         else:
             return None
     return total + current if total + current > 0 else None
-
 
 def resolve_discrete_dates(question: str, today: date) -> list[date] | None:
     """Resolve multiple explicit dates without treating them as a continuous range."""
@@ -174,7 +162,6 @@ def resolve_discrete_dates(question: str, today: date) -> list[date] | None:
         if parsed not in dates:
             dates.append(parsed)
     return sorted(dates)
-
 
 def resolve_date_spec(question: str, today: date) -> DateSpec | None:
     """Return the date span a question refers to, or None if it names no date."""

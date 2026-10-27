@@ -2,13 +2,11 @@ import re
 from datetime import date, datetime, time
 from typing import Any
 
-
 def format_date(value: Any) -> str:
     """Format dates for user-facing responses."""
     if isinstance(value, (date, datetime)):
         return value.strftime("%d %b %Y")
     return str(value) if value is not None else "N/A"
-
 
 def format_date_range(start: Any, end: Any) -> str:
     """Format single-day or start-to-end date ranges cleanly."""
@@ -18,13 +16,11 @@ def format_date_range(start: Any, end: Any) -> str:
         return start_str
     return f"{start_str} to {end_str}"
 
-
 def format_time(value: Any) -> str:
     """Format timestamps and times for user-facing responses."""
     if isinstance(value, (datetime, time)):
         return value.strftime("%I:%M %p")
     return str(value) if value is not None else "Not recorded"
-
 
 def format_workdays(days: Any) -> str:
     """Convert numeric weekday lists into human-readable strings."""
@@ -43,7 +39,6 @@ def format_workdays(days: Any) -> str:
 
     formatted = [day_names[d - 1] for d in sorted_days if 1 <= d <= 7]
     return ", ".join(formatted)
-
 
 def format_status_badge(status: str | None) -> str:
     """Format a status with a clean readable label and emoji."""
@@ -64,7 +59,6 @@ def format_status_badge(status: str | None) -> str:
         "DRAFT": "Draft",
     }
     return badges.get(normalized, normalized.capitalize())
-
 
 def format_attendance(records: list[dict], status: str | None = None, question: str = "") -> str:
     """Format attendance records cleanly."""
@@ -89,7 +83,6 @@ def format_attendance(records: list[dict], status: str | None = None, question: 
         )
 
     return "\n".join(lines)
-
 
 def format_attendance_summary(data: dict, requested_metric: str | None = None, question: str = "") -> str:
     """Format attendance summary or specific metrics cleanly."""
@@ -147,7 +140,6 @@ def format_attendance_summary(data: dict, requested_metric: str | None = None, q
         f"- Total recorded days: {data.get('recorded_days', 0)}"
     )
 
-
 def format_leave_requests(data: list[dict], status: str | None = None, question: str = "") -> str:
     """Format leave requests in a clean, human-readable structure."""
     if not data:
@@ -183,7 +175,6 @@ def format_leave_requests(data: list[dict], status: str | None = None, question:
         )
 
     return "\n".join(lines)
-
 
 def format_wfh_requests(data: list[dict], status: str | None = None, question: str = "") -> str:
     """Format work-from-home requests cleanly."""
@@ -227,7 +218,6 @@ def format_wfh_requests(data: list[dict], status: str | None = None, question: s
 
     return "\n".join(lines)
 
-
 def format_work_schedules(data: list[dict]) -> str:
     """Format work schedules clearly with shift timings and readable workdays."""
     if not data:
@@ -249,7 +239,6 @@ def format_work_schedules(data: list[dict]) -> str:
 
     return "\n".join(lines)
 
-
 def format_timesheets(data: list[dict]) -> str:
     """Format timesheet entries cleanly with totals."""
     if not data:
@@ -269,7 +258,6 @@ def format_timesheets(data: list[dict]) -> str:
         lines.append(f"- {work_date}: {hours_display} hrs | {desc} ({status_label})")
 
     return "\n".join(lines)
-
 
 def format_holidays(data: list[dict], region: str | None = None, question: str = "") -> str:
     """Format holidays cleanly with natural answers for date checks."""
@@ -314,7 +302,6 @@ def format_holidays(data: list[dict], region: str | None = None, question: str =
         lines.append(f"- {h_date}: {name}{reg_info}")
 
     return "\n".join(lines)
-
 
 def format_requested_field(
     field: str | None,

@@ -1,6 +1,5 @@
-# def main():
-#     print("Hello from tickora-ai!")
+def main():
+    print("Hello from tickora-ai!")
 
-
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()

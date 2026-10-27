@@ -1,9 +1,6 @@
 from datetime import date
-
 from sqlalchemy import text
-
 from backend.db import engine
-
 
 def get_holidays(
     start_date: date,
@@ -53,7 +50,6 @@ def get_holidays(
         ).mappings().all()
 
     return [dict(row) for row in rows]
-
 
 def get_work_schedules(
     employee_id: int,

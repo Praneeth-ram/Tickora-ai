@@ -1,15 +1,12 @@
 """Plain-language answers for leave, work-from-home, and holiday questions."""
-
 import re
 from collections import Counter
 from datetime import date, datetime, timedelta
 from typing import Any
-
 from backend.services.answer_builder import MAX_LIST_ROWS, fmt_range
 
 LEAVE_NOUNS = ("leave request", "leave requests")
 WFH_NOUNS = ("work-from-home request", "work-from-home requests")
-
 
 def as_date(value: Any) -> date | None:
     if isinstance(value, datetime):
@@ -23,7 +20,6 @@ def as_date(value: Any) -> date | None:
             return None
     return None
 
-
 def period_phrase(start: date | None, end: date | None) -> str:
     """'on 19 October 2026', 'in October 2026', 'in 2026', or 'from 1 to 15 October 2026'."""
     if start is None or end is None:
@@ -36,7 +32,6 @@ def period_phrase(start: date | None, end: date | None) -> str:
     if start.month == 1 and start.day == 1 and end.month == 12 and end.day == 31 and start.year == end.year:
         return f"in {start.year}"
     return f"from {fmt_range(start, end)}"
-
 
 def requested_field(question: str) -> str | None:
     """Which detail of the request the user is asking about, if any."""
@@ -53,14 +48,12 @@ def requested_field(question: str) -> str | None:
         return "period"
     return None
 
-
 def _sort_key(row: dict[str, Any]) -> date:
     return (
         as_date(row.get("applied_at") or row.get("requested_at"))
         or as_date(row.get("start_date"))
         or date.min
     )
-
 
 def _day_count(row: dict[str, Any]) -> int | None:
     if row.get("requested_days") is not None:
@@ -69,7 +62,6 @@ def _day_count(row: dict[str, Any]) -> int | None:
     if start and end:
         return (end - start).days + 1
     return None
-
 
 def _field_sentence(row: dict[str, Any], field: str, singular: str, plural: str, count: int) -> str:
     start, end = as_date(row.get("start_date")), as_date(row.get("end_date"))
@@ -97,7 +89,6 @@ def _field_sentence(row: dict[str, Any], field: str, singular: str, plural: str,
         return f"Your {singular} {tail}"
     return f"You have {count} {plural}. The most recent one {tail}"
 
-
 def _summary_sentence(rows: list[dict[str, Any]], singular: str, plural: str, span: str) -> str:
     counts = Counter((row.get("status") or "unknown").lower().replace("_", " ") for row in rows)
     parts = ", ".join(f"{n} {status}" for status, n in counts.most_common())
@@ -107,7 +98,6 @@ def _summary_sentence(rows: list[dict[str, Any]], singular: str, plural: str, sp
         f"You have {len(rows)} {noun}{where}: {parts}. "
         "Ask about the reason, applied date, or status of a specific request to see its details."
     )
-
 
 def _list_block(rows: list[dict[str, Any]], plural: str, span: str) -> str:
     shown = rows[:MAX_LIST_ROWS]
@@ -123,7 +113,6 @@ def _list_block(rows: list[dict[str, Any]], plural: str, span: str) -> str:
     if len(rows) > len(shown):
         lines.append(f"Showing {len(shown)} of {len(rows)} requests.")
     return "\n".join(lines)
-
 
 def request_answer(
     kind: str,
@@ -146,7 +135,6 @@ def request_answer(
     if field is None:
         return _summary_sentence(ordered, singular, plural, span)
     return _field_sentence(ordered[0], field, singular, plural, len(ordered))
-
 
 def holiday_answer(
     rows: list[dict[str, Any]],
@@ -195,7 +183,6 @@ def holiday_answer(
     body = "; ".join(label(day, name) for day, name in shown)
     extra = f", and {count - 10} more" if count > 10 else ""
     return f"{lead}: {body}{extra}."
-
 
 STATUS_VERB = {"approved": "was", "rejected": "was", "cancelled": "was", "pending": "is"}
 

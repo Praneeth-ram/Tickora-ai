@@ -1,8 +1,5 @@
-
 from typing import Any
-
 from backend.services.schema_catalog import discover_schema
-
 
 # Explicit allowlist: schema discovery alone never grants access.
 ENTITY_POLICIES: dict[str, dict[str, Any]] = {
@@ -130,14 +127,11 @@ def build_operation_registry(
         available = {
             column["name"] for column in table["columns"]
         }
-
         scope = policy["scope"]
-
         if scope == "employee_id" and "employee_id" not in available:
             continue
         if scope not in {"employee_id", "global_read"}:
             continue
-
         fields = [
             field for field in policy["list_fields"]
             if field in available

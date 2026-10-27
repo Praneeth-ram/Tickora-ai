@@ -1,5 +1,4 @@
 """Build plain-language answers for attendance questions.
-
 Answers answer the question that was asked. A single-day question gets one
 sentence. A range question gets a summary sentence by default, and a day-by-day
 list only when the user explicitly asks to see it.
@@ -25,11 +24,9 @@ STATUS_LABELS = {
 LOCATION_LABELS = {"OFFICE": "Office", "WFH": "Work from home", "FIELD": "Field"}
 CLOCKED_STATUSES = {"PRESENT", "LATE", "HALF_DAY"}
 
-
 def fmt_day(d: date) -> str:
     """Example: 'Monday, 19 October 2026'."""
     return f"{d.strftime('%A')}, {d.day} {d.strftime('%B %Y')}"
-
 
 def fmt_range(start: date, end: date) -> str:
     """Examples: 'October 2026', '1 to 15 October 2026', '19 October 2026'."""
@@ -42,13 +39,11 @@ def fmt_range(start: date, end: date) -> str:
         return f"{start.day} to {end.day} {end.strftime('%B %Y')}"
     return f"{start.day} {start.strftime('%B %Y')} to {end.day} {end.strftime('%B %Y')}"
 
-
 def _row_date(row: dict[str, Any]) -> date | None:
     value = row.get("attendance_date") or row.get("work_date")
     if isinstance(value, datetime):
         return value.date()
     return value if isinstance(value, date) else None
-
 
 def fmt_clock(value: Any, tz) -> str | None:
     """Convert a stored timestamp to local time and format it as '9:20 AM'."""
@@ -61,14 +56,12 @@ def fmt_clock(value: Any, tz) -> str | None:
         return None
     return f"{(value.hour % 12) or 12}:{value.minute:02d} {'AM' if value.hour < 12 else 'PM'}"
 
-
 def status_text(status: str | None, location: str | None) -> str:
     label = STATUS_LABELS.get((status or "").upper(), (status or "Unknown").replace("_", " ").title())
     if (status or "").upper() in CLOCKED_STATUSES and location:
         loc = LOCATION_LABELS.get(location.upper(), location.title())
         return f"{label} ({loc})"
     return label
-
 
 def single_day_answer(kind: str, day: date, row: dict[str, Any] | None, tz) -> str:
     """One sentence answering a question about a single day.
@@ -110,7 +103,6 @@ def single_day_answer(kind: str, day: date, row: dict[str, Any] | None, tz) -> s
         sentence += " You " + " and ".join(times) + "."
     return sentence
 
-
 def range_summary_answer(rows: list[dict[str, Any]], start: date, end: date) -> str:
     """Summary sentence for a month or range, without the day-by-day list."""
     span = fmt_range(start, end)
@@ -130,7 +122,6 @@ def range_summary_answer(rows: list[dict[str, Any]], start: date, end: date) -> 
         "Ask me to show the list if you want the day-by-day details."
     )
 
-
 def _days_in_range(start: date, end: date) -> list[date]:
     days = []
     current = start
@@ -138,7 +129,6 @@ def _days_in_range(start: date, end: date) -> list[date]:
         days.append(current)
         current += timedelta(days=1)
     return days
-
 
 def _rows_by_day(rows: list[dict[str, Any]]) -> dict[date, dict[str, Any]]:
     by_day: dict[date, dict[str, Any]] = {}
@@ -148,10 +138,8 @@ def _rows_by_day(rows: list[dict[str, Any]]) -> dict[date, dict[str, Any]]:
             by_day.setdefault(day, row)
     return by_day
 
-
 def _day_label(day: date) -> str:
     return f"{day.day} {day.strftime('%b %Y')}"
-
 
 def range_list_answer(rows: list[dict[str, Any]], start: date, end: date, tz) -> str:
     """One line per day in the range. Days with no record are shown as such."""
@@ -181,7 +169,6 @@ def range_list_answer(rows: list[dict[str, Any]], start: date, end: date, tz) ->
     if note:
         lines.append(note)
     return "\n".join(lines)
-
 
 def range_clock_answer(rows: list[dict[str, Any]], start: date, end: date, kind: str, tz) -> str:
     """One line per day in the range with the clock-in, clock-out, or both times."""
@@ -219,7 +206,6 @@ def range_clock_answer(rows: list[dict[str, Any]], start: date, end: date, kind:
         lines.append(note)
     return "\n".join(lines)
 
-
 def status_records_answer(rows: list[dict[str, Any]], span: str, label: str) -> str:
     """Summary of records with one status, e.g. late, with their dates."""
     if not rows:
@@ -228,7 +214,6 @@ def status_records_answer(rows: list[dict[str, Any]], span: str, label: str) -> 
     noun = f"{label} record" if len(rows) == 1 else f"{label} records"
     listed = ", ".join(_day_label(d) for d in dates)
     return f"You had {len(rows)} {noun} {span}: {listed}."
-
 
 def status_list_answer(rows: list[dict[str, Any]], start: date, end: date, label: str, tz) -> str:
     """Only the records with one status, one line each. Days without a match are not shown."""

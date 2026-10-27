@@ -1,12 +1,9 @@
 """Spelling correction for employee questions.
-
 Only words close to a known word are changed, and only words the app understands are
 used as targets. Names, numbers, and dates are left untouched.
 """
-
 import difflib
 import re
-
 from backend.services.date_resolver import MONTHS
 
 _DOMAIN_WORDS = {
@@ -28,7 +25,6 @@ _VOCABULARY = _DOMAIN_WORDS | set(MONTHS)
 _WORD = re.compile(r"[A-Za-z]+")
 _MIN_SIMILARITY = 0.8
 
-
 def _best_match(word: str) -> str | None:
     best, best_score = None, 0.0
     for candidate in _VOCABULARY:
@@ -41,10 +37,8 @@ def _best_match(word: str) -> str | None:
             best, best_score = candidate, score
     return best if best_score >= _MIN_SIMILARITY else None
 
-
 def correct_typos(question: str) -> str:
     """Correct misspelled words that are close to a known word. Other text is unchanged."""
-
     def fix(match: re.Match) -> str:
         word = match.group(0)
         lower = word.lower()
@@ -53,5 +47,4 @@ def correct_typos(question: str) -> str:
         if any(lower.rstrip("s") == known.rstrip("s") for known in _VOCABULARY):
             return word  # plural or singular of a known word, e.g. "times"
         return _best_match(lower) or word
-
     return _WORD.sub(fix, question)

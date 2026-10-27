@@ -59,7 +59,6 @@ class LoginRequest(BaseModel):
 
 def find_employee_id(employee_code: str) -> int:
     # Resolve a sample employee code to its database ID.
-
     query = text("""
         SELECT employee_id
         FROM public.employees
@@ -96,11 +95,9 @@ def require_matching_employee(
 
     return current_employee["employee_id"]
 
-
 @app.post("/api/auth/login")
 def login(body: LoginRequest):
     email = body.email.strip().lower()
-
     query = text("""
     SELECT
         e.id AS employee_id,

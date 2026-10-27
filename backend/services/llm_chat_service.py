@@ -5,9 +5,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
-
 import httpx
-
 from backend.services.answer_builder import (
     range_clock_answer,
     range_list_answer,
@@ -15,8 +13,7 @@ from backend.services.answer_builder import (
     single_day_answer,
     status_list_answer,
     status_records_answer,
-    fmt_range,
-    
+    fmt_range,    
 )
 from backend.services.date_resolver import InvalidDateError, resolve_date_spec, resolve_discrete_dates
 from backend.services.dynamic_query_service import QueryPlanError, execute_query_plan
@@ -100,26 +97,18 @@ _SELF_POSSESSIVE_EXCLUSIONS = {
 _THIRD_PARTY_WORDS_RE = re.compile(
     r"\b(?:his|her|their|someone|somebody|colleague|colleagues|team|manager|employee|employees|another\s+employee)\b"
 )
-
-
 class ModelServiceError(RuntimeError):
     """Raised when a question cannot be answered from the query plan."""
-
-
 class ModelUnavailableError(ModelServiceError):
     """The model server cannot be reached or timed out."""
-
-
 class PlanRejectedError(ModelServiceError):
     """The model server responded, but could not turn the question into a supported plan."""
-
 
 def get_current_date() -> date:
     try:
         return datetime.now(ZoneInfo(DEFAULT_TIMEZONE)).date()
     except Exception:
         return date.today()
-
 
 def get_query_plan(question: str) -> dict[str, Any]:
     """Ask the model server for a query plan, keeping outages and rejections distinct."""
@@ -143,7 +132,6 @@ def get_query_plan(question: str) -> dict[str, Any]:
         raise PlanRejectedError("I couldn't turn that question into a supported query.")
     return plan
 
-
 _HOLIDAY_RE = re.compile(r"\bholidays?\b")
 _WFH_RE = re.compile(r"\bwfh\b|\bwork\s+from\s+home\b")
 _LEAVE_RE = re.compile(r"\bleaves?\b")
@@ -152,7 +140,6 @@ _ATTENDANCE_RE = re.compile(
     r"\babsent\b|\bpresent\b|\bhalf[- ]day\b|\bovertime\b|\bworked\b|\bhours\b"
 )
 _COUNT_RE = re.compile(r"\bhow\s+many\b|\bcount\b|\bnumber\s+of\b")
-
 
 def rule_based_plan(question: str) -> dict[str, Any]:
     """Choose the entity from keywords when the model cannot. Dates and filters are still set in code."""
@@ -170,7 +157,6 @@ def rule_based_plan(question: str) -> dict[str, Any]:
         return {"operation_id": None, "filters": {}}
     return {"operation_id": entity + suffix, "filters": {}}
 
-
 _DOMAIN_RE = re.compile(
     r"\b(?:leaves?|wfh|work\s+from\s+home|holidays?|attendance|clock|check\s*(?:in|out)|"
     r"status|late|absent|present|timesheets?|applied)\b"
@@ -187,7 +173,6 @@ def _primary_topic(part: str) -> str | None:
     if _ATTENDANCE_RE.search(q) or re.search(r"\b(?:clock|check|punch|attend)", q):
         return "attendance"
     return None
-
 
 def split_compound_question(question: str) -> list[str]:
     """Split only when the parts are about different topics, e.g. leave and holidays.
@@ -242,11 +227,9 @@ def question_wants_list(question: str) -> bool:
         question.lower(),
     ))
 
-
 def _last_day_of_month(d: date) -> date:
     nxt = (d.replace(day=28) + timedelta(days=4)).replace(day=1)
     return nxt - timedelta(days=1)
-
 
 def normalize_and_correct_plan(
     plan: dict[str, Any],
@@ -429,7 +412,6 @@ def normalize_and_correct_plan(
     }
     return normalized, period
 
-
 def normalize_result_fields(operation_id: str, data: Any) -> Any:
     if not isinstance(data, list):
         return data
@@ -454,7 +436,6 @@ def normalize_result_fields(operation_id: str, data: Any) -> Any:
         normalized.append(item)
     return normalized
 
-
 def format_timesheet_response(data: Any) -> str:
     if not isinstance(data, list) or not data:
         return "No matching timesheet records were found."
@@ -473,7 +454,6 @@ def format_timesheet_response(data: Any) -> str:
         lines.append(f"- {period} | Status: {str(status).title()}")
     return "\n".join(lines)
 
-
 def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
     return {
         "success": True,
@@ -487,7 +467,6 @@ def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
         "raw_data": None,
         "data": [],
     }
-
 
 def _result(question: str, answer: str, intent: str, period: dict[str, Any], show_table: bool, data: list) -> dict[str, Any]:
     return {
@@ -503,13 +482,11 @@ def _result(question: str, answer: str, intent: str, period: dict[str, Any], sho
         "data": data if show_table else [],
     }
 
-
 def _execute(plan: dict[str, Any], employee_id: int, limit: int) -> Any:
     try:
         return execute_query_plan(plan, employee_id=employee_id, limit=limit)
     except QueryPlanError as exc:
         raise ModelServiceError(f"The query plan failed validation: {exc}") from exc
-
 
 def _attended_sentence(rows, span):
     counts = Counter(
@@ -879,7 +856,6 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
 
     return _result(question, answer, "attendance_records", period_out, show_table, rows)
 
-
 def _answer_requests(question, normalized_question, plan, period, employee_id):
     operation_id = plan["operation_id"]
     kind = "leave" if operation_id.startswith("leave_") else "wfh"
@@ -901,7 +877,6 @@ def _answer_requests(question, normalized_question, plan, period, employee_id):
     show_table = wants_list and bool(rows)
     return _result(question, answer, intent, period, show_table, rows)
 
-
 def _answer_holidays(question, normalized_question, plan, period, employee_id):
     wants_list = question_wants_list(normalized_question)
     is_upcoming = bool(UPCOMING_RE.search(normalized_question.lower()))
@@ -915,7 +890,6 @@ def _answer_holidays(question, normalized_question, plan, period, employee_id):
     answer = holiday_answer(rows, start, end, wants_list, is_upcoming=is_upcoming)
     show_table = wants_list and bool(rows)
     return _result(question, answer, "holiday_lookup", period, show_table, rows)
-
 
 def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     answer = "\n\n".join(result["answer"] for result in results)
@@ -983,7 +957,6 @@ def _timesheet_overlaps(row: dict[str, Any], start: date, end: date) -> bool:
         return False
     return period_start <= end and period_end >= start
 
-
 def _answer_timesheet(question, normalized_question, period, employee_id, target):
     q = normalized_question.lower()
     start = as_date(period.get("start_date"))
@@ -1040,7 +1013,6 @@ def _answer_timesheet(question, normalized_question, period, employee_id, target
             answer += f" It was submitted on {submitted.day} {submitted:%B %Y}."
 
     return _result(question, answer, "timesheet_lookup", period, False, [])
-
 
 def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
     """Plan, correct with code, execute with the employee's scope, and answer in sentences."""

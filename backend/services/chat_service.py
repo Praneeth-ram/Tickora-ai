@@ -453,7 +453,6 @@ def _get_session(session_id: str | None, employee_id: int) -> tuple[str | None, 
             state = None
         return session_id, state
 
-
 def _save_session(session_id: str | None, employee_id: int, state: dict | None) -> None:
     if not session_id:
         return
@@ -464,7 +463,6 @@ def _save_session(session_id: str | None, employee_id: int, state: dict | None) 
         else:
             state["turns_left"] = _SESSION_MAX_AGE_TURNS
             _SESSION_STATE[key] = state
-
 
 def resolve_period(
     period: str | None,
@@ -506,7 +504,6 @@ def resolve_period(
 
     return None
 
-
 def get_date_range(request, today: date) -> tuple[date, date] | None:
     """Resolve explicit dates, a single date, or a relative period."""
 
@@ -517,7 +514,6 @@ def get_date_range(request, today: date) -> tuple[date, date] | None:
         return request.on_date, request.on_date
 
     return resolve_period(request.period, today)
-
 
 def should_show_table(
     intent: str | None,
@@ -559,7 +555,6 @@ def should_show_table(
 
     return False
 
-
 def failure_response(
     message: str,
     intent: str | None = None,
@@ -583,7 +578,6 @@ def failure_response(
         result["details"] = details
 
     return format_chat_response(result)
-
 
 def run_chat(question: str, employee_id: int, session_id: str | None = None) -> dict:
     """
