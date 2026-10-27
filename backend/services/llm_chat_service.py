@@ -14,7 +14,9 @@ from backend.services.answer_builder import (
     range_summary_answer,
     single_day_answer,
     status_list_answer,
-    status_records_answer
+    status_records_answer,
+    fmt_range,
+    
 )
 from backend.services.date_resolver import InvalidDateError, resolve_date_spec, resolve_discrete_dates
 from backend.services.dynamic_query_service import QueryPlanError, execute_query_plan
@@ -61,6 +63,13 @@ ALL_DATE_FILTER_KEYS = {
 APPLIED_RE = re.compile(r"\b(?:appl(?:y|ied|ying|ication)|requested|submitted)\b")
 UPCOMING_RE = re.compile(r"\b(?:upcoming|coming\s+up|next|remaining|future)\b")
 ATTENDANCE_FIELDS = ["attendance_date", "clock_in", "clock_out", "status", "work_location", "worked_minutes", "overtime_minutes"]
+WORK_LOCATION_RE = re.compile(
+    r"\b(?:work\s+location|working\s+location|"
+    r"where\s+(?:did|do|was|am)\s+i\s+work|"
+    r"where\s+was\s+i\s+working)\b",
+    re.IGNORECASE,
+)
+WORK_LOCATION_FIELDS = ["attendance_date", "work_location"]
 SUM_QUESTION_RE = re.compile(
     r"\b(?:total\s+(?:worked\s+)?(?:minutes|hours|time)|how\s+much\s+overtime|"
     r"total\s+overtime|sum\s+of\s+(?:worked\s+)?minutes|calculate\s+(?:my\s+)?total\s+worked|"
@@ -76,6 +85,13 @@ ATTENDED_RE = re.compile(
     r"\b(?:attended|attend|attending|present\s+days?|days?\s+(?:i\s+)?(?:attend|attended|was\s+present)|"
     r"worked\s+days?)\b"
 )
+SUBMITTED_DATE_RE = re.compile(r"\bsubmitted\s+(?:at|on)\b")
+TIMESHEET_RE = re.compile(r"\btimesheets?\b")
+TIMESHEET_STATUS_Q_RE = re.compile(
+    r"\bstatus\b|\b(?:latest|most\s+recent|recent|current)\b|\blast\s+timesheet\b|"
+    r"\b(?:submitted|approved)\s+(?:at|on)\b"
+)
+TIMESHEET_VERB = {"approved": "was", "rejected": "was", "submitted": "was", "draft": "is"}
 _POSSESSIVE_RE = re.compile(r"\b([a-z]+)'s\b")
 _SELF_POSSESSIVE_EXCLUSIONS = {
     "what", "that", "it", "there", "here", "who", "let", "this", "he", "she",
@@ -241,6 +257,20 @@ def normalize_and_correct_plan(
     normalized = dict(plan)
     q = question.lower()
     op_id = normalized.get("operation_id", "")
+        # Work-location questions always use attendance records.
+    # This is independent of the requested date or date range.
+    asks_work_location = bool(WORK_LOCATION_RE.search(q))
+
+    if asks_work_location:
+        op_id = "attendance.list"
+        normalized["operation_id"] = op_id
+
+        for key in (
+            "group_by_field",
+            "aggregate_function",
+            "aggregate_field",
+        ):
+            normalized.pop(key, None)
 
     is_summary_query = bool(
         re.search(
@@ -323,6 +353,8 @@ def normalize_and_correct_plan(
 
     explicit_status = None
     for word, status_value in status_keywords.items():
+        if word == "submitted" and SUBMITTED_DATE_RE.search(q):
+            continue
         if re.search(r"\b" + re.escape(word) + r"\b", q):
             explicit_status = status_value
             break
@@ -349,12 +381,18 @@ def normalize_and_correct_plan(
         filters.pop("status", None)
 
     date_field = OPERATION_DATE_FIELDS.get(op_id)
+    if op_id.startswith("timesheet.") and SUBMITTED_DATE_RE.search(q):
+        date_field = "submitted_at"
     if date_field and op_id.startswith(("leave_request.", "wfh_request.")) and APPLIED_RE.search(q):
         date_field = "applied_at"
 
     date_range = resolve_date_range_from_question(question, today)
-    if date_range is not None and date_field:
-        filters[date_field] = {"gte": date_range[0].isoformat(), "lte": date_range[1].isoformat()}
+    if date_range is not None:
+        if UPCOMING_RE.search(q) and date_field:
+            if date_range[0] < today:
+                date_range = (today, date_range[1])
+        if date_field:
+            filters[date_field] = {"gte": date_range[0].isoformat(), "lte": date_range[1].isoformat()}
     elif date_range is None and op_id in DEFAULT_MONTH_OPERATIONS:
         start = today.replace(day=1)
         end = _last_day_of_month(start)
@@ -529,6 +567,110 @@ def _hours_sentence(rows, span, overtime):
     where = f" {span}" if span else ""
     return f"Your total {name}{where} was {hours} hours and {minutes} minutes ({total:,} minutes)."
 
+def _work_location_answer(rows, requested_dates=None):
+    """Return only work locations for the requested dates or rows."""
+    def row_date(row):
+        value = row.get("attendance_date") or row.get("work_date")
+
+        if isinstance(value, datetime):
+            return value.date()
+
+        if isinstance(value, date):
+            return value
+
+        if isinstance(value, str):
+            try:
+                return date.fromisoformat(value[:10])
+            except ValueError:
+                return None
+
+        return None
+
+    def location_for(day):
+        row = next((r for r in rows if row_date(r) == day), None)
+
+        if row is None:
+            return "no attendance record found"
+
+        location = row.get("work_location")
+
+        if location is None or not str(location).strip():
+            return "work location not recorded"
+
+        return str(location).replace("_", " ").strip().title()
+
+    if requested_dates:
+        if len(requested_dates) == 1:
+            day = requested_dates[0]
+            location = location_for(day)
+            day_label = f"{day.day} {day:%B %Y}"
+
+            if location == "no attendance record found":
+                return (
+                    f"I couldn't find an attendance record for "
+                    f"{day_label}, so I couldn't verify "
+                    "your work location."
+                )
+
+            if location == "work location not recorded":
+                return (
+                    f"Your work location for {day_label} "
+                    "has not been recorded."
+                )
+
+            return (
+                f"You worked from {location} on "
+                f"{day_label}."
+            )
+
+        lines = []
+        for day in requested_dates:
+            day_label = f"{day.day} {day:%B %Y}"
+            location = location_for(day)
+
+            if location == "no attendance record found":
+                detail = "no attendance record found"
+            elif location == "work location not recorded":
+                detail = "work location not recorded"
+            else:
+                detail = f"you worked from {location}"
+
+            lines.append(
+                f"On {day_label}, {detail}."
+            )
+
+        return "\n".join(lines)
+
+    if not rows:
+        return "No attendance records were found for the requested period."
+
+    if len(rows) == 1:
+        row = rows[0]
+        day = row_date(row)
+        day_label = f"{day.day} {day:%B %Y}" if day else "the requested date"
+        location = row.get("work_location")
+        if location is None or not str(location).strip():
+            return f"Your work location for {day_label} has not been recorded."
+        loc = str(location).replace("_", " ").strip().title()
+        return f"You worked from {loc} on {day_label}."
+
+    lines = []
+    for row in rows:
+        day = row_date(row)
+        label = (
+            f"{day.day} {day:%B %Y}"
+            if day
+            else "Date unavailable"
+        )
+        location = row.get("work_location")
+
+        if location is None or not str(location).strip():
+            lines.append(f"On {label}, your work location was not recorded.")
+        else:
+            loc = str(location).replace("_", " ").strip().title()
+            lines.append(f"On {label}, you worked from {loc}.")
+
+    return "\n".join(lines)
 
 def _answer_attendance(question, normalized_question, plan, period, employee_id):
     tz = ZoneInfo(DEFAULT_TIMEZONE)
@@ -538,6 +680,9 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
     end = date.fromisoformat(period["end_date"])
     is_single_day = start == end
     discrete_dates = resolve_discrete_dates(normalized_question, get_current_date())
+    asks_work_location = bool(
+        WORK_LOCATION_RE.search(normalized_question)
+    )
 
     # A list of separately named dates is not a continuous range. Query each
     # requested date independently so dates between them are never returned.
@@ -547,7 +692,11 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             one_day_result = _execute(
                 {"operation_id": "attendance.list", "filters": {
                     "attendance_date": {"gte": requested_day.isoformat(), "lte": requested_day.isoformat()}
-                }, "fields": ATTENDANCE_FIELDS},
+                }, "fields": (
+                    WORK_LOCATION_FIELDS
+                    if asks_work_location
+                    else ATTENDANCE_FIELDS
+                )},
                 employee_id,
                 limit=5,
             )
@@ -555,6 +704,22 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             row = day_rows[0] if day_rows else None
             requested_rows.extend(day_rows)
         q_lower = normalized_question.lower()
+        if asks_work_location:
+            answer = _work_location_answer(
+                requested_rows,
+                discrete_dates,
+            )
+            return _result(
+                question,
+                answer,
+                "work_location",
+                {
+                    "start_date": discrete_dates[0].isoformat(),
+                    "end_date": discrete_dates[-1].isoformat(),
+                },
+                False,
+                [],
+            )
         asks_working_hours = bool(re.search(
             r"\b(?:working|worked)\s+hours?\b|\btotal\s+worked\s+time\b",
             q_lower,
@@ -615,13 +780,33 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         filters["status"] = plan["filters"]["status"]
 
     result = _execute(
-        {"operation_id": "attendance.list", "filters": filters, "fields": ATTENDANCE_FIELDS},
+        {
+            "operation_id": "attendance.list",
+            "filters": filters,
+            "fields": (
+                WORK_LOCATION_FIELDS
+                if asks_work_location
+                else ATTENDANCE_FIELDS
+            ),
+        },
         employee_id,
         limit=5 if is_single_day else 100,
     )
     rows = normalize_result_fields("attendance.list", result["data"])
     period_out = {"start_date": start.isoformat(), "end_date": end.isoformat()}
     q = normalized_question.lower()
+    
+    if asks_work_location:
+        answer = _work_location_answer(rows, [start] if is_single_day else None)
+
+        return _result(
+            question,
+            answer,
+            "work_location",
+            period_out,
+            False,
+            [],
+        )
 
     asks_if_late = bool(
         re.search(
@@ -719,6 +904,7 @@ def _answer_requests(question, normalized_question, plan, period, employee_id):
 
 def _answer_holidays(question, normalized_question, plan, period, employee_id):
     wants_list = question_wants_list(normalized_question)
+    is_upcoming = bool(UPCOMING_RE.search(normalized_question.lower()))
     result = _execute(
         {"operation_id": "holiday.list", "filters": dict(plan.get("filters", {}))},
         employee_id,
@@ -726,7 +912,7 @@ def _answer_holidays(question, normalized_question, plan, period, employee_id):
     )
     rows = normalize_result_fields("holiday.list", result["data"])
     start, end = as_date(period.get("start_date")), as_date(period.get("end_date"))
-    answer = holiday_answer(rows, start, end, wants_list)
+    answer = holiday_answer(rows, start, end, wants_list, is_upcoming=is_upcoming)
     show_table = wants_list and bool(rows)
     return _result(question, answer, "holiday_lookup", period, show_table, rows)
 
@@ -749,7 +935,7 @@ def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, 
     }
 
 YES_NO_START_RE = re.compile(r"^\s*(?:is|was|were|are|am|did|do|does|has|have|had)\b")
-STATUS_TARGET_RE = re.compile(r"\b(approved|rejected|pending|cancell?ed)\b")
+STATUS_TARGET_RE = re.compile(r"\b(approved|rejected|pending|submitted|draft|cancell?ed)\b")
 
 def yes_no_status(question: str) -> str | None:
     """'approved', 'rejected', ... when the question is a yes/no check on a status, else None."""
@@ -767,6 +953,8 @@ def request_entity(question: str) -> str | None:
         return "wfh_request"
     if _LEAVE_RE.search(q):
         return "leave_request"
+    if TIMESHEET_RE.search(q):
+        return "timesheet"
     return None
 
 def _answer_status_check(question, normalized_question, plan, period, employee_id, target):
@@ -787,6 +975,71 @@ def is_third_party_request(question: str) -> bool:
         if match.group(1) not in _SELF_POSSESSIVE_EXCLUSIONS:
             return True
     return bool(_THIRD_PARTY_WORDS_RE.search(q))
+
+def _timesheet_overlaps(row: dict[str, Any], start: date, end: date) -> bool:
+    period_start = as_date(row.get("period_start"))
+    period_end = as_date(row.get("period_end")) or period_start
+    if period_start is None:
+        return False
+    return period_start <= end and period_end >= start
+
+
+def _answer_timesheet(question, normalized_question, period, employee_id, target):
+    q = normalized_question.lower()
+    start = as_date(period.get("start_date"))
+    end = as_date(period.get("end_date"))
+    submitted_basis = bool(SUBMITTED_DATE_RE.search(q)) and start is not None
+    latest = bool(re.search(r"\b(?:latest|most\s+recent|recent|current)\b|\blast\s+timesheet\b", q))
+
+    if submitted_basis:
+        rows = _execute(
+            {"operation_id": "timesheet.list",
+             "filters": {"submitted_at": {"gte": start.isoformat(), "lte": end.isoformat()}}},
+            employee_id, limit=100,
+        )["data"]
+    elif start is not None:
+        # Timesheet periods are at most seven days, so a period that overlaps the day
+        # must start within the six days before it. Overlap is checked in code.
+        window_start = start - timedelta(days=6)
+        rows = _execute(
+            {"operation_id": "timesheet.list",
+             "filters": {"period_start": {"gte": window_start.isoformat(), "lte": end.isoformat()}}},
+            employee_id, limit=100,
+        )["data"]
+        rows = [row for row in rows if _timesheet_overlaps(row, start, end)]
+    else:
+        rows = _execute({"operation_id": "timesheet.list", "filters": {}}, employee_id, limit=100)["data"]
+
+    rows = sorted(rows, key=lambda row: as_date(row.get("period_start")) or date.min, reverse=True)
+    when = period_phrase(start, end) if start is not None else ""
+
+    if not rows:
+        if target:
+            return _result(question, f"No, I couldn't find any timesheets {when}".rstrip() + ".",
+                           "timesheet_lookup", period, False, [])
+        return _result(question, f"I couldn't find any timesheets {when}".rstrip() + ".",
+                       "timesheet_lookup", period, False, [])
+
+    head = rows[0]
+    period_start = as_date(head.get("period_start"))
+    period_end = as_date(head.get("period_end")) or period_start
+    period_text = f"for {fmt_range(period_start, period_end)}" if period_start else "on record"
+    status = str(head.get("status") or "unknown").lower().replace("_", " ")
+    submitted = as_date(head.get("submitted_at"))
+    subject = "your most recent timesheet" if len(rows) > 1 else "your timesheet"
+
+    if target:
+        if status == target:
+            verb = TIMESHEET_VERB.get(target, "is")
+            answer = f"Yes, {subject} {period_text} {verb} {target}."
+        else:
+            answer = f"No, {subject} {period_text} is {status}."
+    else:
+        answer = f"{subject[0].upper() + subject[1:]} {period_text} has a status of {status}."
+        if submitted_basis and submitted:
+            answer += f" It was submitted on {submitted.day} {submitted:%B %Y}."
+
+    return _result(question, answer, "timesheet_lookup", period, False, [])
 
 
 def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
@@ -837,6 +1090,10 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
         return _answer_requests(question, normalized_question, plan, period, employee_id)
     if operation_id == "holiday.list":
         return _answer_holidays(question, normalized_question, plan, period, employee_id)
+    if operation_id == "timesheet.list" and (
+        status_target or TIMESHEET_STATUS_Q_RE.search(normalized_question.lower())
+    ):
+        return _answer_timesheet(question, normalized_question, period, employee_id, status_target)
 
     asks_latest_timesheet = bool(
         operation_id == "timesheet.list"

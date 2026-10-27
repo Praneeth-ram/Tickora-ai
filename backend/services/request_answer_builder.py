@@ -148,7 +148,13 @@ def request_answer(
     return _field_sentence(ordered[0], field, singular, plural, len(ordered))
 
 
-def holiday_answer(rows: list[dict[str, Any]], start: date | None, end: date | None, wants_list: bool) -> str:
+def holiday_answer(
+    rows: list[dict[str, Any]],
+    start: date | None,
+    end: date | None,
+    wants_list: bool,
+    is_upcoming: bool = False,
+) -> str:
     """Answer a holiday question with one sentence, or a list when the user asks for it."""
     span = period_phrase(start, end)
     items = []
@@ -158,6 +164,10 @@ def holiday_answer(rows: list[dict[str, Any]], start: date | None, end: date | N
     items.sort(key=lambda item: item[0] or date.min)
 
     if not items:
+        if is_upcoming:
+            if start and end and start.year == end.year:
+                return f"There are no upcoming holidays in {end.year}."
+            return "There are no upcoming holidays for the requested period."
         return f"There are no holidays {span}." if span else "There are no holidays for the period you asked about."
 
     def label(day: date | None, name: str) -> str:
@@ -166,9 +176,14 @@ def holiday_answer(rows: list[dict[str, Any]], start: date | None, end: date | N
         return f"{name} ({day.strftime('%A')}, {day.day} {day.strftime('%B %Y')})"
 
     count = len(items)
-    noun = "holiday" if count == 1 else "holidays"
+    noun = "upcoming holiday" if is_upcoming else "holiday"
+    noun = noun if count == 1 else f"{noun}s"
     verb = "is" if count == 1 else "are"
-    lead = f"There {verb} {count} {noun}" + (f" {span}" if span else "")
+
+    if is_upcoming and start and end and start.year == end.year:
+        lead = f"There {verb} {count} {noun} in {end.year}"
+    else:
+        lead = f"There {verb} {count} {noun}" + (f" {span}" if span else "")
 
     if wants_list:
         lines = [f"{lead}:"] + [f"- {label(day, name)}" for day, name in items[:MAX_LIST_ROWS]]

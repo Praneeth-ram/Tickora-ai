@@ -284,6 +284,11 @@ def format_holidays(data: list[dict], region: str | None = None, question: str =
         )
         if date_match:
             return f"No, {date_match.group(1)} is not a company holiday."
+        if re.search(r"\bupcoming\b", q_lower):
+            year_match = re.search(r"\b(20\d\d)\b", q_lower)
+            if year_match:
+                return f"There are no upcoming holidays in {year_match.group(1)}."
+            return "There are no upcoming holidays for the requested period."
         if re.search(r"\b(?:is there|is|any holiday)\b", q_lower):
             return "No company holidays were found for that date."
         return "No holidays were found for the requested period."
@@ -297,7 +302,8 @@ def format_holidays(data: list[dict], region: str | None = None, question: str =
         return f"Yes! {h_date} is a holiday: {name}{reg_info}."
 
     region_str = f" in {region}" if region else ""
-    lines = [f"Found {len(data)} holiday(s){region_str}:"]
+    noun = "upcoming holiday(s)" if re.search(r"\bupcoming\b", q_lower) else "holiday(s)"
+    lines = [f"Found {len(data)} {noun}{region_str}:"]
 
     for record in data:
         h_date = format_date(record.get("holiday_date"))
@@ -381,6 +387,12 @@ def format_chat_response(result: dict) -> dict:
 
     if intent == "attendance_summary":
         answer = format_attendance_summary(data, requested_metric, question)
+
+    elif intent == "work_location":
+        answer = result.get(
+            "message",
+            "No work-location information was found.",
+        )
 
     elif intent == "attendance_records":
         answer = format_attendance(data, status, question)
