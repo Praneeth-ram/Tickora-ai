@@ -47,6 +47,9 @@ React chat interface
 
 Confirm exact runtime behavior in `backend/services/chat_service.py` and `ai_model/`.
 
+## Response text
+The query-planning service uses the model to select a validated operation, then builds final answer text from the retrieved records. Entity-specific response builders handle attendance, leave and work-from-home requests, holidays, timesheets, leave balances, and leave types. This keeps dates, statuses, and totals grounded in database results instead of asking the model to paraphrase or infer them.
+
 ## Recorded development details
 - Dataset: `data/intent_dataset_merged.jsonl`
 - 569 unique examples were reported in a merged dataset

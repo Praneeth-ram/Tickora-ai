@@ -55,49 +55,53 @@ def _sort_key(row: dict[str, Any]) -> date:
         or date.min
     )
 
-def _day_count(row: dict[str, Any]) -> int | None:
+def _day_count(row: dict[str, Any]) -> float | None:
     if row.get("requested_days") is not None:
-        return int(float(row["requested_days"]))
+        return float(row["requested_days"])
     start, end = as_date(row.get("start_date")), as_date(row.get("end_date"))
     if start and end:
-        return (end - start).days + 1
+        return float((end - start).days + 1)
     return None
 
-def _field_sentence(row: dict[str, Any], field: str, singular: str, plural: str, count: int) -> str:
+def _field_sentence(row: dict[str, Any], field: str, singular: str, count: int) -> str:
     start, end = as_date(row.get("start_date")), as_date(row.get("end_date"))
     dates = fmt_range(start, end) if start and end else "the dates on record"
     applied = as_date(row.get("applied_at") or row.get("requested_at"))
     status = (row.get("status") or "unknown").lower().replace("_", " ")
     reason = (row.get("reason") or "").strip()
+    subject = f"your {singular}" if count == 1 else f"your most recent {singular}"
 
     if field == "applied":
         if applied:
-            tail = f"was applied for on {applied.day} {applied:%B %Y} and covers {dates}."
-        else:
-            tail = f"covers {dates}; no application date is recorded."
+            return f"{subject.capitalize()} for {dates} was submitted on {applied.day} {applied:%B %Y}."
+        return f"No submission date is recorded for {subject} for {dates}."
     elif field == "reason":
-        tail = f"covers {dates} and has the reason: {reason}." if reason else f"covers {dates}; no reason was recorded."
+        if reason:
+            return f"The reason for {subject} covering {dates} is: {reason}."
+        return f"No reason was recorded for {subject} covering {dates}."
     elif field == "status":
-        tail = f"covers {dates} and is {status}."
+        return f"{subject.capitalize()} for {dates} is {status}."
     elif field == "days":
         days = _day_count(row)
-        tail = f"covers {dates}, which is {days} day{'s' if days != 1 else ''}." if days else f"covers {dates}."
-    else:
-        tail = f"covers {dates}."
-
-    if count == 1:
-        return f"Your {singular} {tail}"
-    return f"You have {count} {plural}. The most recent one {tail}"
+        if days is not None:
+            value = format(days, "g")
+            return f"{subject.capitalize()} for {dates} covers {value} day{'s' if days != 1 else ''}."
+    return f"{subject.capitalize()} is for {dates}."
 
 def _summary_sentence(rows: list[dict[str, Any]], singular: str, plural: str, span: str) -> str:
     counts = Counter((row.get("status") or "unknown").lower().replace("_", " ") for row in rows)
-    parts = ", ".join(f"{n} {status}" for status, n in counts.most_common())
-    noun = singular if len(rows) == 1 else plural
     where = f" {span}" if span else ""
-    return (
-        f"You have {len(rows)} {noun}{where}: {parts}. "
-        "Ask about the reason, applied date, or status of a specific request to see its details."
-    )
+    if len(rows) == 1:
+        status = next(iter(counts))
+        return f"Your {singular}{where} is {status}."
+    parts = [f"{n} {status}" for status, n in counts.most_common()]
+    if len(parts) == 2:
+        detail = f"{parts[0]} and {parts[1]}"
+    elif len(parts) > 2:
+        detail = ", ".join(parts[:-1]) + f", and {parts[-1]}"
+    else:
+        detail = parts[0]
+    return f"You have {len(rows)} {plural}{where}: {detail}."
 
 def _list_block(rows: list[dict[str, Any]], plural: str, span: str) -> str:
     shown = rows[:MAX_LIST_ROWS]
@@ -134,7 +138,7 @@ def request_answer(
     field = requested_field(question)
     if field is None:
         return _summary_sentence(ordered, singular, plural, span)
-    return _field_sentence(ordered[0], field, singular, plural, len(ordered))
+    return _field_sentence(ordered[0], field, singular, len(ordered))
 
 def holiday_answer(
     rows: list[dict[str, Any]],

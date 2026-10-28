@@ -131,7 +131,7 @@ def test_sick_leave_allocated_with_year(db):
 
 def test_pending_days_across_types(db):
     result = svc.run_llm_chat("how many pending leave days i have?", employee_id=7)
-    assert result["answer"] == "You have 1 pending leave days in 2026 (1 Sick Leave)."
+    assert result["answer"] == "You have 1 pending leave day in 2026 (1 Sick Leave)."
 
 
 def test_total_allocated_across_types(db):

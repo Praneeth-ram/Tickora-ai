@@ -3,6 +3,7 @@ import os
 import re
 from collections import Counter
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -103,7 +104,20 @@ TIMESHEET_STATUS_Q_RE = re.compile(
     r"\bstatus\b|\b(?:latest|most\s+recent|recent|current)\b|\blast\s+timesheet\b|"
     r"\b(?:submitted|approved)\s+(?:at|on)\b"
 )
-TIMESHEET_VERB = {"approved": "was", "rejected": "was", "submitted": "was", "draft": "is"}
+TIMESHEET_STATUS_PHRASES = {
+    "approved": "has been approved",
+    "rejected": "was rejected",
+    "submitted": "has been submitted",
+    "draft": "is a draft",
+    "pending": "is pending",
+}
+TIMESHEET_STATUS_LABELS = {
+    "draft": "a draft",
+    "pending": "pending",
+    "submitted": "submitted",
+    "approved": "approved",
+    "rejected": "rejected",
+}
 _POSSESSIVE_RE = re.compile(r"\b([a-z]+)'s\b")
 _SELF_POSSESSIVE_EXCLUSIONS = {
     "what", "that", "it", "there", "here", "who", "let", "this", "he", "she",
@@ -475,21 +489,141 @@ def normalize_result_fields(operation_id: str, data: Any) -> Any:
 
 def format_timesheet_response(data: Any) -> str:
     if not isinstance(data, list) or not data:
-        return "No matching timesheet records were found."
+        return "No timesheets were found for the requested period."
 
-    lines = [f"Found {len(data)} timesheet record(s):"]
-    for row in data:
-        start = row.get("period_start", row.get("work_date"))
-        end = row.get("period_end")
-        status = row.get("status", "unknown")
+    shown = data[:10]
+    heading = "Your timesheet:" if len(data) == 1 else f"Your {len(data)} timesheets:"
+    lines = [heading]
+    for row in shown:
+        start = as_date(row.get("period_start") or row.get("work_date"))
+        end = as_date(row.get("period_end")) or start
         if start and end:
-            period = f"{start:%d %b %Y} to {end:%d %b %Y}"
+            period = fmt_range(start, end)
         elif start:
-            period = f"{start:%d %b %Y}"
+            period = f"{start.day} {start:%B %Y}"
         else:
-            period = "Period unavailable"
-        lines.append(f"- {period} | Status: {str(status).title()}")
+            period = "Period not recorded"
+        status_value = row.get("status") or row.get("submission_status")
+        status = str(status_value).replace("_", " ").title() if status_value else None
+        lines.append(f"- {period}" + (f": {status}" if status else ""))
+    if len(data) > len(shown):
+        lines.append(f"Showing {len(shown)} of {len(data)} timesheets.")
     return "\n".join(lines)
+
+
+def count_response(entity: str, count: int, status: str | None, span: str) -> str:
+    nouns = {
+        "attendance": ("attendance record", "attendance records"),
+        "leave_request": ("leave request", "leave requests"),
+        "wfh_request": ("work-from-home request", "work-from-home requests"),
+        "timesheet": ("timesheet", "timesheets"),
+        "holiday": ("holiday", "holidays"),
+        "leave_balance": ("leave balance", "leave balances"),
+        "leave_type": ("leave type", "leave types"),
+    }
+    singular, plural = nouns.get(entity, ("record", "records"))
+    noun = singular if count == 1 else plural
+    status_text = f"{status.replace('_', ' ').lower()} " if status else ""
+    where = f" {span}" if span else ""
+    if count == 0:
+        return f"No {status_text}{plural} were found{where}."
+    if entity in {"holiday", "leave_type"}:
+        return f"There {'is' if count == 1 else 'are'} {count} {status_text}{noun}{where}."
+    return f"You have {count} {status_text}{noun}{where}."
+
+
+def sum_response(field: str, total: Any, span: str) -> str:
+    if not isinstance(total, (int, float, Decimal)) or isinstance(total, bool):
+        raise ModelServiceError("The query returned a non-numeric aggregate.")
+
+    where = f" {span}" if span else ""
+    value = Decimal(str(total))
+    if field in {"worked_minutes", "overtime_minutes"}:
+        minutes_total = int(value)
+        hours, minutes = divmod(minutes_total, 60)
+        if field == "overtime_minutes":
+            return f"You recorded {hours} hours and {minutes} minutes of overtime{where}."
+        return f"You worked {hours} hours and {minutes} minutes{where}."
+
+    day_fields = {
+        "allocated_days": "allocated leave",
+        "used_days": "used leave",
+        "pending_days": "pending leave",
+    }
+    if field in day_fields:
+        day_count = "day" if value == 1 else "days"
+        return f"Your total {day_fields[field]}{where} is {format(value, 'f')} {day_count}."
+
+    label = field.replace("_", " ").strip()
+    return f"The total {label}{where} is {format(value, 'f')}."
+
+
+def grouped_response(
+    entity: str,
+    rows: list[dict[str, Any]],
+    group_by_field: str | None,
+    aggregate_function: str | None,
+    aggregate_field: str | None,
+    span: str,
+    group_labels: dict[Any, str] | None = None,
+) -> str:
+    if not rows:
+        noun = "attendance" if entity == "attendance" else "leave balance"
+        where = f" {span}" if span else ""
+        return f"No {noun} breakdown is available{where}."
+
+    field_labels = {
+        "status": "status",
+        "work_location": "work location",
+        "is_late": "late status",
+        "year": "year",
+        "leave_type_id": "leave type",
+    }
+    dimension = field_labels.get(group_by_field or "", "category")
+    title = "attendance" if entity == "attendance" else "leave balance"
+    where = f" {span}" if span else ""
+    parts = []
+    for row in rows:
+        value = row.get("group_value")
+        label = (group_labels or {}).get(value)
+        if label is None and group_by_field == "status":
+            label = str(value or "unknown").replace("_", " ").lower()
+        elif label is None and group_by_field == "is_late":
+            label = "late" if value is True else "not late" if value is False else "unknown"
+        elif label is None:
+            label = str(value if value is not None else "not recorded").replace("_", " ").title()
+
+        if aggregate_function == "sum":
+            amount = row.get("total", 0)
+            if aggregate_field in {"worked_minutes", "overtime_minutes"}:
+                minutes_total = int(amount or 0)
+                hours, minutes = divmod(minutes_total, 60)
+                measure = f"{hours} hours and {minutes} minutes"
+            elif aggregate_field in {"allocated_days", "used_days", "pending_days"}:
+                measure = f"{format(Decimal(str(amount or 0)), 'f')} days"
+            else:
+                measure = str(amount)
+        else:
+            count = row.get("record_count", 0)
+            unit = "day" if entity == "attendance" else "record"
+            measure = f"{count} {unit}{'s' if count != 1 else ''}"
+        parts.append(f"{label}: {measure}")
+    return f"Your {title} breakdown by {dimension}{where}: {', '.join(parts)}."
+
+
+def leave_type_response(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "No leave types are currently available."
+    names = []
+    for row in rows[:10]:
+        name = str(row.get("name") or row.get("code") or "Leave type").strip()
+        paid = row.get("is_paid")
+        names.append(f"{name} ({'paid' if paid else 'unpaid'})" if paid is not None else name)
+    noun = "leave type" if len(rows) == 1 else "leave types"
+    answer = f"There {'is' if len(rows) == 1 else 'are'} {len(rows)} {noun}: {', '.join(names)}."
+    if len(rows) > 10:
+        answer += f" Showing 10 of {len(rows)}."
+    return answer
 
 
 def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
@@ -1063,17 +1197,18 @@ def _answer_timesheet(question, normalized_question, period, employee_id, target
     period_end = as_date(head.get("period_end")) or period_start
     period_text = f"for {fmt_range(period_start, period_end)}" if period_start else "on record"
     status = str(head.get("status") or "unknown").lower().replace("_", " ")
+    status_label = TIMESHEET_STATUS_LABELS.get(status, status)
     submitted = as_date(head.get("submitted_at"))
     subject = "your most recent timesheet" if len(rows) > 1 else "your timesheet"
 
     if target:
         if status == target:
-            verb = TIMESHEET_VERB.get(target, "is")
-            answer = f"Yes, {subject} {period_text} {verb} {target}."
+            status_phrase = TIMESHEET_STATUS_PHRASES.get(target, f"is {target}")
+            answer = f"Yes, {subject} {period_text} {status_phrase}."
         else:
-            answer = f"No, {subject} {period_text} is {status}."
+            answer = f"No, {subject} {period_text} is currently {status_label}."
     else:
-        answer = f"{subject[0].upper() + subject[1:]} {period_text} has a status of {status}."
+        answer = f"{subject.capitalize()} {period_text} is currently {status_label}."
         if submitted_basis and submitted:
             answer += f" It was submitted on {submitted.day} {submitted:%B %Y}."
 
@@ -1209,31 +1344,28 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
         "leave_balance.count": "leave_balance",
         "leave_balance.sum": "leave_balance",
         "leave_balance.group_by": "leave_balance",
+        "leave_type.list": "leave_type_lookup",
+        "leave_type.count": "leave_type_lookup",
     }
     intent = operation_to_intent.get(operation_id, "attendance_records")
 
     if operation == "count":
         count = data.get("count", 0) if isinstance(data, dict) else 0
-        nouns = {
-            "attendance": ("attendance record", "attendance records"),
-            "leave_request": ("leave request", "leave requests"),
-            "wfh_request": ("work-from-home request", "work-from-home requests"),
-            "timesheet": ("timesheet record", "timesheet records"),
-            "holiday": ("holiday", "holidays"),
-            "leave_balance": ("leave balance record", "leave balance records"),
-        }
-        singular, plural = nouns.get(entity, ("record", "records"))
-        noun = singular if count == 1 else plural
         status_filter = plan.get("filters", {}).get("status")
-        status_text = f"{str(status_filter).replace('_', ' ').lower()} " if status_filter else ""
         span = period_phrase(as_date(period.get("start_date")), as_date(period.get("end_date")))
-        answer = f"You had {count} {status_text}{noun}" + (f" {span}." if span else ".")
+        answer = count_response(
+            entity,
+            int(count),
+            str(status_filter) if status_filter else None,
+            span,
+        )
         return _result(question, answer, intent, period, False, data)
 
-    if operation_id == "attendance.group_by":
+    if operation == "group_by":
         rows = data if isinstance(data, list) else []
         span = period_phrase(as_date(period.get("start_date")), as_date(period.get("end_date")))
-        if ATTENDED_RE.search(normalized_question.lower()):
+        group_by_field = plan.get("group_by_field")
+        if entity == "attendance" and ATTENDED_RE.search(normalized_question.lower()):
             breakdown = []
             attended_total = 0
             for row in rows:
@@ -1248,40 +1380,34 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
             detail = f" ({', '.join(breakdown)})" if breakdown else ""
             answer = f"You attended {attended_total} {noun}" + (f" {span}" if span else "") + f"{detail}."
             return _result(question, answer, intent, period, False, data)
-        if not rows:
-            answer = "No matching attendance records were found."
-        else:
-            parts_text = []
-            total = 0
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                group_value = str(row.get("group_value", "unknown")).replace("_", " ").lower()
-                record_count = row.get("record_count", 0)
-                if isinstance(record_count, (int, float)) and not isinstance(record_count, bool):
-                    total += int(record_count)
-                    parts_text.append(f"{int(record_count)} {group_value}")
-            answer = f"You had {total} attendance records" + (f" {span}" if span else "") + f": {', '.join(parts_text)}."
+        group_labels = None
+        if entity == "leave_balance" and group_by_field == "leave_type_id":
+            type_result = _execute(
+                {"operation_id": "leave_type.list", "filters": {}},
+                employee_id,
+                limit=100,
+            )
+            group_labels = {
+                row.get("id"): str(row.get("name") or row.get("code") or "Leave type")
+                for row in type_result.get("data", [])
+                if isinstance(row, dict)
+            }
+        answer = grouped_response(
+            entity,
+            rows,
+            group_by_field,
+            plan.get("aggregate_function"),
+            plan.get("aggregate_field"),
+            span,
+            group_labels,
+        )
         return _result(question, answer, intent, period, False, data)
 
     if operation == "sum":
         field = data.get("field", "value") if isinstance(data, dict) else "value"
         total = data.get("total") if isinstance(data, dict) else None
         span = period_phrase(as_date(period.get("start_date")), as_date(period.get("end_date")))
-        date_ctx = f" {span}" if span else ""
-        if field in {"worked_minutes", "overtime_minutes"} and isinstance(total, (int, float)) and not isinstance(total, bool):
-            hours, minutes = divmod(int(total), 60)
-            field_name = "worked time" if field == "worked_minutes" else "overtime"
-            answer = f"Your total {field_name}{date_ctx} was {hours} hours and {minutes} minutes ({int(total):,} minutes)."
-        elif field in {"allocated_days", "used_days", "pending_days"} and isinstance(total, (int, float)) and not isinstance(total, bool):
-            labels = {
-                "allocated_days": "allocated leave days",
-                "used_days": "used leave days",
-                "pending_days": "pending leave days",
-            }
-            answer = f"Your total {labels[field]} was {total:g}."
-        else:
-            answer = f"Your total for {field}{date_ctx} was {total}."
+        answer = sum_response(field, total, span)
         return _result(question, answer, intent, period, False, data)
 
     if operation_id == "leave_balance.list":
@@ -1313,12 +1439,11 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
         else:
             message = format_timesheet_response(timesheet_rows)
 
+    elif operation_id == "leave_type.list":
+        message = leave_type_response(data if isinstance(data, list) else [])
+
     elif isinstance(data, list):
-        message = (
-            f"Found {len(data)} matching record(s)."
-            if data
-            else "No matching records were found."
-        )
+        message = "Your matching records are listed below." if data else "No matching records were found."
     else:
         message = "Your requested information was retrieved."
 

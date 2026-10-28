@@ -130,6 +130,10 @@ def _label(leave_type: dict[str, Any]) -> str:
     return name if name.lower().endswith("leave") else f"{name} leave"
 
 
+def _day_noun(value: Any) -> str:
+    return "day" if float(value or 0) == 1 else "days"
+
+
 def _remaining(row: dict[str, Any]) -> float:
     return float(row.get("allocated_days") or 0) - float(row.get("used_days") or 0) - float(row.get("pending_days") or 0)
 
@@ -172,19 +176,19 @@ def answer_leave_balance(
         pending = format_days(row.get("pending_days"))
         remaining = format_days(_remaining(row))
         if metric == "allocated":
-            return f"You have {allocated} allocated {label} days in {year}."
+            return f"You have {allocated} allocated {label} {_day_noun(row.get('allocated_days'))} in {year}."
         if metric == "used":
-            return f"You have used {used} {label} days in {year}."
+            return f"You have used {used} {label} {_day_noun(row.get('used_days'))} in {year}."
         if metric == "pending":
-            return f"You have {pending} pending {label} days in {year}."
+            return f"You have {pending} pending {label} {_day_noun(row.get('pending_days'))} in {year}."
         if metric == "remaining":
             return (
-                f"You have {remaining} {label} days left in {year} "
+                f"You have {remaining} {label} {_day_noun(_remaining(row))} remaining in {year} "
                 f"({allocated} allocated, {used} used, {pending} pending)."
             )
         return (
-            f"Your {label} balance for {year}: {allocated} allocated, "
-            f"{used} used, {pending} pending, {remaining} left."
+            f"Your {label} balance for {year} is {remaining} {_day_noun(_remaining(row))}: "
+            f"{allocated} allocated, {used} used, and {pending} pending."
         )
 
     if metric in METRIC_PHRASE and metric != "remaining":
@@ -196,17 +200,20 @@ def answer_leave_balance(
             if float(r.get(field) or 0) > 0
         ]
         detail = f" ({', '.join(parts)})" if parts else ""
-        return f"You have {format_days(total)} {METRIC_PHRASE[metric]} leave days in {year}{detail}."
+        return (
+            f"You have {format_days(total)} {METRIC_PHRASE[metric]} leave "
+            f"{_day_noun(total)} in {year}{detail}."
+        )
 
     lines = [f"Your leave balance for {year}:"]
     for r in rows:
         label = _label(by_id.get(r.get("leave_type_id"), {"name": f"Leave type {r.get('leave_type_id')}"}))
         lines.append(
-            f"- {label}: {format_days(_remaining(r))} left "
+            f"- {label}: {format_days(_remaining(r))} {_day_noun(_remaining(r))} remaining "
             f"({format_days(r.get('allocated_days'))} allocated, "
-            f"{format_days(r.get('used_days'))} used, "
+            f"{format_days(r.get('used_days'))} used, and "
             f"{format_days(r.get('pending_days'))} pending)."
         )
     total_left = sum(_remaining(r) for r in rows)
-    lines.append(f"Total left: {format_days(total_left)} days.")
+    lines.append(f"Total remaining: {format_days(total_left)} {_day_noun(total_left)}.")
     return "\n".join(lines)
