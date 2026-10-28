@@ -111,7 +111,7 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
         "date_field": "holiday_date",
         "count_allowed": True,
     },
-    
+
     "leave_balances": {
         "entity": "leave_balance",
         "scope": "employee_id",
@@ -138,6 +138,15 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
             "year",
             "leave_type_id",
         ],
+    },
+    "leave_types": {
+        "entity": "leave_type",
+        "scope": "global_read",
+        "list_fields": ["id", "code", "name", "is_paid"],
+        "filter_fields": ["code"],
+        "date_field": None,
+        "date_fields": [],
+        "count_allowed": True,
     },
 }
 

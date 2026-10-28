@@ -1,13 +1,14 @@
-from ai_model import check_dataset
-from ai_model import check_dataset
 import logging
 import os
 import re
 from collections import Counter
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
+
 import httpx
+
 from backend.services.answer_builder import (
     range_clock_answer,
     range_list_answer,
@@ -15,7 +16,7 @@ from backend.services.answer_builder import (
     single_day_answer,
     status_list_answer,
     status_records_answer,
-    fmt_range,    
+    fmt_range,
 )
 from backend.services.date_resolver import InvalidDateError, resolve_date_spec, resolve_discrete_dates
 from backend.services.dynamic_query_service import QueryPlanError, execute_query_plan
@@ -28,6 +29,14 @@ from backend.services.request_answer_builder import (
 )
 from backend.services.text_normalizer import correct_typos
 from backend.services.operation_registry import build_operation_registry
+from backend.services.leave_balance_answer import (
+    answer_leave_balance,
+    detect_metric,
+    detect_year,
+    enrich_rows,
+    is_leave_balance_question,
+    match_leave_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +71,10 @@ ALL_DATE_FILTER_KEYS = {
 }
 APPLIED_RE = re.compile(r"\b(?:appl(?:y|ied|ying|ication)|requested|submitted)\b")
 UPCOMING_RE = re.compile(r"\b(?:upcoming|coming\s+up|next|remaining|future)\b")
-ATTENDANCE_FIELDS = ["attendance_date", "clock_in", "clock_out", "status", "work_location", "worked_minutes", "overtime_minutes"]
+ATTENDANCE_FIELDS = [
+    "attendance_date", "clock_in", "clock_out", "status", "work_location",
+    "worked_minutes", "overtime_minutes",
+]
 WORK_LOCATION_RE = re.compile(
     r"\b(?:work\s+location|working\s+location|"
     r"where\s+(?:did|do|was|am)\s+i\s+work|"
@@ -100,27 +112,26 @@ _SELF_POSSESSIVE_EXCLUSIONS = {
 _THIRD_PARTY_WORDS_RE = re.compile(
     r"\b(?:his|her|their|someone|somebody|colleague|colleagues|team|manager|employee|employees|another\s+employee)\b"
 )
-_LEAVE_BALANCE_RE = re.compile(
-    r"\b(?:leave\s+balance|remaining\s+leave|"
-    r"leave\s+days?\s+(?:left|remaining)|"
-    r"allocated\s+leave|used\s+leave|"
-    r"pending\s+leave\s+days?|"
-    r"leave\s+days?\s+(?:have\s+i\s+)?(?:used|taken|consumed)|"
-    r"(?:how\s+many|total)\s+leave\s+days?\b)",
-    re.IGNORECASE,
-)
+
+
 class ModelServiceError(RuntimeError):
     """Raised when a question cannot be answered from the query plan."""
+
+
 class ModelUnavailableError(ModelServiceError):
     """The model server cannot be reached or timed out."""
+
+
 class PlanRejectedError(ModelServiceError):
     """The model server responded, but could not turn the question into a supported plan."""
+
 
 def get_current_date() -> date:
     try:
         return datetime.now(ZoneInfo(DEFAULT_TIMEZONE)).date()
     except Exception:
         return date.today()
+
 
 def get_query_plan(question: str) -> dict[str, Any]:
     """Ask the model server for a query plan, keeping outages and rejections distinct."""
@@ -144,6 +155,7 @@ def get_query_plan(question: str) -> dict[str, Any]:
         raise PlanRejectedError("I couldn't turn that question into a supported query.")
     return plan
 
+
 _HOLIDAY_RE = re.compile(r"\bholidays?\b")
 _WFH_RE = re.compile(r"\bwfh\b|\bwork\s+from\s+home\b")
 _LEAVE_RE = re.compile(r"\bleaves?\b")
@@ -153,6 +165,7 @@ _ATTENDANCE_RE = re.compile(
 )
 _COUNT_RE = re.compile(r"\bhow\s+many\b|\bcount\b|\bnumber\s+of\b")
 
+
 def rule_based_plan(question: str) -> dict[str, Any]:
     """Choose the entity from keywords when the model cannot. Dates and filters are still set in code."""
     q = question.lower()
@@ -161,7 +174,7 @@ def rule_based_plan(question: str) -> dict[str, Any]:
         entity = "holiday"
     elif _WFH_RE.search(q):
         entity = "wfh_request"
-    elif _LEAVE_BALANCE_RE.search(q):
+    elif is_leave_balance_question(q):
         entity = "leave_balance"
     elif _LEAVE_RE.search(q):
         entity = "leave_request"
@@ -171,10 +184,12 @@ def rule_based_plan(question: str) -> dict[str, Any]:
         return {"operation_id": None, "filters": {}}
     return {"operation_id": entity + suffix, "filters": {}}
 
+
 _DOMAIN_RE = re.compile(
     r"\b(?:leaves?|wfh|work\s+from\s+home|holidays?|attendance|clock|check\s*(?:in|out)|"
     r"status|late|absent|present|timesheets?|applied)\b"
 )
+
 
 def _primary_topic(part: str) -> str | None:
     q = part.lower()
@@ -187,6 +202,7 @@ def _primary_topic(part: str) -> str | None:
     if _ATTENDANCE_RE.search(q) or re.search(r"\b(?:clock|check|punch|attend)", q):
         return "attendance"
     return None
+
 
 def split_compound_question(question: str) -> list[str]:
     """Split only when the parts are about different topics, e.g. leave and holidays.
@@ -204,11 +220,13 @@ def split_compound_question(question: str) -> list[str]:
             return parts
     return [question]
 
+
 def resolve_date_range_from_question(question: str, today: date) -> tuple[date, date] | None:
     spec = resolve_date_spec(question, today)
     if spec is None:
         return None
     return spec.start, spec.end
+
 
 ALLOWED_FILTERS = {
     "attendance": {"status", "is_late", "work_location"},
@@ -218,6 +236,7 @@ ALLOWED_FILTERS = {
     "holiday": {"holiday_type"},
     "leave_balance": {"year", "leave_type_id"},
 }
+
 
 def question_kind(question: str) -> str:
     q = question.lower()
@@ -233,6 +252,7 @@ def question_kind(question: str) -> str:
         return "status"
     return "list"
 
+
 def question_wants_list(question: str) -> bool:
     """Detect requests for records or date-by-date results."""
     return bool(re.search(
@@ -242,9 +262,11 @@ def question_wants_list(question: str) -> bool:
         question.lower(),
     ))
 
+
 def _last_day_of_month(d: date) -> date:
     nxt = (d.replace(day=28) + timedelta(days=4)).replace(day=1)
     return nxt - timedelta(days=1)
+
 
 def normalize_and_correct_plan(
     plan: dict[str, Any],
@@ -255,57 +277,15 @@ def normalize_and_correct_plan(
     normalized = dict(plan)
     q = question.lower()
     op_id = normalized.get("operation_id", "")
-    # Work-location questions always use attendance records.
-    # This is independent of the requested date or date range.
     asks_work_location = bool(WORK_LOCATION_RE.search(q))
 
-    if re.search(
-        r"\b(?:how much|how many|total|sum|amount)\b.*\b"
-        r"(?:leave\s+(?:have\s+i\s+)?(?:taken|used|consumed)|"
-        r"(?:taken|used|consumed)\s+leave)\b"
-        r"|\bleave\s+(?:have\s+i\s+)?(?:taken|used|consumed)\b",
-        q,
-    ):
-        op_id = "leave_balance.sum"
-        normalized["aggregate_field"] = "used_days"
-
-    elif re.search(
-        r"\b(?:how many|total|sum|amount)\b.*\b"
-        r"(?:allocated|entitled|granted)\b",
-        q,
-    ):
-        op_id = "leave_balance.sum"
-        normalized["aggregate_field"] = "allocated_days"
-
-    elif re.search(
-        r"\b(?:how many|total|sum|amount)\b.*\bpending\b",
-        q,
-    ):
-        op_id = "leave_balance.sum"
-        normalized["aggregate_field"] = "pending_days"
-
-    elif _LEAVE_BALANCE_RE.search(q):
-        op_id = "leave_balance.list"
-        normalized.pop("aggregate_field", None)
-
-    elif _COUNT_RE.search(q) and not re.search(
-        r"\b(?:days?|amount)\b", q
-    ):
-        op_id = "leave_balance.count"
-
-    normalized["operation_id"] = op_id
     normalized.pop("group_by_field", None)
     normalized.pop("aggregate_function", None)
 
     if asks_work_location:
         op_id = "attendance.list"
         normalized["operation_id"] = op_id
-
-        for key in (
-            "group_by_field",
-            "aggregate_function",
-            "aggregate_field",
-        ):
+        for key in ("group_by_field", "aggregate_function", "aggregate_field"):
             normalized.pop(key, None)
 
     is_summary_query = bool(
@@ -351,13 +331,7 @@ def normalize_and_correct_plan(
             normalized.pop(key, None)
 
     is_count_query = bool(re.search(r"\b(?:how\s+many|count|number\s+of)\b", q))
-    if (
-        is_count_query
-        and not is_summary_query
-        and not is_sum_query
-        and not is_attended_query
-        and not _LEAVE_BALANCE_RE.search(q)
-    ):
+    if is_count_query and not is_summary_query and not is_sum_query and not is_attended_query:
         if "leave" in q:
             op_id = "leave_request.count"
         elif "wfh" in q or "work from home" in q:
@@ -371,7 +345,6 @@ def normalize_and_correct_plan(
         normalized["operation_id"] = op_id
         for key in ("group_by_field", "aggregate_function", "aggregate_field", "fields"):
             normalized.pop(key, None)
-
 
     op_id = normalized.get("operation_id", op_id)
     entity = op_id.split(".")[0] if op_id else ""
@@ -412,11 +385,9 @@ def normalize_and_correct_plan(
         } and not (op_id == "attendance.group_by" and normalized.get("group_by_field") == "status"):
             filters["status"] = explicit_status
     else:
-        # If the user didn't name a specific status (e.g. asking "what is the status of my leave request?"),
-        # do not filter by status; remove any model-hallucinated status filter like "your_status".
+        # The user named no status, so drop any status filter the model added.
         filters.pop("status", None)
 
-    # Validate that any remaining status filter is allowed for this entity
     entity_statuses = valid_statuses_by_entity.get(entity)
     if entity_statuses and filters.get("status") not in entity_statuses:
         filters.pop("status", None)
@@ -473,6 +444,7 @@ def normalize_and_correct_plan(
     }
     return normalized, period
 
+
 def normalize_result_fields(operation_id: str, data: Any) -> Any:
     if not isinstance(data, list):
         return data
@@ -497,6 +469,7 @@ def normalize_result_fields(operation_id: str, data: Any) -> Any:
         normalized.append(item)
     return normalized
 
+
 def format_timesheet_response(data: Any) -> str:
     if not isinstance(data, list) or not data:
         return "No matching timesheet records were found."
@@ -515,6 +488,7 @@ def format_timesheet_response(data: Any) -> str:
         lines.append(f"- {period} | Status: {str(status).title()}")
     return "\n".join(lines)
 
+
 def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
     return {
         "success": True,
@@ -528,6 +502,7 @@ def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
         "raw_data": None,
         "data": [],
     }
+
 
 def _result(question: str, answer: str, intent: str, period: dict[str, Any], show_table: bool, data: list) -> dict[str, Any]:
     return {
@@ -543,11 +518,13 @@ def _result(question: str, answer: str, intent: str, period: dict[str, Any], sho
         "data": data if show_table else [],
     }
 
+
 def _execute(plan: dict[str, Any], employee_id: int, limit: int) -> Any:
     try:
         return execute_query_plan(plan, employee_id=employee_id, limit=limit)
     except QueryPlanError as exc:
         raise ModelServiceError(f"The query plan failed validation: {exc}") from exc
+
 
 def _attended_sentence(rows, span):
     counts = Counter(
@@ -560,6 +537,7 @@ def _attended_sentence(rows, span):
     noun = "day" if total == 1 else "days"
     where = f" {span}" if span else ""
     return f"You attended {total} {noun}{where}" + (f" ({detail})." if detail else ".")
+
 
 def _daily_working_hours_answer(rows, requested_dates, tz):
     lines = []
@@ -595,7 +573,8 @@ def _daily_working_hours_answer(rows, requested_dates, tz):
             f"- {day.day} {day:%B %Y}: {hours} hours "
             f"and {remainder} minutes."
         )
-    return "Your working hours for the requested dates:\\n" + "\\n".join(lines)
+    return "Your working hours for the requested dates:\n" + "\n".join(lines)
+
 
 def _hours_sentence(rows, span, overtime):
     field = "overtime_minutes" if overtime else "worked_minutes"
@@ -604,6 +583,7 @@ def _hours_sentence(rows, span, overtime):
     name = "overtime" if overtime else "worked time"
     where = f" {span}" if span else ""
     return f"Your total {name}{where} was {hours} hours and {minutes} minutes ({total:,} minutes)."
+
 
 def _work_location_answer(rows, requested_dates=None):
     """Return only work locations for the requested dates or rows."""
@@ -710,6 +690,7 @@ def _work_location_answer(rows, requested_dates=None):
 
     return "\n".join(lines)
 
+
 def _answer_attendance(question, normalized_question, plan, period, employee_id):
     tz = ZoneInfo(DEFAULT_TIMEZONE)
     kind = question_kind(normalized_question)
@@ -722,25 +703,36 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         WORK_LOCATION_RE.search(normalized_question)
     )
 
-    # A list of separately named dates is not a continuous range. Query each
-    # requested date independently so dates between them are never returned.
+    # A list of separately named dates is not a continuous range. Fetch the span
+    # once and keep only the requested dates, so dates between them are never returned.
     if discrete_dates:
-        requested_rows = []
-        for requested_day in discrete_dates:
-            one_day_result = _execute(
-                {"operation_id": "attendance.list", "filters": {
-                    "attendance_date": {"gte": requested_day.isoformat(), "lte": requested_day.isoformat()}
-                }, "fields": (
-                    WORK_LOCATION_FIELDS
-                    if asks_work_location
-                    else ATTENDANCE_FIELDS
-                )},
-                employee_id,
-                limit=5,
+        if len(discrete_dates) > 31:
+            return _text_result(
+                question,
+                "Please ask about 31 dates or fewer at a time.",
+                intent="attendance_records",
             )
-            day_rows = normalize_result_fields("attendance.list", one_day_result["data"])
-            row = day_rows[0] if day_rows else None
-            requested_rows.extend(day_rows)
+        wanted = set(discrete_dates)
+        span_result = _execute(
+            {
+                "operation_id": "attendance.list",
+                "filters": {
+                    "attendance_date": {
+                        "gte": min(discrete_dates).isoformat(),
+                        "lte": max(discrete_dates).isoformat(),
+                    }
+                },
+                "fields": WORK_LOCATION_FIELDS if asks_work_location else ATTENDANCE_FIELDS,
+            },
+            employee_id,
+            limit=100,
+        )
+        all_rows = normalize_result_fields("attendance.list", span_result["data"])
+        requested_rows = [
+            r for r in all_rows
+            if (r.get("attendance_date") or r.get("work_date")) in wanted
+        ]
+
         q_lower = normalized_question.lower()
         if asks_work_location:
             answer = _work_location_answer(
@@ -833,7 +825,7 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
     rows = normalize_result_fields("attendance.list", result["data"])
     period_out = {"start_date": start.isoformat(), "end_date": end.isoformat()}
     q = normalized_question.lower()
-    
+
     if asks_work_location:
         answer = _work_location_answer(rows, [start] if is_single_day else None)
 
@@ -917,6 +909,7 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
 
     return _result(question, answer, "attendance_records", period_out, show_table, rows)
 
+
 def _answer_requests(question, normalized_question, plan, period, employee_id):
     operation_id = plan["operation_id"]
     kind = "leave" if operation_id.startswith("leave_") else "wfh"
@@ -938,6 +931,7 @@ def _answer_requests(question, normalized_question, plan, period, employee_id):
     show_table = wants_list and bool(rows)
     return _result(question, answer, intent, period, show_table, rows)
 
+
 def _answer_holidays(question, normalized_question, plan, period, employee_id):
     wants_list = question_wants_list(normalized_question)
     is_upcoming = bool(UPCOMING_RE.search(normalized_question.lower()))
@@ -951,6 +945,7 @@ def _answer_holidays(question, normalized_question, plan, period, employee_id):
     answer = holiday_answer(rows, start, end, wants_list, is_upcoming=is_upcoming)
     show_table = wants_list and bool(rows)
     return _result(question, answer, "holiday_lookup", period, show_table, rows)
+
 
 def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     answer = "\n\n".join(result["answer"] for result in results)
@@ -969,8 +964,10 @@ def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, 
         "data": tables[0]["data"] if show_table else [],
     }
 
+
 YES_NO_START_RE = re.compile(r"^\s*(?:is|was|were|are|am|did|do|does|has|have|had)\b")
 STATUS_TARGET_RE = re.compile(r"\b(approved|rejected|pending|submitted|draft|cancell?ed)\b")
+
 
 def yes_no_status(question: str) -> str | None:
     """'approved', 'rejected', ... when the question is a yes/no check on a status, else None."""
@@ -982,6 +979,7 @@ def yes_no_status(question: str) -> str | None:
         return None
     return match.group(1).replace("canceled", "cancelled")
 
+
 def request_entity(question: str) -> str | None:
     q = question.lower()
     if _WFH_RE.search(q):
@@ -991,6 +989,7 @@ def request_entity(question: str) -> str | None:
     if TIMESHEET_RE.search(q):
         return "timesheet"
     return None
+
 
 def _answer_status_check(question, normalized_question, plan, period, employee_id, target):
     operation_id = plan["operation_id"]
@@ -1003,6 +1002,7 @@ def _answer_status_check(question, normalized_question, plan, period, employee_i
     answer = status_check_answer(kind, rows, target, span)
     return _result(question, answer, intent, period, False, [])
 
+
 def is_third_party_request(question: str) -> bool:
     """True when the question asks about someone other than the logged-in employee."""
     q = question.lower()
@@ -1011,6 +1011,7 @@ def is_third_party_request(question: str) -> bool:
             return True
     return bool(_THIRD_PARTY_WORDS_RE.search(q))
 
+
 def _timesheet_overlaps(row: dict[str, Any], start: date, end: date) -> bool:
     period_start = as_date(row.get("period_start"))
     period_end = as_date(row.get("period_end")) or period_start
@@ -1018,12 +1019,12 @@ def _timesheet_overlaps(row: dict[str, Any], start: date, end: date) -> bool:
         return False
     return period_start <= end and period_end >= start
 
+
 def _answer_timesheet(question, normalized_question, period, employee_id, target):
     q = normalized_question.lower()
     start = as_date(period.get("start_date"))
     end = as_date(period.get("end_date"))
     submitted_basis = bool(SUBMITTED_DATE_RE.search(q)) and start is not None
-    latest = bool(re.search(r"\b(?:latest|most\s+recent|recent|current)\b|\blast\s+timesheet\b", q))
 
     if submitted_basis:
         rows = _execute(
@@ -1075,6 +1076,33 @@ def _answer_timesheet(question, normalized_question, period, employee_id, target
 
     return _result(question, answer, "timesheet_lookup", period, False, [])
 
+
+def _answer_leave_balance(question, normalized_question, employee_id, today):
+    """Answer leave balance questions from leave_balances, matched to leave types in the database."""
+    types_result = _execute({"operation_id": "leave_type.list", "filters": {}}, employee_id, limit=100)
+    leave_types = types_result["data"] if isinstance(types_result["data"], list) else []
+
+    year = detect_year(normalized_question, today.year)
+    metric = detect_metric(normalized_question)
+    selected = match_leave_type(normalized_question, leave_types)
+
+    filters: dict[str, Any] = {"year": year}
+    if selected is not None:
+        filters["leave_type_id"] = selected["id"]
+    balance_result = _execute({"operation_id": "leave_balance.list", "filters": filters}, employee_id, limit=100)
+    rows = balance_result["data"] if isinstance(balance_result["data"], list) else []
+
+    answer = answer_leave_balance(rows, leave_types, year, metric, selected)
+    show_table = question_wants_list(normalized_question) and bool(rows)
+    period = {"start_date": f"{year}-01-01", "end_date": f"{year}-12-31"}
+    return _result(question, answer, "leave_balance", period, show_table, enrich_rows(rows, leave_types))
+
+
+@lru_cache(maxsize=1)
+def _approved_operations() -> frozenset[str]:
+    return frozenset(build_operation_registry(schema_name="public").keys())
+
+
 def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
     """Plan, correct with code, execute with the employee's scope, and answer in sentences."""
     parts = split_compound_question(question)
@@ -1086,6 +1114,8 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
 
     normalized_question = correct_typos(question)
     today = get_current_date()
+    if is_leave_balance_question(normalized_question):
+        return _answer_leave_balance(question, normalized_question, employee_id, today)
 
     model_error: ModelServiceError | None = None
     try:
@@ -1099,20 +1129,12 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
     entity = request_entity(normalized_question) if status_target else None
     if entity:
         raw_plan = {"operation_id": f"{entity}.list", "filters": {}}
-    logger.info("question=%r plan=%r", normalized_question, raw_plan)
+    logger.debug("operation=%s", raw_plan.get("operation_id"))
 
-    approved_operations = set(
-        build_operation_registry(schema_name="public").keys()
-    )
-
-    if raw_plan.get("operation_id") not in approved_operations:
+    if raw_plan.get("operation_id") not in _approved_operations():
         if isinstance(model_error, ModelUnavailableError):
             raise model_error
-        return _text_result(
-            question,
-            UNSUPPORTED_MESSAGE,
-        intent="unsupported",
-    )
+        return _text_result(question, UNSUPPORTED_MESSAGE, intent="unsupported")
 
     try:
         plan, period = normalize_and_correct_plan(raw_plan, normalized_question, today)
@@ -1124,7 +1146,7 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
 
     if operation_id == "attendance.list":
         return _answer_attendance(question, normalized_question, plan, period, employee_id)
-    
+
     if operation_id in {"leave_request.list", "wfh_request.list"}:
         if status_target:
             return _answer_status_check(question, normalized_question, plan, period, employee_id, status_target)
@@ -1259,6 +1281,9 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
             answer = f"Your total for {field}{date_ctx} was {total}."
         return _result(question, answer, intent, period, False, data)
 
+    if operation_id == "leave_balance.list":
+        return _answer_leave_balance(question, normalized_question, employee_id, today)
+
     if operation_id == "timesheet.list":
         timesheet_rows = query_result["data"] if isinstance(query_result["data"], list) else []
         if asks_latest_timesheet:
@@ -1284,50 +1309,6 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
             message = "You don't have any pending timesheets."
         else:
             message = format_timesheet_response(timesheet_rows)
-    
-    if operation_id == "leave_balance.list":
-        if not data:
-            message = "No leave-balance records were found."
-        else:
-            lines = ["Your leave balance:"]
-            total_allocated = 0
-            total_used = 0
-            total_pending = 0
-
-            for row in data:
-                allocated = row.get("allocated_days") or 0
-                used = row.get("used_days") or 0
-                pending = row.get("pending_days") or 0
-                year = row.get("year", "unknown")
-                leave_type_names = {
-                    1: "Casual Leave",
-                    2: "Sick Leave",
-                    3: "Earned Leave",
-                    4: "Unpaid Leave",
-                }
-
-                leave_type_id = row.get("leave_type_id")
-                leave_type = leave_type_names.get(
-                    leave_type_id,
-                    f"Leave type {leave_type_id}",
-                )
-
-                total_allocated += allocated
-                total_used += used
-                total_pending += pending
-
-                lines.append(
-                     f"- {leave_type} ({year}): "
-                    f"{allocated:g} allocated, {used:g} used, "
-                    f"{pending:g} pending."
-                )
-
-            lines.append(
-                f"\nTotal: {total_allocated:g} allocated days, "
-                f"{total_used} used days, "
-                f"{total_pending} pending days."
-            )
-            message = "\n".join(lines)
 
     elif isinstance(data, list):
         message = (
