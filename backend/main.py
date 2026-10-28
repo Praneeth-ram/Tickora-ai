@@ -317,10 +317,38 @@ def chat_with_tickora(
         ).lower() == "true"
 
         if use_llm:
+            organization_id = current_employee.get("organization_id")
+
+            # Resolve organization scope from PostgreSQL if the
+            # authentication dependency does not already include it.
+            if organization_id is None:
+                with engine.connect() as connection:
+                    organization_id = connection.execute(
+                        text("""
+                            SELECT organization_id
+                            FROM public.employees
+                            WHERE id = :employee_id
+                              AND employee_code = :employee_code
+                              AND is_active = TRUE
+                        """),
+                        {
+                            "employee_id": employee_id,
+                            "employee_code": current_employee["employee_code"],
+                        },
+                    ).scalar_one_or_none()
+
+            if organization_id is None:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Authenticated organization could not be verified.",
+                )
+
             result = run_llm_chat(
                 question=body.question.strip(),
                 employee_id=employee_id,
+                organization_id=organization_id,
             )
+
         else:
             result = run_chat(
                 question=body.question.strip(),
@@ -335,6 +363,7 @@ def chat_with_tickora(
             status_code=503,
             detail=str(exc),
         ) from exc
+
     except ValueError as exc:
         raise HTTPException(
             status_code=400,

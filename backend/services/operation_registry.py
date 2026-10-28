@@ -1,38 +1,41 @@
+
 from typing import Any
+
 from backend.services.schema_catalog import discover_schema
+
 
 # Explicit allowlist: schema discovery alone never grants access.
 ENTITY_POLICIES: dict[str, dict[str, Any]] = {
     "attendance_records": {
-    "entity": "attendance",
-    "scope": "employee_id",
-    "list_fields": [
-        "attendance_date",
-        "clock_in",
-        "clock_out",
-        "status",
-        "work_location",
-        "worked_minutes",
-        "overtime_minutes",
-        "is_late",
-    ],
-    "filter_fields": [
-        "attendance_date",
-        "status",
-        "work_location",
-        "is_late",
-    ],
-    "date_field": "attendance_date",
-    "count_allowed": True,
-    "aggregate_fields": [
-        "worked_minutes",
-        "overtime_minutes",
-    ],
-    "group_by_fields": [
-        "status",
-        "work_location",
-        "is_late",
-    ],
+        "entity": "attendance",
+        "scope": "employee_id",
+        "list_fields": [
+            "attendance_date",
+            "clock_in",
+            "clock_out",
+            "status",
+            "work_location",
+            "worked_minutes",
+            "overtime_minutes",
+            "is_late",
+        ],
+        "filter_fields": [
+            "attendance_date",
+            "status",
+            "work_location",
+            "is_late",
+        ],
+        "date_field": "attendance_date",
+        "count_allowed": True,
+        "aggregate_fields": [
+            "worked_minutes",
+            "overtime_minutes",
+        ],
+        "group_by_fields": [
+            "status",
+            "work_location",
+            "is_late",
+        ],
     },
     "leave_requests": {
         "entity": "leave_request",
@@ -111,7 +114,6 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
         "date_field": "holiday_date",
         "count_allowed": True,
     },
-
     "leave_balances": {
         "entity": "leave_balance",
         "scope": "employee_id",
@@ -150,12 +152,14 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
     },
 }
 
+
 def build_operation_registry(
     schema_name: str = "public",
 ) -> dict[str, dict[str, Any]]:
     catalog = discover_schema(schema_name)
     registry: dict[str, dict[str, Any]] = {}
 
+    # Existing single-table operations.
     for table_name, policy in ENTITY_POLICIES.items():
         table = catalog.get(table_name)
         if table is None:
@@ -165,16 +169,21 @@ def build_operation_registry(
             column["name"] for column in table["columns"]
         }
         scope = policy["scope"]
+
         if scope == "employee_id" and "employee_id" not in available:
             continue
+
         if scope not in {"employee_id", "global_read"}:
             continue
+
         fields = [
-            field for field in policy["list_fields"]
+            field
+            for field in policy["list_fields"]
             if field in available
         ]
         filters = [
-            field for field in policy["filter_fields"]
+            field
+            for field in policy["filter_fields"]
             if field in available
         ]
 
@@ -187,13 +196,16 @@ def build_operation_registry(
             if configured_date_field in available
             else None
         )
+
         date_fields = [
-            f for f in policy.get("date_fields", [])
-            if f in available
+            field
+            for field in policy.get("date_fields", [])
+            if field in available
         ]
+
         if not date_fields and date_field:
             date_fields = [date_field]
- 
+
         registry[f"{policy['entity']}.list"] = {
             "entity": policy["entity"],
             "table": table_name,
@@ -228,7 +240,7 @@ def build_operation_registry(
                 "aggregate_fields": [],
                 "group_by_fields": [],
             }
-        
+
         aggregate_fields = [
             field
             for field in policy.get("aggregate_fields", [])
@@ -265,16 +277,98 @@ def build_operation_registry(
                 "aggregate_fields": aggregate_fields,
                 "group_by_fields": group_by_fields,
             }
-    
+
+    # Preserve the existing date-field normalization for single-table
+    # operations. Payroll is registered after this loop because it does
+    # not have a corresponding entry in ENTITY_POLICIES.
     for entry in registry.values():
         policy = ENTITY_POLICIES[entry["table"]]
-        available = {column["name"] for column in catalog[entry["table"]]["columns"]}
+        available = {
+            column["name"]
+            for column in catalog[entry["table"]]["columns"]
+        }
         entry["date_fields"] = [
-            field for field in policy.get("date_fields", [policy["date_field"]])
+            field
+            for field in policy.get(
+                "date_fields", [policy["date_field"]]
+            )
             if field in available
         ]
 
+    # Payroll uses a dedicated three-table join in
+    # dynamic_query_service.py, not the single-table query path.
+    catalog_tables = {
+        "employees",
+        "payroll_summaries",
+        "payroll_periods",
+    }
+
+    if catalog_tables.issubset(catalog):
+        employees_columns = {
+            column["name"]
+            for column in catalog["employees"]["columns"]
+        }
+        summaries_columns = {
+            column["name"]
+            for column in catalog["payroll_summaries"]["columns"]
+        }
+        periods_columns = {
+            column["name"]
+            for column in catalog["payroll_periods"]["columns"]
+        }
+
+        required_employees = {
+            "id",
+            "organization_id",
+        }
+        required_summaries = {
+            "employee_id",
+            "payroll_period_id",
+            "gross_amount",
+            "deduction_amount",
+            "net_amount",
+            "currency",
+        }
+        required_periods = {
+            "id",
+            "organization_id",
+            "period_start",
+            "period_end",
+        }
+
+        if (
+            required_employees.issubset(employees_columns)
+            and required_summaries.issubset(summaries_columns)
+            and required_periods.issubset(periods_columns)
+        ):
+            registry["payroll_summary.list"] = {
+                "entity": "payroll_summary",
+                "table": "payroll_summaries",
+                "operation": "list",
+                "scope": "employee_organization",
+                "fields": [
+                    "period_start",
+                    "period_end",
+                    "gross_amount",
+                    "deduction_amount",
+                    "net_amount",
+                    "currency",
+                ],
+                "filters": [
+                    "period_start",
+                    "period_end",
+                ],
+                "date_field": "period_start",
+                "date_fields": [
+                    "period_start",
+                    "period_end",
+                ],
+                "aggregate_fields": [],
+                "group_by_fields": [],
+            }
+
     return registry
+
 
 def get_model_catalog(
     registry: dict[str, dict[str, Any]],

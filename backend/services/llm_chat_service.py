@@ -52,6 +52,7 @@ UNSUPPORTED_MESSAGE = (
 )
 
 OPERATION_DATE_FIELDS = {
+    "payroll_summary.list": "period_start",
     "attendance.list": "attendance_date",
     "attendance.count": "attendance_date",
     "attendance.sum": "attendance_date",
@@ -171,6 +172,14 @@ def get_query_plan(question: str) -> dict[str, Any]:
 
 
 _HOLIDAY_RE = re.compile(r"\bholidays?\b")
+_PAYROLL_RE = re.compile(
+    r"\b(?:payroll|salary|salaries|gross\s+pay|net\s+pay|"
+    r"deductions?|take[- ]home\s+pay|pay\s*slips?|payslips?|"
+    r"credited\s+to\s+(?:my\s+)?account|"
+    r"amount\s+(?:received|credited)|"
+    r"(?:salary|pay)\s+(?:credited|deposited))\b",
+    re.IGNORECASE,
+)
 _WFH_RE = re.compile(r"\bwfh\b|\bwork\s+from\s+home\b")
 _LEAVE_RE = re.compile(r"\bleaves?\b")
 _ATTENDANCE_RE = re.compile(
@@ -249,6 +258,7 @@ ALLOWED_FILTERS = {
     "timesheet": {"status"},
     "holiday": {"holiday_type"},
     "leave_balance": {"year", "leave_type_id"},
+    "payroll_summary": {"period_start", "period_end"},
 }
 
 
@@ -626,6 +636,196 @@ def leave_type_response(rows: list[dict[str, Any]]) -> str:
     return answer
 
 
+def _payroll_response(
+    rows: Any,
+    period: dict[str, Any],
+    question: str = "",
+) -> str:
+    """Format payroll results as a specific amount, aggregate, extremum, or breakdown."""
+    if not isinstance(rows, list) or not rows:
+        start = as_date(period.get("start_date"))
+        end = as_date(period.get("end_date"))
+        span = period_phrase(start, end)
+        return (
+            f"No payroll records were found"
+            f"{f' {span}' if span else ''}."
+        )
+
+    q = question.lower()
+
+    if re.search(
+        r"\b(?:deductions?|tax(?:es)?\s+deducted|"
+        r"deduction\s+amount|deducted\s+amount)\b",
+        q,
+    ):
+        metric = "deduction_amount"
+        label = "deductions"
+
+    elif re.search(
+        r"\b(?:net\s+(?:amount|salary|pay|income)|"
+        r"take[- ]home\s+(?:pay|salary|amount)|"
+        r"amount\s+(?:received|credited)|"
+        r"credited\s+to\s+(?:my\s+)?account)\b",
+        q,
+    ):
+        metric = "net_amount"
+        label = "net salary"
+
+    elif re.search(
+        r"\b(?:gross\s+(?:amount|salary|pay|earnings)|"
+        r"earnings\s+before\s+deductions)\b",
+        q,
+    ):
+        metric = "gross_amount"
+        label = "gross salary"
+
+    else:
+        metric = None
+        label = None
+
+    def money(value: Any) -> str:
+        if value is None:
+            return "not recorded"
+        return f"{Decimal(str(value)):,.2f}"
+
+    def period_label(row: dict[str, Any]) -> str:
+        start = as_date(row.get("period_start"))
+        end = as_date(row.get("period_end"))
+
+        if start and end:
+            return fmt_range(start, end)
+        if start:
+            return f"{start.day} {start:%B %Y}"
+        return "period not recorded"
+
+    # Calculate totals only when the question explicitly requests an aggregate.
+    asks_total = bool(
+        re.search(
+            r"\b(?:total|cumulative|combined|sum\s+of|overall\s+total)\b",
+            q,
+        )
+    )
+
+    # Detect highest/lowest-value questions.
+    asks_highest = bool(
+        re.search(
+            r"\b(?:highest|maximum|max(?:imum)?|largest|greatest)\b",
+            q,
+        )
+    )
+    asks_lowest = bool(
+        re.search(
+            r"\b(?:lowest|minimum|min(?:imum)?|smallest|least)\b",
+            q,
+        )
+    )
+
+    if metric and (asks_highest or asks_lowest):
+        valid_rows = []
+        for row in rows:
+            value = row.get(metric)
+            if value is not None:
+                try:
+                    valid_rows.append((Decimal(str(value)), row))
+                except Exception:
+                    continue
+
+        if not valid_rows:
+            return f"No recorded {label} amounts were found."
+
+        selected_value, selected_row = (
+            max(valid_rows, key=lambda item: item[0])
+            if asks_highest
+            else min(valid_rows, key=lambda item: item[0])
+        )
+
+        currency = str(selected_row.get("currency") or "").strip()
+        prefix = f"{currency} " if currency else ""
+        qualifier = "highest" if asks_highest else "lowest"
+
+        return (
+            f"Your {qualifier} recorded {label} was "
+            f"{prefix}{money(selected_value)} for "
+            f"{period_label(selected_row)}."
+        )
+
+    if metric and asks_total:
+        # Never combine different currencies into one numeric total.
+        totals: dict[str, Decimal] = {}
+        for row in rows:
+            value = row.get(metric)
+            if value is None:
+                continue
+
+            currency = str(row.get("currency") or "").strip() or "unspecified currency"
+            try:
+                totals[currency] = (
+                    totals.get(currency, Decimal("0")) + Decimal(str(value))
+                )
+            except Exception:
+                continue
+
+        if not totals:
+            return f"No recorded {label} amounts were found to total."
+
+        start = as_date(period.get("start_date"))
+        end = as_date(period.get("end_date"))
+        span = period_phrase(start, end)
+        where = f" {span}" if span else ""
+
+        if len(totals) == 1:
+            currency, total = next(iter(totals.items()))
+            prefix = "" if currency == "unspecified currency" else f"{currency} "
+            return (
+                f"Your total {label}{where} was "
+                f"{prefix}{money(total)}."
+            )
+
+        amounts = "; ".join(
+            f"{currency}: {money(total)}"
+            for currency, total in sorted(totals.items())
+        )
+        return f"Your total {label}{where} was {amounts}."
+
+    # For a specific metric without a total/highest/lowest request,
+    # show only that metric for each matching payroll period.
+    if metric:
+        lines = []
+        for row in rows[:20]:
+            value = money(row.get(metric))
+            currency = str(row.get("currency") or "").strip()
+            prefix = f"{currency} " if currency else ""
+            lines.append(
+                f"- {label.capitalize()} for {period_label(row)}: "
+                f"{prefix}{value}."
+            )
+
+        heading = {
+            "gross_amount": "Your gross salary:",
+            "deduction_amount": "Your payroll deductions:",
+            "net_amount": "Your net salary:",
+        }[metric]
+
+        return heading + "\n" + "\n".join(lines)
+
+    # General salary/payroll questions retain the full breakdown.
+    lines = []
+    for row in rows[:20]:
+        currency = str(row.get("currency") or "").strip()
+        prefix = f"{currency} " if currency else ""
+
+        lines.append(
+            f"- {period_label(row)}: "
+            f"Gross {prefix}{money(row.get('gross_amount'))}; "
+            f"deductions {prefix}{money(row.get('deduction_amount'))}; "
+            f"net {prefix}{money(row.get('net_amount'))}."
+        )
+
+    if len(rows) > 20:
+        lines.append(f"Showing 20 of {len(rows)} payroll records.")
+
+    return "Your payroll records:\n" + "\n".join(lines)
+
 def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
     return {
         "success": True,
@@ -656,9 +856,9 @@ def _result(question: str, answer: str, intent: str, period: dict[str, Any], sho
     }
 
 
-def _execute(plan: dict[str, Any], employee_id: int, limit: int) -> Any:
+def _execute(plan: dict[str, Any], employee_id: int, limit: int, organization_id: int | None = None) -> Any:
     try:
-        return execute_query_plan(plan, employee_id=employee_id, limit=limit)
+        return execute_query_plan(plan, employee_id=employee_id, limit=limit, organization_id=organization_id)
     except QueryPlanError as exc:
         raise ModelServiceError(f"The query plan failed validation: {exc}") from exc
 
@@ -1241,11 +1441,11 @@ def _approved_operations() -> frozenset[str]:
     return frozenset(build_operation_registry(schema_name="public").keys())
 
 
-def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
+def run_llm_chat(question: str, employee_id: int, organization_id: int | None = None,) -> dict[str, Any]:
     """Plan, correct with code, execute with the employee's scope, and answer in sentences."""
     parts = split_compound_question(question)
     if len(parts) > 1:
-        return _combine_results(question, [run_llm_chat(part, employee_id) for part in parts])
+        return _combine_results(question, [run_llm_chat(part, employee_id, organization_id) for part in parts])
 
     if is_third_party_request(question):
         return _text_result(question, THIRD_PARTY_MESSAGE, intent="unsupported")
@@ -1255,13 +1455,36 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
     if is_leave_balance_question(normalized_question):
         return _answer_leave_balance(question, normalized_question, employee_id, today)
 
+    
+    # Route payroll questions directly so an incorrect model plan
+    # cannot send them to leave_balance.sum or another operation.
     model_error: ModelServiceError | None = None
-    try:
-        raw_plan = get_query_plan(normalized_question)
-    except ModelServiceError as exc:
-        logger.warning("Model plan unavailable, using keyword plan: %s", exc)
-        model_error = exc
-        raw_plan = rule_based_plan(normalized_question)
+
+    if _PAYROLL_RE.search(normalized_question):
+        raw_plan = {
+            "operation_id": "payroll_summary.list",
+            "filters": {},
+        }
+    else:
+        try:
+            raw_plan = get_query_plan(normalized_question)
+        except ModelServiceError as exc:
+            logger.warning(
+                "Model plan unavailable, using keyword plan: %s",
+                exc,
+            )
+            model_error = exc
+            raw_plan = rule_based_plan(normalized_question)
+
+
+    # Route payroll and salary questions to the registered operation.
+    # The executor applies employee and organization scope from
+    # the authenticated request context.
+    if _PAYROLL_RE.search(normalized_question):
+        raw_plan = {
+            "operation_id": "payroll_summary.list",
+            "filters": {},
+        }
 
     status_target = yes_no_status(normalized_question)
     entity = request_entity(normalized_question) if status_target else None
@@ -1320,6 +1543,7 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
         execution_plan,
         employee_id,
         limit=1 if asks_latest_timesheet else 100 if asks_pending_timesheets else 50,
+        organization_id=organization_id,
     )
     if asks_pending_timesheets:
         query_result["data"] = [
@@ -1346,6 +1570,7 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
         "leave_balance.group_by": "leave_balance",
         "leave_type.list": "leave_type_lookup",
         "leave_type.count": "leave_type_lookup",
+        "payroll_summary.list": "payroll_lookup",
     }
     intent = operation_to_intent.get(operation_id, "attendance_records")
 
@@ -1392,7 +1617,42 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
                 for row in type_result.get("data", [])
                 if isinstance(row, dict)
             }
-        answer = grouped_response(
+    elif operation_id == "payroll_summary.list":
+        message = _payroll_response(
+            data,
+            period,
+            normalized_question,
+        )
+
+    # Specific metric questions return a concise answer without a table.
+    asks_specific_metric = bool(
+        re.search(
+            r"\b(?:deductions?|tax(?:es)?\s+deducted|"
+            r"deduction\s+amount|deducted\s+amount|"
+            r"net\s+(?:amount|salary|pay|income)|"
+            r"take[- ]home\s+(?:pay|salary|amount)|"
+            r"amount\s+(?:received|credited)|"
+            r"gross\s+(?:amount|salary|pay|earnings)|"
+            r"earnings\s+before\s+deductions)\b",
+            normalized_question.lower(),
+        )
+    )
+
+    show_payroll_table = (
+        isinstance(data, list)
+        and bool(data)
+        and not asks_specific_metric
+    )
+
+    return _result(
+        question,
+        message,
+        "payroll_lookup",
+        period,
+        show_payroll_table,
+        data if show_payroll_table else [],
+    )
+    answer = grouped_response(
             entity,
             rows,
             group_by_field,
@@ -1401,7 +1661,7 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
             span,
             group_labels,
         )
-        return _result(question, answer, intent, period, False, data)
+    return _result(question, answer, intent, period, False, data)
 
     if operation == "sum":
         field = data.get("field", "value") if isinstance(data, dict) else "value"

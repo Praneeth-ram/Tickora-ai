@@ -4,7 +4,7 @@ from sqlalchemy import inspect
 
 SENSITIVE_TABLE_TOKENS = {
     "credential", "password", "token", "secret",
-    "face", "embedding", "payroll", "salary",
+    "face", "embedding", "salary",
     "payment", "deduction",
 }
 

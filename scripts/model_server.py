@@ -12,6 +12,7 @@ from transformers import (
     BitsAndBytesConfig,
 )
 from peft import PeftModel
+from backend.services.operation_registry import build_operation_registry
 
 BASE_MODEL = "Qwen/Qwen2.5-3B-Instruct"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,9 +30,38 @@ class QuestionRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
 
 def load_catalog():
+    """Load the saved catalog and merge in currently registered operations."""
     with CATALOG_PATH.open("r", encoding="utf-8") as f:
         items = json.load(f)
-    return {item["operation_id"]: item for item in items}
+
+    catalog_items = {
+        item["operation_id"]: item
+        for item in items
+    }
+
+    # Discover operations from the current database schema.
+    # This lets newly registered entities become available
+    # without requiring another model fine-tune.
+    runtime_registry = build_operation_registry(schema_name="public")
+
+    for operation_id, definition in runtime_registry.items():
+        catalog_items[operation_id] = {
+            "operation_id": operation_id,
+            "entity": definition.get("entity"),
+            "operation": definition.get("operation"),
+            "fields": definition.get("fields", []),
+            "filters": definition.get("filters", []),
+            "date_field": definition.get("date_field"),
+            "date_fields": definition.get("date_fields", []),
+            "aggregate_fields": definition.get(
+                "aggregate_fields", []
+            ),
+            "group_by_fields": definition.get(
+                "group_by_fields", []
+            ),
+        }
+
+    return catalog_items
 
 @app.on_event("startup")
 def load_model():
@@ -84,6 +114,34 @@ def load_model():
         "\n- For leave requests, use 'leave_request.list' (or 'leave_request.count')."
         "\n- For timesheets, use 'timesheet.list' (or 'timesheet.count')."
         "\n- For holidays, use 'holiday.list' (or 'holiday.count')."
+    )
+        # Give the model the currently available operations instead
+    # of relying only on the operations present during fine-tuning.
+    prompt_catalog = [
+        {
+            "operation_id": operation_id,
+            "entity": item.get("entity"),
+            "operation": item.get("operation"),
+            "fields": item.get("fields", []),
+            "filters": item.get("filters", []),
+            "aggregate_fields": item.get("aggregate_fields", []),
+            "group_by_fields": item.get("group_by_fields", []),
+            "date_fields": item.get("date_fields", []),
+        }
+        for operation_id, item in sorted(catalog.items())
+    ]
+
+    system_prompt += (
+        "\n\nCURRENT AVAILABLE OPERATION CATALOG:\n"
+        + json.dumps(prompt_catalog, ensure_ascii=False)
+        + "\n\nOPERATION SELECTION RULES:\n"
+        "- Select only an exact operation_id from the catalog.\n"
+        "- Never invent operation IDs or database field names.\n"
+        "- For salary or payroll questions, use "
+        "'payroll_summary.list' if it is present in the catalog.\n"
+        "- For payroll months, use ISO date ranges on the "
+        "approved period_start and period_end filters.\n"
+        "- Return only the JSON query plan, without explanation.\n"
     )
 
     app.state.system_prompt = system_prompt
