@@ -10,13 +10,10 @@ from typing import Any
 METRIC_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("pending", re.compile(r"\bpending\b")),
     ("used", re.compile(r"\b(?:used|use|uses|taken|take|took|consumed|utili[sz]ed|spent)\b")),
-    ("allocated", re.compile(r"\b(?:allocated|entitled|entitlement|granted|quota)\b")),
-    ("remaining", re.compile(r"\b(?:balance|left|remaining|available)\b")),
+    ("allocated", re.compile(r"\b(?:allocated|entitled|entitlement|granted|quota|accrued|credited)\b")),
+    ("remaining", re.compile(r"\b(?:balance|left|remaining|available|carri(?:ed)?\s*over|carry\s*over)\b")),
 ]
 YEAR_RE = re.compile(r"\b(20\d{2})\b")
-REQUEST_WORDS_RE = re.compile(
-    r"\b(?:requests?|applied|apply|approved|rejected|submitted|cancel+ed|canceled)\b"
-)
 LEAVE_WORD_RE = re.compile(r"\bleaves?\b")
 METRIC_PHRASE = {
     "allocated": "allocated",
@@ -24,6 +21,38 @@ METRIC_PHRASE = {
     "pending": "pending",
     "remaining": "remaining",
 }
+
+# Words that name a specific leave category; their presence alone signals a balance
+# question even when no explicit metric word (allocated/remaining/used) appears.
+_LEAVE_TYPE_WORDS_RE = re.compile(
+    r"\b(?:casual|sick|earned|unpaid|maternity|paternity|comp(?:\s*off)?|privilege|annual|study|bereavement)\b"
+)
+
+# Broad metric detector — includes natural-language phrases and synonyms not covered
+# by the compact METRIC_PATTERNS list used for answer generation.
+_EXTENDED_METRIC_RE = re.compile(
+    r"\b(?:"
+    r"allocated|entitled|entitlement|granted|quota|accrued|credited|"
+    r"used|use|uses|taken|take|took|consumed|utili[sz]ed|spent|"
+    r"pending|"
+    r"balance|left|remaining|available|carri(?:ed)?\s*over|carry\s*over|"
+    r"how\s+many\s+(?:\w+\s+)*(?:leave\s+)?days?|"
+    r"how\s+much\s+leave|"
+    r"leave\s+days?|days?\s+(?:of\s+)?leave|"
+    r"leave\s+credit|credit"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Request-action words that definitively indicate a leave *request* workflow, not a
+# balance query.  Status-describing words such as "approved", "rejected", and
+# "submitted" are intentionally excluded — a user can legitimately ask
+# "how many approved leave days do I have left?", which is a balance question.
+REQUEST_WORDS_RE = re.compile(
+    r"\b(?:requests?|applied|apply|cancell?(?:ed|ing)?|cancel)\b",
+    re.IGNORECASE,
+)
+
 
 def detect_metric(question: str) -> str | None:
     """The first balance metric the question names, in priority order."""
@@ -33,9 +62,11 @@ def detect_metric(question: str) -> str | None:
             return name
     return None
 
+
 def detect_year(question: str, default_year: int) -> int:
     matches = YEAR_RE.findall(question)
     return int(matches[-1]) if matches else default_year
+
 
 def match_leave_type(question: str, leave_types: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Return the leave type whose name or code appears in the question, longest match first."""
@@ -57,17 +88,35 @@ def match_leave_type(question: str, leave_types: list[dict[str, Any]]) -> dict[s
                 best, best_length = leave_type, len(candidate)
     return best
 
-def is_leave_balance_question(question: str) -> bool:
-    """A balance question names a balance metric and a leave word, without request words.
 
-    'pending leave requests' is a request question and is excluded.
+def is_leave_balance_question(question: str) -> bool:
+    """Return True when the question is clearly about leave balance / quota.
+
+    Rules (checked in priority order):
+    1. Exclude questions with unmistakable leave-request action words (apply,
+       request, cancel).  "approved" / "submitted" are intentionally kept so
+       questions like "how many approved leave days do I have?" are accepted.
+    2. Accept when any balance metric (including extended synonyms) is present
+       together with any leave-topic indicator.
+    3. Accept when a named leave type (sick, casual, …) appears together with
+       a days/leave word even without an explicit metric, e.g.
+       "how many sick days do I have?".
     """
     q = question.lower()
     if REQUEST_WORDS_RE.search(q):
         return False
-    if detect_metric(q) is None:
-        return False
-    return bool(LEAVE_WORD_RE.search(q)) or bool(re.search(r"\b(?:casual|sick|earned|unpaid|maternity)\b", q))
+    has_leave_word = bool(LEAVE_WORD_RE.search(q))
+    has_leave_type = bool(_LEAVE_TYPE_WORDS_RE.search(q))
+    has_metric = bool(_EXTENDED_METRIC_RE.search(q))
+    # Rule 2: metric word + leave indicator
+    if has_metric and (has_leave_word or has_leave_type):
+        return True
+    # Rule 3: named leave type + days/leave word without metric
+    # e.g. "how many sick days do I have?"
+    if has_leave_type:
+        return bool(re.search(r"\bdays?\b|\bleaves?\b", q))
+    return False
+
 
 def format_days(value: Any) -> str:
     number = float(value or 0)
@@ -75,12 +124,15 @@ def format_days(value: Any) -> str:
         return str(int(number))
     return f"{number:.2f}".rstrip("0").rstrip(".")
 
+
 def _label(leave_type: dict[str, Any]) -> str:
     name = str(leave_type.get("name") or leave_type.get("code") or "leave").strip()
     return name if name.lower().endswith("leave") else f"{name} leave"
 
+
 def _remaining(row: dict[str, Any]) -> float:
     return float(row.get("allocated_days") or 0) - float(row.get("used_days") or 0) - float(row.get("pending_days") or 0)
+
 
 def enrich_rows(rows: list[dict[str, Any]], leave_types: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Add a leave_type name to each balance row so tables show names, not IDs."""
@@ -92,6 +144,7 @@ def enrich_rows(rows: list[dict[str, Any]], leave_types: list[dict[str, Any]]) -
         item["year"] = str(row.get("year", ""))
         enriched.append(item)
     return enriched
+
 
 def answer_leave_balance(
     rows: list[dict[str, Any]],

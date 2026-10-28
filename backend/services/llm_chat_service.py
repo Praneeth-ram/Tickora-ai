@@ -332,7 +332,10 @@ def normalize_and_correct_plan(
 
     is_count_query = bool(re.search(r"\b(?:how\s+many|count|number\s+of)\b", q))
     if is_count_query and not is_summary_query and not is_sum_query and not is_attended_query:
-        if "leave" in q:
+        # Guard: leave-balance questions use "how many" too — do NOT reroute them
+        # to leave_request.count.  is_leave_balance_question already short-circuits
+        # in run_llm_chat, but this protects against model plans that reach here.
+        if "leave" in q and not is_leave_balance_question(q):
             op_id = "leave_request.count"
         elif "wfh" in q or "work from home" in q:
             op_id = "wfh_request.count"
