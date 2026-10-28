@@ -15,6 +15,10 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "sqlalchemy>=2.1.4",
     "torch>=2.14.1",
+    "transformers>=4.47.0",
+    "peft>=0.14.0",
+    "bitsandbytes>=0.45.0",
+    "accelerate>=1.2.0",
     "uvicorn[standard]>=0.54.0",
 ]
 

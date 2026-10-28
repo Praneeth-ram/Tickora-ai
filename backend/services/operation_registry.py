@@ -111,6 +111,34 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
         "date_field": "holiday_date",
         "count_allowed": True,
     },
+    
+    "leave_balances": {
+        "entity": "leave_balance",
+        "scope": "employee_id",
+        "list_fields": [
+            "year",
+            "leave_type_id",
+            "allocated_days",
+            "used_days",
+            "pending_days",
+        ],
+        "filter_fields": [
+            "year",
+            "leave_type_id",
+        ],
+        "date_field": None,
+        "date_fields": [],
+        "count_allowed": True,
+        "aggregate_fields": [
+            "allocated_days",
+            "used_days",
+            "pending_days",
+        ],
+        "group_by_fields": [
+            "year",
+            "leave_type_id",
+        ],
+    },
 }
 
 def build_operation_registry(

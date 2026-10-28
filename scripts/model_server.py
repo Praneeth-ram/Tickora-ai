@@ -25,17 +25,13 @@ tokenizer = None
 model = None
 catalog = {}
 generation_lock = Lock()
-
-
 class QuestionRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
-
 
 def load_catalog():
     with CATALOG_PATH.open("r", encoding="utf-8") as f:
         items = json.load(f)
     return {item["operation_id"]: item for item in items}
-
 
 @app.on_event("startup")
 def load_model():
@@ -123,7 +119,6 @@ def load_model():
     print("Tickora model loaded.")
     print("GPU:", torch.cuda.get_device_name(0))
 
-
 @app.get("/health")
 def health():
     return {
@@ -131,13 +126,11 @@ def health():
         "model_loaded": model is not None,
     }
 
-
 @app.get("/operations")
 def operations():
     return {
         "operations": list(catalog.keys()),
     }
-
 
 @app.post("/predict")
 def predict(request: QuestionRequest):
@@ -195,7 +188,6 @@ def predict(request: QuestionRequest):
 
     operation_id = plan.get("operation_id")
     filters = plan.get("filters")
-
 
     print("\n--- TICKORA MODEL DEBUG ---")
     print("Question:", request.question)

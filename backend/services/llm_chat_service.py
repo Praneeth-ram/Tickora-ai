@@ -1,3 +1,5 @@
+from ai_model import check_dataset
+from ai_model import check_dataset
 import logging
 import os
 import re
@@ -25,6 +27,7 @@ from backend.services.request_answer_builder import (
     status_check_answer,
 )
 from backend.services.text_normalizer import correct_typos
+from backend.services.operation_registry import build_operation_registry
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +100,15 @@ _SELF_POSSESSIVE_EXCLUSIONS = {
 _THIRD_PARTY_WORDS_RE = re.compile(
     r"\b(?:his|her|their|someone|somebody|colleague|colleagues|team|manager|employee|employees|another\s+employee)\b"
 )
+_LEAVE_BALANCE_RE = re.compile(
+    r"\b(?:leave\s+balance|remaining\s+leave|"
+    r"leave\s+days?\s+(?:left|remaining)|"
+    r"allocated\s+leave|used\s+leave|"
+    r"pending\s+leave\s+days?|"
+    r"leave\s+days?\s+(?:have\s+i\s+)?(?:used|taken|consumed)|"
+    r"(?:how\s+many|total)\s+leave\s+days?\b)",
+    re.IGNORECASE,
+)
 class ModelServiceError(RuntimeError):
     """Raised when a question cannot be answered from the query plan."""
 class ModelUnavailableError(ModelServiceError):
@@ -149,6 +161,8 @@ def rule_based_plan(question: str) -> dict[str, Any]:
         entity = "holiday"
     elif _WFH_RE.search(q):
         entity = "wfh_request"
+    elif _LEAVE_BALANCE_RE.search(q):
+        entity = "leave_balance"
     elif _LEAVE_RE.search(q):
         entity = "leave_request"
     elif _ATTENDANCE_RE.search(q):
@@ -202,6 +216,7 @@ ALLOWED_FILTERS = {
     "wfh_request": {"status"},
     "timesheet": {"status"},
     "holiday": {"holiday_type"},
+    "leave_balance": {"year", "leave_type_id"},
 }
 
 def question_kind(question: str) -> str:
@@ -240,9 +255,47 @@ def normalize_and_correct_plan(
     normalized = dict(plan)
     q = question.lower()
     op_id = normalized.get("operation_id", "")
-        # Work-location questions always use attendance records.
+    # Work-location questions always use attendance records.
     # This is independent of the requested date or date range.
     asks_work_location = bool(WORK_LOCATION_RE.search(q))
+
+    if re.search(
+        r"\b(?:how much|how many|total|sum|amount)\b.*\b"
+        r"(?:leave\s+(?:have\s+i\s+)?(?:taken|used|consumed)|"
+        r"(?:taken|used|consumed)\s+leave)\b"
+        r"|\bleave\s+(?:have\s+i\s+)?(?:taken|used|consumed)\b",
+        q,
+    ):
+        op_id = "leave_balance.sum"
+        normalized["aggregate_field"] = "used_days"
+
+    elif re.search(
+        r"\b(?:how many|total|sum|amount)\b.*\b"
+        r"(?:allocated|entitled|granted)\b",
+        q,
+    ):
+        op_id = "leave_balance.sum"
+        normalized["aggregate_field"] = "allocated_days"
+
+    elif re.search(
+        r"\b(?:how many|total|sum|amount)\b.*\bpending\b",
+        q,
+    ):
+        op_id = "leave_balance.sum"
+        normalized["aggregate_field"] = "pending_days"
+
+    elif _LEAVE_BALANCE_RE.search(q):
+        op_id = "leave_balance.list"
+        normalized.pop("aggregate_field", None)
+
+    elif _COUNT_RE.search(q) and not re.search(
+        r"\b(?:days?|amount)\b", q
+    ):
+        op_id = "leave_balance.count"
+
+    normalized["operation_id"] = op_id
+    normalized.pop("group_by_field", None)
+    normalized.pop("aggregate_function", None)
 
     if asks_work_location:
         op_id = "attendance.list"
@@ -298,7 +351,13 @@ def normalize_and_correct_plan(
             normalized.pop(key, None)
 
     is_count_query = bool(re.search(r"\b(?:how\s+many|count|number\s+of)\b", q))
-    if is_count_query and not is_summary_query and not is_sum_query and not is_attended_query:
+    if (
+        is_count_query
+        and not is_summary_query
+        and not is_sum_query
+        and not is_attended_query
+        and not _LEAVE_BALANCE_RE.search(q)
+    ):
         if "leave" in q:
             op_id = "leave_request.count"
         elif "wfh" in q or "work from home" in q:
@@ -313,6 +372,8 @@ def normalize_and_correct_plan(
         for key in ("group_by_field", "aggregate_function", "aggregate_field", "fields"):
             normalized.pop(key, None)
 
+
+    op_id = normalized.get("operation_id", op_id)
     entity = op_id.split(".")[0] if op_id else ""
     allowed_filters = ALLOWED_FILTERS.get(entity, set())
     filters = {
@@ -1040,10 +1101,18 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
         raw_plan = {"operation_id": f"{entity}.list", "filters": {}}
     logger.info("question=%r plan=%r", normalized_question, raw_plan)
 
-    if raw_plan.get("operation_id") not in set(OPERATION_DATE_FIELDS) | {"attendance.group_by"}:
+    approved_operations = set(
+        build_operation_registry(schema_name="public").keys()
+    )
+
+    if raw_plan.get("operation_id") not in approved_operations:
         if isinstance(model_error, ModelUnavailableError):
             raise model_error
-        return _text_result(question, UNSUPPORTED_MESSAGE, intent="unsupported")
+        return _text_result(
+            question,
+            UNSUPPORTED_MESSAGE,
+        intent="unsupported",
+    )
 
     try:
         plan, period = normalize_and_correct_plan(raw_plan, normalized_question, today)
@@ -1111,6 +1180,10 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
         "holiday.count": "holiday_lookup",
         "leave_request.count": "leave_status",
         "wfh_request.count": "wfh_status",
+        "leave_balance.list": "leave_balance",
+        "leave_balance.count": "leave_balance",
+        "leave_balance.sum": "leave_balance",
+        "leave_balance.group_by": "leave_balance",
     }
     intent = operation_to_intent.get(operation_id, "attendance_records")
 
@@ -1122,6 +1195,7 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
             "wfh_request": ("work-from-home request", "work-from-home requests"),
             "timesheet": ("timesheet record", "timesheet records"),
             "holiday": ("holiday", "holidays"),
+            "leave_balance": ("leave balance record", "leave balance records"),
         }
         singular, plural = nouns.get(entity, ("record", "records"))
         noun = singular if count == 1 else plural
@@ -1174,6 +1248,13 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
             hours, minutes = divmod(int(total), 60)
             field_name = "worked time" if field == "worked_minutes" else "overtime"
             answer = f"Your total {field_name}{date_ctx} was {hours} hours and {minutes} minutes ({int(total):,} minutes)."
+        elif field in {"allocated_days", "used_days", "pending_days"} and isinstance(total, (int, float)) and not isinstance(total, bool):
+            labels = {
+                "allocated_days": "allocated leave days",
+                "used_days": "used leave days",
+                "pending_days": "pending leave days",
+            }
+            answer = f"Your total {labels[field]} was {total:g}."
         else:
             answer = f"Your total for {field}{date_ctx} was {total}."
         return _result(question, answer, intent, period, False, data)
@@ -1203,8 +1284,58 @@ def run_llm_chat(question: str, employee_id: int) -> dict[str, Any]:
             message = "You don't have any pending timesheets."
         else:
             message = format_timesheet_response(timesheet_rows)
+    
+    if operation_id == "leave_balance.list":
+        if not data:
+            message = "No leave-balance records were found."
+        else:
+            lines = ["Your leave balance:"]
+            total_allocated = 0
+            total_used = 0
+            total_pending = 0
+
+            for row in data:
+                allocated = row.get("allocated_days") or 0
+                used = row.get("used_days") or 0
+                pending = row.get("pending_days") or 0
+                year = row.get("year", "unknown")
+                leave_type_names = {
+                    1: "Casual Leave",
+                    2: "Sick Leave",
+                    3: "Earned Leave",
+                    4: "Unpaid Leave",
+                }
+
+                leave_type_id = row.get("leave_type_id")
+                leave_type = leave_type_names.get(
+                    leave_type_id,
+                    f"Leave type {leave_type_id}",
+                )
+
+                total_allocated += allocated
+                total_used += used
+                total_pending += pending
+
+                lines.append(
+                     f"- {leave_type} ({year}): "
+                    f"{allocated:g} allocated, {used:g} used, "
+                    f"{pending:g} pending."
+                )
+
+            lines.append(
+                f"\nTotal: {total_allocated:g} allocated days, "
+                f"{total_used} used days, "
+                f"{total_pending} pending days."
+            )
+            message = "\n".join(lines)
+
     elif isinstance(data, list):
-        message = f"Found {len(data)} matching record(s)." if data else "No matching records were found."
+        message = (
+            f"Found {len(data)} matching record(s)."
+            if data
+            else "No matching records were found."
+        )
     else:
         message = "Your requested information was retrieved."
+
     return _result(question, message, intent, period, isinstance(data, list) and bool(data), data)
