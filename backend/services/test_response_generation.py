@@ -4,11 +4,15 @@ from unittest.mock import patch
 
 from backend.services.answer_builder import fmt_range
 from backend.services.llm_chat_service import (
+    _loan_component_phrase,
+    _loan_metric_field,
     count_response,
     format_timesheet_response,
     grouped_response,
     leave_type_response,
+    loan_amount_response,
     normalize_and_correct_plan,
+    run_llm_chat,
     sum_response,
     task_count_response,
 )
@@ -147,6 +151,104 @@ def test_multi_status_task_count_groups_by_status_without_status_filter():
     assert "status" not in grouped_plan["filters"]
     assert single_status_plan["operation_id"] == "task.count"
     assert single_status_plan["filters"]["status"] == "completed"
+
+
+def test_loan_component_and_metric_are_resolved_without_component_constants():
+    fields = ["total_amount", "deducted_amount", "remaining_amount"]
+    question = "What is the deducted amount for Penalty Deduction?"
+    metric = _loan_metric_field(question, fields)
+
+    assert metric == "deducted_amount"
+    assert _loan_component_phrase(question, metric) == "Penalty Deduction"
+    assert _loan_metric_field(
+        "What is the remaining amount for Emergency Loan?",
+        fields,
+    ) == "remaining_amount"
+
+
+def test_loan_amount_response_uses_database_value_and_missing_record_message():
+    assert loan_amount_response(
+        [{"component": "Emergency Loan", "remaining_amount": Decimal("1250.50")}],
+        "remaining_amount",
+        "Emergency Loan",
+    ) == "The remaining amount for Emergency Loan is 1,250.50."
+    assert loan_amount_response(
+        [],
+        "deducted_amount",
+        "Penalty Deduction",
+    ) == "No loan records were found for Penalty Deduction."
+
+
+def test_loan_amount_query_filters_component_and_returns_requested_metric():
+    loan_definition = {
+        "fields": [
+            "component",
+            "total_amount",
+            "deducted_amount",
+            "remaining_amount",
+        ],
+        "filters": ["employee_id", "managed_by_employee_id", "component"],
+        "identity_filters": {
+            "employee_id": "employee_id",
+            "managed_by_employee_id": "employee_id",
+        },
+        "aggregate_fields": [
+            "total_amount",
+            "deducted_amount",
+            "remaining_amount",
+        ],
+    }
+    registry = {
+        "loan_request.list": loan_definition,
+        "loan_request.sum": loan_definition,
+    }
+    component_result = {
+        "operation_id": "loan_request.list",
+        "entity": "loan_request",
+        "operation": "list",
+        "data": [{"component": "Penalty Deduction"}],
+    }
+    records_result = {
+        "operation_id": "loan_request.list",
+        "entity": "loan_request",
+        "operation": "list",
+        "data": [{
+            "component": "Penalty Deduction",
+            "deducted_amount": Decimal("250.00"),
+        }],
+    }
+
+    with (
+        patch(
+            "backend.services.llm_chat_service.get_query_plan",
+            return_value={"operation_id": "loan_request.list", "filters": {}},
+        ),
+        patch(
+            "backend.services.llm_chat_service._approved_operations",
+            return_value=frozenset({"loan_request.list"}),
+        ),
+        patch(
+            "backend.services.llm_chat_service.build_operation_registry",
+            return_value=registry,
+        ),
+        patch(
+            "backend.services.llm_chat_service._execute",
+            side_effect=[component_result, records_result],
+        ) as execute,
+    ):
+        response = run_llm_chat(
+            "What is the deducted amount for Penalty Deduction loan?",
+            employee_id=12,
+            organization_id=7,
+        )
+
+    final_plan = execute.call_args_list[-1].args[0]
+    assert final_plan["filters"]["component"] == "Penalty Deduction"
+    assert final_plan["fields"] == ["component", "deducted_amount"]
+    assert response["answer"] == (
+        "The deducted amount for Penalty Deduction is 250.00."
+    )
+    assert response["intent"] == "loan_lookup"
 
 
 def test_sum_answers_humanize_metrics_and_decimal_results():

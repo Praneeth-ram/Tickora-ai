@@ -719,8 +719,241 @@ def execute_query_plan(
             "data": [dict(row) for row in task_rows],
             "limit": limit,
         }
+    
+        # ---------------------------------------------------------
+    # LOAN REQUEST LIST:
+    # Join employees twice to retrieve requester and manager
+    # names and employee codes.
+    # ---------------------------------------------------------
+    if operation_id == "loan_request.list":
+        if organization_id is None:
+            raise QueryPlanError(
+                "Authenticated organization ID is required "
+                "for loan request queries."
+            )
 
-    # Enforce access scope using authenticated identity.
+        loan_alias = preparer.quote("lr")
+        employee_alias = preparer.quote("employee")
+        manager_alias = preparer.quote("manager")
+
+        loan_field_sql = {
+            "id": f"{loan_alias}.{preparer.quote('id')}",
+            "employee_id": f"{loan_alias}.{preparer.quote('employee_id')}",
+            "managed_by_employee_id": (
+                f"{loan_alias}.{preparer.quote('managed_by_employee_id')}"
+            ),
+            "component": f"{loan_alias}.{preparer.quote('component')}",
+            "mode": f"{loan_alias}.{preparer.quote('mode')}",
+            "total_amount": f"{loan_alias}.{preparer.quote('total_amount')}",
+            "deducted_amount": (
+                f"{loan_alias}.{preparer.quote('deducted_amount')}"
+            ),
+            "remaining_amount": (
+                f"{loan_alias}.{preparer.quote('remaining_amount')}"
+            ),
+            "installment_amount": (
+                f"{loan_alias}.{preparer.quote('installment_amount')}"
+            ),
+            "installments": (
+                f"{loan_alias}.{preparer.quote('installments')}"
+            ),
+            "installments_paid": (
+                f"{loan_alias}.{preparer.quote('installments_paid')}"
+            ),
+            "start_month": f"{loan_alias}.{preparer.quote('start_month')}",
+            "next_deduction": (
+                f"{loan_alias}.{preparer.quote('next_deduction')}"
+            ),
+            "remarks": f"{loan_alias}.{preparer.quote('remarks')}",
+            "status": f"{loan_alias}.{preparer.quote('status')}",
+            "loan_status": f"{loan_alias}.{preparer.quote('loan_status')}",
+            "created_at": f"{loan_alias}.{preparer.quote('created_at')}",
+        }
+
+        if any(
+            field not in loan_field_sql
+            for field in requested_fields
+        ):
+            raise QueryPlanError(
+                "Requested loan request field is not allowed."
+            )
+
+        loan_conditions = [
+            (
+                f"{loan_alias}.{preparer.quote('organization_id')} "
+                "= :authenticated_organization_id"
+            ),
+            (
+                "("
+                f"{loan_alias}.{preparer.quote('employee_id')} "
+                "= :authenticated_employee_id "
+                "OR "
+                f"{loan_alias}.{preparer.quote('managed_by_employee_id')} "
+                "= :authenticated_employee_id"
+                ")"
+            ),
+        ]
+
+        loan_params: dict[str, Any] = {
+            "authenticated_organization_id": organization_id,
+            "authenticated_employee_id": employee_id,
+            "query_limit": limit,
+        }
+
+        allowed_date_fields = (
+            definition.get("date_fields") or []
+        )
+
+        for field, value in filters.items():
+            quoted_field = (
+                f"{loan_alias}.{preparer.quote(field)}"
+            )
+
+            if isinstance(value, dict):
+                if field not in allowed_date_fields:
+                    raise QueryPlanError(
+                        "Range filters are allowed only "
+                        "on approved loan request date fields."
+                    )
+
+                if not value or set(value) - {"gte", "lte"}:
+                    raise QueryPlanError(
+                        "Date ranges accept only gte and lte."
+                    )
+
+                for bound, comparator in (
+                    ("gte", ">="),
+                    ("lte", "<="),
+                ):
+                    if bound not in value:
+                        continue
+
+                    param_name = f"loan_{field}_{bound}"
+
+                    loan_params[param_name] = _parse_date(
+                        value[bound],
+                        f"{field}.{bound}",
+                    )
+
+                    loan_conditions.append(
+                        f"CAST({quoted_field} AS DATE) "
+                        f"{comparator} :{param_name}"
+                    )
+
+                if (
+                    "gte" in value
+                    and "lte" in value
+                    and loan_params[f"loan_{field}_gte"]
+                    > loan_params[f"loan_{field}_lte"]
+                ):
+                    raise QueryPlanError(
+                        "Date range start must not be after end."
+                    )
+
+            else:
+                if value is None or isinstance(value, (dict, list)):
+                    raise QueryPlanError(
+                        f"Invalid value for filter {field}."
+                    )
+
+                if not isinstance(
+                    value,
+                    (str, int, float, bool, date, datetime),
+                ):
+                    raise QueryPlanError(
+                        f"Invalid value for filter {field}."
+                    )
+
+                if isinstance(value, str) and len(value) > 200:
+                    raise QueryPlanError(
+                        "Filter value is too long."
+                    )
+
+                loan_params[field] = value
+
+                if field == "component" and isinstance(value, str):
+                    loan_conditions.append(
+                        f"LOWER({quoted_field}) = LOWER(:{field})"
+                    )
+                else:
+                    loan_conditions.append(
+                        f"{quoted_field} = :{field}"
+                    )
+
+        selected_fields = [
+            (
+                f"{loan_field_sql[field]} "
+                f"AS {preparer.quote(field)}"
+            )
+            for field in requested_fields
+        ]
+
+        # Additional display fields for the frontend.
+        selected_fields.extend([
+            (
+                f"{employee_alias}.{preparer.quote('full_name')} "
+                f"AS {preparer.quote('employee_name')}"
+            ),
+            (
+                f"{employee_alias}.{preparer.quote('employee_code')} "
+                f"AS {preparer.quote('employee_code')}"
+            ),
+            (
+                f"{manager_alias}.{preparer.quote('full_name')} "
+                f"AS {preparer.quote('managed_by_name')}"
+            ),
+            (
+                f"{manager_alias}.{preparer.quote('employee_code')} "
+                f"AS {preparer.quote('managed_by_code')}"
+            ),
+        ])
+
+        loan_sql = (
+            f"SELECT {', '.join(selected_fields)} "
+            f"FROM {quoted_schema}."
+            f"{preparer.quote('loan_requests')} {loan_alias} "
+
+            f"LEFT JOIN {quoted_schema}."
+            f"{preparer.quote('employees')} {employee_alias} "
+
+            f"ON {employee_alias}.{preparer.quote('id')} = "
+            f"{loan_alias}.{preparer.quote('employee_id')} "
+
+            f"AND {employee_alias}.{preparer.quote('organization_id')} = "
+            f"{loan_alias}.{preparer.quote('organization_id')} "
+
+            f"LEFT JOIN {quoted_schema}."
+            f"{preparer.quote('employees')} {manager_alias} "
+
+            f"ON {manager_alias}.{preparer.quote('id')} = "
+            f"{loan_alias}.{preparer.quote('managed_by_employee_id')} "
+
+            f"AND {manager_alias}.{preparer.quote('organization_id')} = "
+            f"{loan_alias}.{preparer.quote('organization_id')} "
+
+            f"WHERE {' AND '.join(loan_conditions)} "
+
+            f"ORDER BY {loan_alias}.{preparer.quote('created_at')} "
+            "DESC NULLS LAST "
+
+            "LIMIT :query_limit"
+        )
+
+        with engine.connect() as connection:
+            loan_rows = connection.execute(
+                text(loan_sql),
+                loan_params,
+            ).mappings().all()
+
+        return {
+            "operation_id": operation_id,
+            "entity": definition["entity"],
+            "operation": operation,
+            "data": [dict(row) for row in loan_rows],
+            "limit": limit,
+        }
+
+        # Enforce access scope using authenticated identity.
     if definition["scope"] == "employee_id":
         conditions.append(
             f"{preparer.quote('employee_id')} "
@@ -742,13 +975,37 @@ def execute_query_plan(
         params["authenticated_organization_id"] = organization_id
 
         conditions.append(
-            f"("
+            "("
             f"{preparer.quote('assigned_to_employee_id')} "
             "= :authenticated_employee_id "
-            f"OR "
+            "OR "
             f"{preparer.quote('managed_by_employee_id')} "
             "= :authenticated_employee_id"
-            f")"
+            ")"
+        )
+        params["authenticated_employee_id"] = employee_id
+
+    elif definition["scope"] == "employee_manager":
+        if organization_id is None:
+            raise QueryPlanError(
+                "Authenticated organization ID is required "
+                "for loan request queries."
+            )
+
+        conditions.append(
+            f"{preparer.quote('organization_id')} "
+            "= :authenticated_organization_id"
+        )
+        params["authenticated_organization_id"] = organization_id
+
+        conditions.append(
+            "("
+            f"{preparer.quote('employee_id')} "
+            "= :authenticated_employee_id "
+            "OR "
+            f"{preparer.quote('managed_by_employee_id')} "
+            "= :authenticated_employee_id"
+            ")"
         )
         params["authenticated_employee_id"] = employee_id
 
@@ -847,9 +1104,18 @@ def execute_query_plan(
                     )
 
             params[field] = value
-            conditions.append(
-                f"{quoted_field} = :{field}"
-            )
+            if (
+                definition["entity"] == "loan_request"
+                and field == "component"
+                and isinstance(value, str)
+            ):
+                conditions.append(
+                    f"LOWER({quoted_field}) = LOWER(:{field})"
+                )
+            else:
+                conditions.append(
+                    f"{quoted_field} = :{field}"
+                )
 
     where_sql = (
         " WHERE " + " AND ".join(conditions)
@@ -869,9 +1135,14 @@ def execute_query_plan(
             aggregate_field
         )
 
+        record_count_sql = (
+            ", COUNT(*) AS record_count "
+            if definition["entity"] == "loan_request"
+            else ""
+        )
         sql = (
             f"SELECT COALESCE(SUM({quoted_aggregate}), 0) "
-            "AS total "
+            f"AS total{record_count_sql}"
             f"FROM {quoted_schema}.{quoted_table}"
             f"{where_sql}"
         )
@@ -948,6 +1219,8 @@ def execute_query_plan(
             "field": aggregate_field,
             "total": rows[0]["total"],
         }
+        if definition["entity"] == "loan_request":
+            data["record_count"] = int(rows[0]["record_count"])
 
     else:
         data = [

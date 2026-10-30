@@ -186,9 +186,58 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
             "managed_by_employee_id",
         ],
     },
+    "loan_requests": {
+        "entity": "loan_request",
+        "scope": "employee_manager",
+        "identity_filters": {
+            "employee_id": "employee_id",
+            "managed_by_employee_id": "employee_id",
+        },
+        "list_fields": [
+            "id",
+            "employee_id",
+            "managed_by_employee_id",
+            "component",
+            "mode",
+            "total_amount",
+            "deducted_amount",
+            "remaining_amount",
+            "installment_amount",
+            "installments",
+            "installments_paid",
+            "start_month",
+            "next_deduction",
+            "remarks",
+            "status",
+            "loan_status",
+            "created_at",
+        ],
+        "filter_fields": [
+            "employee_id",
+            "managed_by_employee_id",
+            "component",
+            "mode",
+            "status",
+            "loan_status",
+            "start_month",
+        ],
+        "date_field": "start_month",
+        "date_fields": ["start_month", "created_at", "next_deduction"],
+        "count_allowed": True,
+        "aggregate_fields": [
+            "total_amount",
+            "deducted_amount",
+            "remaining_amount",
+        ],
+        "group_by_fields": [
+            "status",
+            "loan_status",
+            "component",
+            "mode",
+        ], 
+    },
 }
-
-
+    
 def build_operation_registry(
     schema_name: str = "public",
 ) -> dict[str, dict[str, Any]]:
@@ -215,6 +264,13 @@ def build_operation_registry(
             "managed_by_employee_id",
         }.issubset(available):
             continue
+   
+        if scope == "employee_manager" and not {
+            "organization_id",
+            "employee_id",
+            "managed_by_employee_id",
+        }.issubset(available):
+            continue
 
         if scope == "organization_calendar":
             calendar_table = catalog.get("holiday_calendars")
@@ -231,6 +287,7 @@ def build_operation_registry(
         if scope not in {
             "employee_id",
             "employee_task",
+            "employee_manager",
             "global_read",
             "organization_calendar",
         }:

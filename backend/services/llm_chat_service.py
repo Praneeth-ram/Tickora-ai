@@ -4,7 +4,7 @@ import os
 import re
 from collections import Counter
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -186,6 +186,19 @@ _PAYROLL_RE = re.compile(
     r"(?:salary|pay)\s+(?:credited|deposited))\b",
     re.IGNORECASE,
 )
+
+def _is_payroll_query(question: str) -> bool:
+    q = question.lower()
+
+    is_loan_query = bool(
+        re.search(
+            r"\bloans?\b|\bpenalty\s+deduction\b",
+            q,
+        )
+    )
+
+    return bool(_PAYROLL_RE.search(q) and not is_loan_query)
+
 _WFH_RE = re.compile(r"\bwfh\b|\bwork\s+from\s+home\b")
 _LEAVE_RE = re.compile(r"\bleaves?\b")
 _LEAVE_TYPE_LOOKUP_RE = re.compile(
@@ -216,6 +229,8 @@ def rule_based_plan(question: str) -> dict[str, Any]:
         entity = "leave_balance"
     elif _LEAVE_RE.search(q):
         entity = "leave_request"
+    elif re.search(r"\b(?:loans?|penalty\s+deduction)\b", q):
+        entity = "loan_request"
     elif _ATTENDANCE_RE.search(q):
         entity = "attendance"
     else:
@@ -274,7 +289,15 @@ ALLOWED_FILTERS = {
     "holiday": {"holiday_type"},
     "leave_balance": {"year", "leave_type_id"},
     "payroll_summary": {"period_start", "period_end"},
-    "task": {"status", "project_id", "assigned_to_employee_id", "managed_by_employee_id"},
+    "task": {
+        "status", "project_id", "assigned_to_employee_id",
+        "managed_by_employee_id",
+    },
+    "loan_request": {
+        "status", "loan_status", "component",
+        "mode", "start_month", "employee_id",
+        "managed_by_employee_id",
+    },
 }
 
 
@@ -306,6 +329,78 @@ def question_wants_list(question: str) -> bool:
 def _last_day_of_month(d: date) -> date:
     nxt = (d.replace(day=28) + timedelta(days=4)).replace(day=1)
     return nxt - timedelta(days=1)
+
+
+def _loan_metric_field(
+    question: str,
+    aggregate_fields: list[str],
+) -> str | None:
+    """Resolve a requested loan amount field from the approved field names."""
+    q = question.lower()
+    matches: list[tuple[int, str]] = []
+    for field in aggregate_fields:
+        words = field.removesuffix("_amount").replace("_", " ")
+        variants = {words}
+        if words.endswith("ted"):
+            variants.add(f"{words[:-3]}tion")
+
+        for variant in variants:
+            for phrase in (f"{variant} amount", f"amount {variant}"):
+                match = re.search(r"\b" + re.escape(phrase) + r"\b", q)
+                if match:
+                    matches.append((match.start(), field))
+    return min(matches)[1] if matches else None
+
+
+def _loan_component_phrase(
+    question: str,
+    metric_field: str | None,
+) -> str | None:
+    """Extract the component name without including the requested metric."""
+    q = " ".join(question.strip().rstrip("?.!").split())
+
+    match = re.search(
+        r"\b(?:component(?:\s+is)?|for|on|of|from)\s+"
+        r"(?:(?:my|the)\s+)?(?P<component>[^,;?.!]+)$",
+        q,
+        re.IGNORECASE,
+    )
+
+    if match is None:
+        match = re.search(
+            r"\b(?:my|the)\s+(?P<component>[\w &'/-]*?\s+loan)\b",
+            q,
+            re.IGNORECASE,
+        )
+
+    if match is None:
+        return None
+
+    component = match.group("component").strip(" '\"")
+
+    # Remove the requested metric if it was included in the extracted phrase.
+    if metric_field:
+        metric_label = metric_field.replace("_", " ")
+        component = re.sub(
+            r"\s+" + re.escape(metric_label) + r"$",
+            "",
+            component,
+            flags=re.IGNORECASE,
+        ).strip()
+
+    component = re.sub(
+        r"^(?:(?:my|the)\s+)?loan\s+",
+        "",
+        component,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    if component.casefold() in {
+        "loan", "loans", "loan request", "loan requests",
+    }:
+        return None
+
+    return component or None
 
 
 def normalize_and_correct_plan(
@@ -347,8 +442,10 @@ def normalize_and_correct_plan(
         r"\b(?:clock[- ]in|check[- ]in|punch[- ]in|clock[- ]out|check[- ]out|punch[- ]out)\b", q
     ))
     is_status_query = bool(re.search(r"\bstatus\b", q)) and not re.search(
-        r"\b(?:leave|wfh|work from home|timesheet|holiday)\b", q
+    r"\b(?:leave|wfh|work from home|timesheet|holiday|loan|task)\b",
+    q,
     )
+
     if (is_clock_query or is_status_query) and not is_summary_query:
         op_id = "attendance.list"
         normalized["operation_id"] = op_id
@@ -396,6 +493,7 @@ def normalize_and_correct_plan(
         "wfh_request": {"pending", "approved", "rejected", "cancelled"},
         "timesheet": {"draft", "submitted", "approved", "rejected"},
         "task": {"pending", "completed", "in_progress", "cancelled"},
+        "loan_request": {"pending", "approved", "rejected", "cancelled"},
     }
     status_keywords = {
         "late": "late", "absent": "absent", "present": "present",
@@ -477,6 +575,57 @@ def normalize_and_correct_plan(
                 "aggregate_field",
             ):
                 normalized.pop(key, None)
+
+            # Correct Loan Request routing independently of the model's initial choice.
+    is_loan_request_query = bool(
+        re.search(r"\b(?:loan|loans)\b|\bpenalty\s+deduction\b", q)
+    )
+
+    if is_loan_request_query:
+        loan_definition = registry.get("loan_request.list", {})
+        loan_aggregate_fields = registry.get(
+            "loan_request.sum", {}
+        ).get("aggregate_fields", [])
+        loan_metric_field = _loan_metric_field(
+            question,
+            loan_aggregate_fields,
+        )
+        is_loan_count_query = bool(
+            re.search(r"\b(?:how\s+many|count|number\s+of)\b", q)
+        )
+
+        is_loan_aggregate_query = bool(
+            re.search(r"\b(?:sum|total|aggregate)\b", q)
+        )
+
+        if is_loan_aggregate_query:
+            op_id = "loan_request.sum"
+        elif is_loan_count_query:
+            op_id = "loan_request.count"
+        else:
+            op_id = "loan_request.list"
+
+        normalized["operation_id"] = op_id
+
+        for key in (
+            "group_by_field",
+            "aggregate_function",
+            "fields",
+        ):
+            normalized.pop(key, None)
+
+        if op_id == "loan_request.sum":
+            if loan_metric_field:
+                normalized["aggregate_field"] = loan_metric_field
+        else:
+            normalized.pop("aggregate_field", None)
+            if (
+                op_id == "loan_request.list"
+                and loan_metric_field
+                and loan_metric_field in loan_definition.get("fields", [])
+            ):
+                normalized["fields"] = ["component", loan_metric_field]
+            
     op_id = normalized.get("operation_id", op_id)
     entity = op_id.split(".")[0] if op_id else ""
     allowed_filters = ALLOWED_FILTERS.get(entity, set())
@@ -509,6 +658,26 @@ def normalize_and_correct_plan(
                 continue
 
         filters[key] = value
+    
+    # Prevent a loan component name from being interpreted as loan_status.
+    if op_id.startswith("loan_request."):
+        loan_status = filters.get("loan_status")
+        normalized_status = (
+            loan_status.strip().lower()
+            if isinstance(loan_status, str)
+            else None
+        )
+
+        if normalized_status not in {
+            "active",
+            "closed",
+            "settled",
+            "paid",
+            "pending",
+            "approved",
+            "rejected",
+        }:
+            filters.pop("loan_status", None)
 
     explicit_status = None
     for word, status_value in status_keywords.items():
@@ -524,7 +693,7 @@ def normalize_and_correct_plan(
             "leave_request.list", "leave_request.count",
             "wfh_request.list", "wfh_request.count",
             "timesheet.list", "timesheet.count",
-            "task.list", "task.count", "task.sum", "task.group_by",
+            "task.list", "task.count", "task.sum", "task.group_by","loan_request.list", "loan_request.count",
         } and not (
             op_id in {"attendance.group_by", "task.group_by"}
             and normalized.get("group_by_field") == "status"
@@ -543,6 +712,38 @@ def normalize_and_correct_plan(
 
     if is_attended_query:
         filters.pop("status", None)
+
+    # Resolve Loan Request identity from the authenticated employee.
+    # Default loan queries refer to the employee's own requests.
+    if op_id.startswith("loan_request."):
+        manager_intent = bool(
+            re.search(
+                r"\b(?:managed|manage|managing)\s+by\s+me\b"
+                r"|\b(?:what|which)\s+loan\s+requests?\s+"
+                r"(?:am\s+i\s+)?managing\b"
+                r"|\bhow\s+many\s+loan\s+requests?\s+"
+                r"am\s+i\s+managing\b"
+                r"|\bloan\s+requests?\s+i\s+manage\b",
+                q,
+            )
+        )
+
+        if manager_intent:
+            context = identity_filters.get(
+                "managed_by_employee_id"
+            )
+            if context:
+                filters.pop("employee_id", None)
+                filters["managed_by_employee_id"] = {
+                    "$context": context
+                }
+        else:
+            context = identity_filters.get("employee_id")
+            if context:
+                filters.pop("managed_by_employee_id", None)
+                filters["employee_id"] = {
+                    "$context": context
+                }
 
     if op_id.startswith("task."):
         if re.search(r"\bassigned(?:\s+to)?\s+me\b", q):
@@ -677,25 +878,168 @@ def format_timesheet_response(data: Any) -> str:
     return "\n".join(lines)
 
 
-def count_response(entity: str, count: int, status: str | None, span: str) -> str:
+
+def count_response(
+    entity: str,
+    count: int,
+    status: str | None,
+    span: str,
+    filters: dict[str, Any] | None = None,
+    question: str = "",
+) -> str:
+    """Generate a meaningful count response from the query result and filters."""
+
     nouns = {
         "attendance": ("attendance record", "attendance records"),
         "leave_request": ("leave request", "leave requests"),
-        "wfh_request": ("work-from-home request", "work-from-home requests"),
+        "wfh_request": (
+            "work-from-home request",
+            "work-from-home requests",
+        ),
         "timesheet": ("timesheet", "timesheets"),
         "holiday": ("holiday", "holidays"),
         "leave_balance": ("leave balance", "leave balances"),
         "leave_type": ("leave type", "leave types"),
+        "loan_request": ("loan request", "loan requests"),
+        "task": ("task", "tasks"),
     }
+
     singular, plural = nouns.get(entity, ("record", "records"))
     noun = singular if count == 1 else plural
-    status_text = f"{status.replace('_', ' ').lower()} " if status else ""
+
+    filters = filters or {}
+    q = question.lower()
+
+    status_text = (
+        status.replace("_", " ").strip().lower()
+        if status
+        else ""
+    )
+
+    loan_status = filters.get("loan_status")
+    loan_status_text = (
+        str(loan_status).replace("_", " ").strip().lower()
+        if loan_status
+        else ""
+    )
+
+    qualifiers = [
+        value for value in (status_text, loan_status_text) if value
+    ]
+    description = " ".join(qualifiers + [noun])
+
     where = f" {span}" if span else ""
+
+    # Detect manager-scoped Loan Request counts using query metadata.
+    managed_by = filters.get("managed_by_employee_id")
+
+    is_managed_by_self = (
+        managed_by == {"$context": "employee_id"}
+        or (
+            isinstance(managed_by, int)
+            and not isinstance(managed_by, bool)
+        )
+    )
+
+    if entity == "loan_request" and is_managed_by_self:
+        if count == 0:
+            return f"You are not managing any {plural}{where}."
+
+        return (
+            f"You are managing {count} {description}{where}."
+        )
+
+    # Handle normal personal Loan Request counts.
+    employee_filter = filters.get("employee_id")
+    is_personal_loan_query = (
+        entity == "loan_request"
+        and employee_filter == {"$context": "employee_id"}
+    )
+
+    if is_personal_loan_query:
+        if count == 0:
+            return f"You have no {description}{where}."
+
+        return f"You have {count} {description}{where}."
+
+    # Generic entity count responses.
     if count == 0:
-        return f"No {status_text}{plural} were found{where}."
+        return f"No {description}{where} were found."
+
     if entity in {"holiday", "leave_type"}:
-        return f"There {'is' if count == 1 else 'are'} {count} {status_text}{noun}{where}."
-    return f"You have {count} {status_text}{noun}{where}."
+        return (
+            f"There {'is' if count == 1 else 'are'} "
+            f"{count} {description}{where}."
+        )
+
+    return f"You have {count} {description}{where}."
+
+
+def loan_amount_response(
+    data: Any,
+    metric_field: str,
+    component: str | None,
+    span: str = "",
+) -> str:
+    """Format database loan amount values for a requested metric."""
+    metric_label = metric_field.replace("_", " ")
+    where = f" {span}" if span else ""
+    if isinstance(data, dict):
+        if data.get("record_count", 0) == 0:
+            return _no_loan_records_message(component)
+        amount = data.get("total")
+        if amount is None:
+            return _no_loan_amount_message(component, metric_label)
+        return (
+            f"The {metric_label} for {component or 'your loans'} "
+            f"is {_format_loan_amount(amount)}{where}."
+        )
+
+    rows = data if isinstance(data, list) else []
+    if not rows:
+        return _no_loan_records_message(component)
+
+    answers = []
+    for row in rows:
+        row_component = str(row.get("component") or component or "your loan")
+        amount = row.get(metric_field)
+        if amount is None:
+            answers.append(
+                f"No {metric_label} is recorded for {row_component}."
+            )
+        else:
+            answers.append(
+                f"The {metric_label} for {row_component} is "
+                f"{_format_loan_amount(amount)}{where}."
+            )
+    return " ".join(answers)
+
+
+def _format_loan_amount(value: Any) -> str:
+    if isinstance(value, bool):
+        raise ModelServiceError("The loan query returned a non-numeric amount.")
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ModelServiceError(
+            "The loan query returned a non-numeric amount."
+        ) from exc
+    return format(amount, ",.2f")
+
+
+def _no_loan_records_message(component: str | None) -> str:
+    if component:
+        return f"No loan records were found for {component}."
+    return "No loan records were found."
+
+
+def _no_loan_amount_message(
+    component: str | None,
+    metric_label: str,
+) -> str:
+    if component:
+        return f"No {metric_label} is recorded for {component}."
+    return f"No {metric_label} is recorded for your loans."
 
 
 def task_count_response(
@@ -2047,7 +2391,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
     # cannot send them to leave_balance.sum or another operation.
     model_error: ModelServiceError | None = None
 
-    if _PAYROLL_RE.search(normalized_question):
+    if _is_payroll_query(normalized_question):
         raw_plan = {
             "operation_id": "payroll_summary.list",
             "filters": {},
@@ -2067,7 +2411,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
     # Route payroll and salary questions to the registered operation.
     # The executor applies employee and organization scope from
     # the authenticated request context.
-    if _PAYROLL_RE.search(normalized_question):
+    if _is_payroll_query(normalized_question):
         raw_plan = {
             "operation_id": "payroll_summary.list",
             "filters": {},
@@ -2086,6 +2430,12 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
 
     try:
         plan, period = normalize_and_correct_plan(raw_plan, normalized_question, today)
+        print("\n========== TICKORA NORMALIZED PLAN ==========")
+        print("Question:", normalized_question)
+        print("Normalized operation:", plan.get("operation_id"))
+        print("Normalized filters:", plan.get("filters"))
+        print("Resolved period:", period)
+        print("=============================================\n")
     
         # Resolve self-referential task queries from authenticated identity.
         if plan.get("operation_id", "").startswith("task."):
@@ -2119,6 +2469,63 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
                 task_filters["managed_by_employee_id"] = employee_id
 
             plan["filters"] = task_filters
+
+        if plan.get("operation_id", "").startswith("loan_request."):
+            loan_filters = dict(plan.get("filters", {}))
+            loan_metric = (
+                plan.get("aggregate_field")
+                if plan.get("operation_id") == "loan_request.sum"
+                else _loan_metric_field(
+                    normalized_question,
+                    plan.get("fields", []),
+                )
+            )
+            component_phrase = _loan_component_phrase(
+                normalized_question,
+                loan_metric,
+            )
+
+            if "component" not in loan_filters and (
+                component_phrase or loan_metric
+            ):
+                component_result = _execute(
+                    {
+                        "operation_id": "loan_request.list",
+                        "fields": ["component"],
+                        "filters": {
+                            key: value
+                            for key, value in loan_filters.items()
+                            if key != "component"
+                        },
+                    },
+                    employee_id,
+                    limit=100,
+                    organization_id=organization_id,
+                )
+                components = {
+                    " ".join(str(row.get("component") or "").split())
+                    for row in component_result.get("data", [])
+                    if isinstance(row, dict) and row.get("component")
+                }
+                matching_component = next(
+                    (
+                        component
+                        for component in sorted(
+                            components, key=len, reverse=True
+                        )
+                        if re.search(
+                            r"(?<!\w)" + re.escape(component) + r"(?!\w)",
+                            normalized_question,
+                            re.IGNORECASE,
+                        )
+                    ),
+                    None,
+                )
+                selected_component = matching_component or component_phrase
+                if selected_component:
+                    loan_filters["component"] = selected_component
+
+            plan["filters"] = loan_filters
 
     except InvalidDateError as exc:
         answer = f"'{exc}' is not a valid date. Please check the day and month, for example: 19 October 2026."
@@ -2196,6 +2603,9 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         "task.count": "task_lookup",
         "task.sum": "task_lookup",
         "task.group_by": "task_lookup",
+        "loan_request.list": "loan_lookup",
+        "loan_request.count": "loan_lookup",
+        "loan_request.sum": "loan_lookup",
     }
     intent = operation_to_intent.get(operation_id, "attendance_records")
 
@@ -2213,11 +2623,13 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             )
         else:
             answer = count_response(
-                entity,
-                int(count),
-                str(status_filter) if status_filter else None,
-                span,
-            )
+                entity=entity,
+                count=int(count),
+                status=status_filter,
+                span=span,
+                filters=plan.get("filters", {}),
+        question=normalized_question,
+    )
         return _result(question, answer, intent, period, False, data)
 
     if operation == "group_by":
@@ -2266,6 +2678,14 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         field = data.get("field", "value") if isinstance(data, dict) else "value"
         total = data.get("total") if isinstance(data, dict) else None
         span = period_phrase(as_date(period.get("start_date")), as_date(period.get("end_date")))
+        if operation_id == "loan_request.sum":
+            answer = loan_amount_response(
+                data,
+                field,
+                plan.get("filters", {}).get("component"),
+                span,
+            )
+            return _result(question, answer, intent, period, False, data)
         answer = sum_response(field, total, span)
         return _result(question, answer, intent, period, False, data)
 
@@ -2331,6 +2751,28 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             message = "You don't have any pending timesheets."
         else:
             message = format_timesheet_response(timesheet_rows)
+
+    elif operation_id == "loan_request.list":
+        loan_metric = _loan_metric_field(
+            normalized_question,
+            plan.get("fields", []),
+        )
+        if loan_metric:
+            message = loan_amount_response(
+                data,
+                loan_metric,
+                plan.get("filters", {}).get("component"),
+                period_phrase(
+                    as_date(period.get("start_date")),
+                    as_date(period.get("end_date")),
+                ),
+            )
+            return _result(question, message, intent, period, False, [])
+        message = (
+            "Your matching records are listed below."
+            if data
+            else "No matching records were found."
+        )
 
     elif operation_id == "leave_type.list":
         message = leave_type_response(data if isinstance(data, list) else [])
