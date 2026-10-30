@@ -1,8 +1,5 @@
-
 from typing import Any
-
 from backend.services.schema_catalog import discover_schema
-
 
 # Explicit allowlist: schema discovery alone never grants access.
 ENTITY_POLICIES: dict[str, dict[str, Any]] = {
@@ -101,7 +98,7 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
     },
     "holidays": {
         "entity": "holiday",
-        "scope": "global_read",
+        "scope": "organization_calendar",
         "list_fields": [
             "holiday_date",
             "name",
@@ -150,6 +147,45 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
         "date_fields": [],
         "count_allowed": True,
     },
+    "tasks": {
+        "entity": "task",
+        "scope": "employee_task",
+        "identity_filters": {
+            "assigned_to_employee_id": "employee_id",
+            "managed_by_employee_id": "employee_id",
+        },
+        "list_fields": [
+            "id",
+            "title",
+            "project_id",
+            "task_date",
+            "description",
+            "start_time",
+            "end_time",
+            "status",
+            "assigned_to_employee_id",
+            "managed_by_employee_id",
+            "performance_score",
+        ],
+        "filter_fields": [
+            "task_date",
+            "status",
+            "project_id",
+            "assigned_to_employee_id",
+            "managed_by_employee_id",
+        ],
+        "date_field": "task_date",
+        "count_allowed": True,
+        "aggregate_fields": [
+            "performance_score",
+        ],
+        "group_by_fields": [
+            "status",
+            "project_id",
+            "assigned_to_employee_id",
+            "managed_by_employee_id",
+        ],
+    },
 }
 
 
@@ -173,7 +209,31 @@ def build_operation_registry(
         if scope == "employee_id" and "employee_id" not in available:
             continue
 
-        if scope not in {"employee_id", "global_read"}:
+        if scope == "employee_task" and not {
+            "organization_id",
+            "assigned_to_employee_id",
+            "managed_by_employee_id",
+        }.issubset(available):
+            continue
+
+        if scope == "organization_calendar":
+            calendar_table = catalog.get("holiday_calendars")
+            if calendar_table is None:
+                continue
+            calendar_columns = {
+                column["name"] for column in calendar_table["columns"]
+            }
+            if not {"id", "organization_id"}.issubset(calendar_columns):
+                continue
+            if not {"calendar_id", "holiday_date"}.issubset(available):
+                continue
+
+        if scope not in {
+            "employee_id",
+            "employee_task",
+            "global_read",
+            "organization_calendar",
+        }:
             continue
 
         fields = [
@@ -186,6 +246,12 @@ def build_operation_registry(
             for field in policy["filter_fields"]
             if field in available
         ]
+        
+        identity_filters = {
+            field: context
+            for field, context in policy.get("identity_filters", {}).items()
+            if field in filters
+        }
 
         if not fields:
             continue
@@ -213,6 +279,7 @@ def build_operation_registry(
             "scope": scope,
             "fields": fields,
             "filters": filters,
+            "identity_filters": identity_filters,
             "date_field": date_field,
             "date_fields": date_fields,
             "aggregate_fields": [
@@ -235,6 +302,7 @@ def build_operation_registry(
                 "scope": scope,
                 "fields": [],
                 "filters": filters,
+                "identity_filters": identity_filters,
                 "date_field": date_field,
                 "date_fields": date_fields,
                 "aggregate_fields": [],
@@ -260,6 +328,7 @@ def build_operation_registry(
                 "scope": scope,
                 "fields": [],
                 "filters": filters,
+                "identity_filters": identity_filters,
                 "date_field": date_field,
                 "aggregate_fields": aggregate_fields,
                 "group_by_fields": group_by_fields,
@@ -273,6 +342,7 @@ def build_operation_registry(
                 "scope": scope,
                 "fields": [],
                 "filters": filters,
+                "identity_filters": identity_filters,
                 "date_field": date_field,
                 "aggregate_fields": aggregate_fields,
                 "group_by_fields": group_by_fields,

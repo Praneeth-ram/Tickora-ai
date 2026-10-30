@@ -13,7 +13,7 @@ def main():
     with engine.connect() as connection:
         employee_id = connection.execute(
             text("""
-                SELECT employee_id
+                SELECT id AS employee_id
                 FROM public.employees
                 WHERE employee_code = :code
             """),

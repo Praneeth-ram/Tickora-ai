@@ -1,3 +1,4 @@
+from huggingface_hub.inference._generated.types import document_question_answering
 import logging
 import os
 import re
@@ -65,6 +66,10 @@ OPERATION_DATE_FIELDS = {
     "timesheet.count": "period_start",
     "holiday.list": "holiday_date",
     "holiday.count": "holiday_date",
+    "task.list": "task_date",
+    "task.count": "task_date",
+    "task.sum": "task_date",
+    "task.group_by": "task_date",
 }
 DEFAULT_MONTH_OPERATIONS = {"attendance.list", "attendance.group_by", "attendance.sum"}
 ALL_DATE_FILTER_KEYS = {
@@ -174,7 +179,8 @@ def get_query_plan(question: str) -> dict[str, Any]:
 _HOLIDAY_RE = re.compile(r"\bholidays?\b")
 _PAYROLL_RE = re.compile(
     r"\b(?:payroll|salary|salaries|gross\s+pay|net\s+pay|"
-    r"deductions?|take[- ]home\s+pay|pay\s*slips?|payslips?|"
+    r"deductions?|deductible|deducted|take[- ]home\s+pay|"
+    r"pay\s*slips?|payslips?|"
     r"credited\s+to\s+(?:my\s+)?account|"
     r"amount\s+(?:received|credited)|"
     r"(?:salary|pay)\s+(?:credited|deposited))\b",
@@ -182,6 +188,15 @@ _PAYROLL_RE = re.compile(
 )
 _WFH_RE = re.compile(r"\bwfh\b|\bwork\s+from\s+home\b")
 _LEAVE_RE = re.compile(r"\bleaves?\b")
+_LEAVE_TYPE_LOOKUP_RE = re.compile(
+    r"\b(?:leave\s+types?|types?\s+of\s+leave)\b",
+    re.IGNORECASE,
+)
+_LEAVE_TYPE_AVAILABILITY_RE = re.compile(
+    r"\b(?:available|offered|provided|can\s+i\s+use|"
+    r"do\s+i\s+have\s+access|list|show|display)\b",
+    re.IGNORECASE,
+)
 _ATTENDANCE_RE = re.compile(
     r"\battendance\b|\bclock\b|\bcheck[- ]?(?:in|out)\b|\bpunch\b|\bstatus\b|\blate\b|"
     r"\babsent\b|\bpresent\b|\bhalf[- ]day\b|\bovertime\b|\bworked\b|\bhours\b"
@@ -259,6 +274,7 @@ ALLOWED_FILTERS = {
     "holiday": {"holiday_type"},
     "leave_balance": {"year", "leave_type_id"},
     "payroll_summary": {"period_start", "period_end"},
+    "task": {"status", "project_id", "assigned_to_employee_id", "managed_by_employee_id"},
 }
 
 
@@ -372,28 +388,127 @@ def normalize_and_correct_plan(
         normalized["operation_id"] = op_id
         for key in ("group_by_field", "aggregate_function", "aggregate_field", "fields"):
             normalized.pop(key, None)
-
-    op_id = normalized.get("operation_id", op_id)
-    entity = op_id.split(".")[0] if op_id else ""
-    allowed_filters = ALLOWED_FILTERS.get(entity, set())
-    filters = {
-        key: value
-        for key, value in (normalized.get("filters") or {}).items()
-        if key in allowed_filters and key not in ALL_DATE_FILTER_KEYS and not isinstance(value, dict)
-    }
-
+    
+        # Correct task routing independently of the model's initial choice.
     valid_statuses_by_entity = {
         "attendance": {"present", "late", "absent", "half_day", "on_leave", "work_from_home"},
         "leave_request": {"pending", "approved", "rejected", "cancelled"},
         "wfh_request": {"pending", "approved", "rejected", "cancelled"},
         "timesheet": {"draft", "submitted", "approved", "rejected"},
+        "task": {"pending", "completed", "in_progress", "cancelled"},
     }
     status_keywords = {
         "late": "late", "absent": "absent", "present": "present",
         "half day": "half_day", "half-day": "half_day", "pending": "pending",
         "approved": "approved", "rejected": "rejected", "cancelled": "cancelled",
         "draft": "draft", "submitted": "submitted",
+        "in progress": "in_progress","completed": "completed"
     }
+
+    is_task_query = bool(re.search(r"\btasks?\b", q))
+    task_statuses = {
+        status_value
+        for word, status_value in status_keywords.items()
+        if status_value in valid_statuses_by_entity["task"]
+        and re.search(r"\b" + re.escape(word) + r"\b", q)
+    }
+    is_multi_status_task_count = (
+        is_task_query and is_count_query and len(task_statuses) > 1
+    )
+    registry = build_operation_registry()
+    task_sum_definition = registry.get("task.sum", {})
+    task_aggregate_fields = task_sum_definition.get("aggregate_fields", [])
+    task_aggregate_field = next(
+        (
+            field
+            for field in task_aggregate_fields
+            if re.search(
+                r"\b" + re.escape(field.replace("_", " ")).replace(r"\ ", r"\s+") + r"s?\b",
+                q,
+            )
+        ),
+        None,
+    )
+    has_task_sum_intent = bool(re.search(r"\b(?:sum|aggregate)\b", q))
+    if (
+        is_task_query
+        and has_task_sum_intent
+        and task_aggregate_field is None
+        and len(task_aggregate_fields) == 1
+    ):
+        task_aggregate_field = task_aggregate_fields[0]
+    asks_task_sum = bool(
+        task_aggregate_field
+        and (
+            has_task_sum_intent
+            or re.search(r"\b(?:total|combined|overall)\b", q)
+        )
+    )
+
+    if is_task_query:
+        if is_multi_status_task_count:
+            op_id = "task.group_by"
+            normalized.update({
+                "operation_id": op_id,
+                "group_by_field": "status",
+                "aggregate_function": "count",
+            })
+            for key in ("fields", "aggregate_field"):
+                normalized.pop(key, None)
+        elif is_count_query:
+            op_id = "task.count"
+        elif asks_task_sum or op_id == "task.sum":
+            op_id = "task.sum"
+        else:
+            op_id = "task.list"
+
+        normalized["operation_id"] = op_id
+
+        if op_id == "task.sum":
+            if task_aggregate_field:
+                normalized["aggregate_field"] = task_aggregate_field
+            for key in ("fields", "group_by_field", "aggregate_function"):
+                normalized.pop(key, None)
+        elif op_id == "task.count":
+            for key in (
+                "fields",
+                "group_by_field",
+                "aggregate_function",
+                "aggregate_field",
+            ):
+                normalized.pop(key, None)
+    op_id = normalized.get("operation_id", op_id)
+    entity = op_id.split(".")[0] if op_id else ""
+    allowed_filters = ALLOWED_FILTERS.get(entity, set())
+    allowed_filters = ALLOWED_FILTERS.get(entity, set())
+    # Read identity-reference rules from the approved operation registry.
+    # Read identity-reference rules from the approved operation registry.
+    definition = registry.get(op_id, {})
+    identity_filters = definition.get("identity_filters", {})
+
+    filters = {}
+    for key, value in (normalized.get("filters") or {}).items():
+        if key not in allowed_filters or key in ALL_DATE_FILTER_KEYS:
+            continue
+
+        # Convert self-references only for fields explicitly approved by metadata.
+        if key in identity_filters and isinstance(value, str):
+            if value.strip().lower() in {
+                "me", "myself", "my", "current user", "employee_id",
+            }:
+                filters[key] = {"$context": identity_filters[key]}
+                continue
+
+    # Preserve only a valid, registry-approved structured identity reference.
+        if isinstance(value, dict):
+            if (
+                key in identity_filters
+                and value == {"$context": identity_filters[key]}
+            ):
+                filters[key] = value   
+                continue
+
+        filters[key] = value
 
     explicit_status = None
     for word, status_value in status_keywords.items():
@@ -409,10 +524,17 @@ def normalize_and_correct_plan(
             "leave_request.list", "leave_request.count",
             "wfh_request.list", "wfh_request.count",
             "timesheet.list", "timesheet.count",
-        } and not (op_id == "attendance.group_by" and normalized.get("group_by_field") == "status"):
+            "task.list", "task.count", "task.sum", "task.group_by",
+        } and not (
+            op_id in {"attendance.group_by", "task.group_by"}
+            and normalized.get("group_by_field") == "status"
+        ):
             filters["status"] = explicit_status
     else:
         # The user named no status, so drop any status filter the model added.
+        filters.pop("status", None)
+
+    if op_id == "task.group_by" and normalized.get("group_by_field") == "status":
         filters.pop("status", None)
 
     entity_statuses = valid_statuses_by_entity.get(entity)
@@ -421,6 +543,20 @@ def normalize_and_correct_plan(
 
     if is_attended_query:
         filters.pop("status", None)
+
+    if op_id.startswith("task."):
+        if re.search(r"\bassigned(?:\s+to)?\s+me\b", q):
+            context = identity_filters.get("assigned_to_employee_id")
+            if context:
+                filters["assigned_to_employee_id"] = {"$context": context}
+        elif re.search(
+            r"\b(?:manage|managing|managed)\s+by\s+me\b"
+            r"|\bwhat\s+tasks\s+am\s+i\s+managing\b",
+            q,
+        ):
+            context = identity_filters.get("managed_by_employee_id")
+            if context:
+                filters["managed_by_employee_id"] = {"$context": context}
 
     date_field = OPERATION_DATE_FIELDS.get(op_id)
     if op_id.startswith("timesheet.") and SUBMITTED_DATE_RE.search(q):
@@ -434,7 +570,27 @@ def normalize_and_correct_plan(
             if date_range[0] < today:
                 date_range = (today, date_range[1])
         if date_field:
-            filters[date_field] = {"gte": date_range[0].isoformat(), "lte": date_range[1].isoformat()}
+            exclusive_bound = None
+            if date_field == "task_date" and date_range[0] == date_range[1]:
+                match = re.search(r"\b(after|before)\b", q)
+                if match:
+                    exclusive_bound = match.group(1)
+
+            if exclusive_bound == "after":
+                filters[date_field] = {
+                    "gte": (date_range[1] + timedelta(days=1)).isoformat()
+                }
+                date_range = None
+            elif exclusive_bound == "before":
+                filters[date_field] = {
+                    "lte": (date_range[0] - timedelta(days=1)).isoformat()
+                }
+                date_range = None
+            else:
+                filters[date_field] = {
+                    "gte": date_range[0].isoformat(),
+                    "lte": date_range[1].isoformat(),
+                }
     elif date_range is None and op_id in DEFAULT_MONTH_OPERATIONS:
         start = today.replace(day=1)
         end = _last_day_of_month(start)
@@ -542,6 +698,89 @@ def count_response(entity: str, count: int, status: str | None, span: str) -> st
     return f"You have {count} {status_text}{noun}{where}."
 
 
+def task_count_response(
+    count: int,
+    filters: dict[str, Any],
+    question: str,
+    span: str,
+    employee_id: int,
+) -> str:
+    """Describe a task count using the filters that scoped the query."""
+    status = filters.get("status")
+    status_text = (
+        str(status).replace("_", " ").strip().lower()
+        if isinstance(status, str) and status.strip()
+        else ""
+    )
+    task_noun = "task" if count == 1 else "tasks"
+    description = f"{status_text + ' ' if status_text else ''}{task_noun}"
+    q = question.lower()
+
+    assigned_to = filters.get("assigned_to_employee_id")
+    managed_by = filters.get("managed_by_employee_id")
+    assigned_to_self = (
+        assigned_to == employee_id
+        or assigned_to == {"$context": "employee_id"}
+        or bool(re.search(r"\bassigned(?:\s+to)?\s+me\b", q))
+    )
+    managed_by_self = (
+        managed_by == employee_id
+        or managed_by == {"$context": "employee_id"}
+        or bool(re.search(r"\b(?:managed|managing|manage)\s+by\s+me\b", q))
+    )
+    organization_query = bool(
+        re.search(r"\b(?:organization|organisation|company|org)\b", q)
+    )
+
+    qualifiers: list[str] = []
+    if assigned_to is not None or assigned_to_self:
+        if assigned_to_self:
+            qualifiers.append("assigned to you")
+        elif isinstance(assigned_to, (int, str)) and str(assigned_to).isdigit():
+            qualifiers.append(f"assigned to employee {assigned_to}")
+    elif managed_by is not None or managed_by_self:
+        if managed_by_self:
+            qualifiers.append("managed by you")
+        elif isinstance(managed_by, (int, str)) and str(managed_by).isdigit():
+            qualifiers.append(f"managed by employee {managed_by}")
+
+    project_id = filters.get("project_id")
+    if isinstance(project_id, (int, str)) and str(project_id).isdigit():
+        qualifiers.append(f"for project {project_id}")
+
+    if organization_query:
+        if assigned_to is None and managed_by is None:
+            qualifiers.append(
+                "in your organization that you're assigned to or manage"
+            )
+        else:
+            qualifiers.append("in your organization")
+
+    if span:
+        qualifiers.append(span)
+
+    where = f" {' '.join(qualifiers)}" if qualifiers else ""
+
+    if count == 0:
+        return f"No {description}{where} were found."
+
+    if assigned_to_self and not organization_query:
+        return f"You have {count} {description}{where}."
+    if managed_by_self and not organization_query:
+        managed_qualifiers = [
+            qualifier for qualifier in qualifiers if qualifier != "managed by you"
+        ]
+        managed_where = (
+            f" {' '.join(managed_qualifiers)}"
+            if managed_qualifiers
+            else ""
+        )
+        return f"You manage {count} {description}{managed_where}."
+
+    verb = "is" if count == 1 else "are"
+    return f"There {verb} {count} {description}{where}."
+
+
 def sum_response(field: str, total: Any, span: str) -> str:
     if not isinstance(total, (int, float, Decimal)) or isinstance(total, bool):
         raise ModelServiceError("The query returned a non-numeric aggregate.")
@@ -564,6 +803,12 @@ def sum_response(field: str, total: Any, span: str) -> str:
         day_count = "day" if value == 1 else "days"
         return f"Your total {day_fields[field]}{where} is {format(value, 'f')} {day_count}."
 
+    if field == "performance_score":
+        return (
+            f"Your total task performance score{where} "
+            f"is {format(value, 'f')}."
+        )
+
     label = field.replace("_", " ").strip()
     return f"The total {label}{where} is {format(value, 'f')}."
 
@@ -577,10 +822,16 @@ def grouped_response(
     span: str,
     group_labels: dict[Any, str] | None = None,
 ) -> str:
+    entity_labels = {
+        "attendance": ("attendance", "day"),
+        "task": ("task", "task"),
+        "leave_balance": ("leave balance", "record"),
+    }
+    title, count_unit = entity_labels.get(entity, ("record", "record"))
+
     if not rows:
-        noun = "attendance" if entity == "attendance" else "leave balance"
         where = f" {span}" if span else ""
-        return f"No {noun} breakdown is available{where}."
+        return f"No {title} breakdown is available{where}."
 
     field_labels = {
         "status": "status",
@@ -590,7 +841,6 @@ def grouped_response(
         "leave_type_id": "leave type",
     }
     dimension = field_labels.get(group_by_field or "", "category")
-    title = "attendance" if entity == "attendance" else "leave balance"
     where = f" {span}" if span else ""
     parts = []
     for row in rows:
@@ -615,8 +865,7 @@ def grouped_response(
                 measure = str(amount)
         else:
             count = row.get("record_count", 0)
-            unit = "day" if entity == "attendance" else "record"
-            measure = f"{count} {unit}{'s' if count != 1 else ''}"
+            measure = f"{count} {count_unit}{'s' if count != 1 else ''}"
         parts.append(f"{label}: {measure}")
     return f"Your {title} breakdown by {dimension}{where}: {', '.join(parts)}."
 
@@ -654,9 +903,10 @@ def _payroll_response(
     q = question.lower()
 
     if re.search(
-        r"\b(?:deductions?|tax(?:es)?\s+deducted|"
-        r"deduction\s+amount|deducted\s+amount)\b",
-        q,
+    r"\b(?:deductions?|deductible|deductibles|"
+    r"tax(?:es)?\s+deducted|"
+    r"deduction\s+amount|deducted\s+amount)\b",
+    q,
     ):
         metric = "deduction_amount"
         label = "deductions"
@@ -666,6 +916,7 @@ def _payroll_response(
         r"take[- ]home\s+(?:pay|salary|amount)|"
         r"amount\s+(?:received|credited)|"
         r"credited\s+to\s+(?:my\s+)?account)\b",
+        r"tasks?\s+(?:assigned\s+to\s+)?me)\b",
         q,
     ):
         metric = "net_amount"
@@ -749,18 +1000,85 @@ def _payroll_response(
             f"{period_label(selected_row)}."
         )
 
+   
     if metric and asks_total:
-        # Never combine different currencies into one numeric total.
+        start = as_date(period.get("start_date"))
+        end = as_date(period.get("end_date"))
+
+        # Validate monthly payroll coverage before reporting a range total.
+        if start and end:
+            requested_months = []
+            cursor = start.replace(day=1)
+            last_month = end.replace(day=1)
+
+            while cursor <= last_month:
+                requested_months.append((cursor.year, cursor.month))
+
+                if cursor.month == 12:
+                    cursor = date(cursor.year + 1, 1, 1)
+                else:
+                    cursor = date(cursor.year, cursor.month + 1, 1)
+
+            recorded_months = set()
+
+            for row in rows:
+                row_start = as_date(row.get("period_start"))
+                row_end = as_date(row.get("period_end"))
+
+                if row_start and row_end:
+                    # A payroll record covers every calendar month it overlaps.
+                    month_cursor = row_start.replace(day=1)
+                    month_end = row_end.replace(day=1)
+
+                    while month_cursor <= month_end:
+                        recorded_months.add(
+                            (month_cursor.year, month_cursor.month)
+                        )
+
+                        if month_cursor.month == 12:
+                            month_cursor = date(
+                                month_cursor.year + 1, 1, 1
+                            )
+                        else:
+                            month_cursor = date(
+                                month_cursor.year,
+                                month_cursor.month + 1,
+                                1,
+                            )
+
+            missing_months = [
+                date(year, month, 1).strftime("%B %Y")
+                for year, month in requested_months
+                if (year, month) not in recorded_months
+            ]
+
+            if missing_months:
+                missing_text = ", ".join(missing_months)
+
+                return (
+                    f"Payroll data is missing for {missing_text}. "
+                    f"I can't confirm the complete {label} for "
+                    f"{period_phrase(start, end)} because the requested "
+                    f"period has missing payroll data."
+                )
+
+        # Existing total calculation: preserve currency separation.
         totals: dict[str, Decimal] = {}
+
         for row in rows:
             value = row.get(metric)
             if value is None:
                 continue
 
-            currency = str(row.get("currency") or "").strip() or "unspecified currency"
+            currency = (
+                str(row.get("currency") or "").strip()
+                or "unspecified currency"
+            )
+
             try:
                 totals[currency] = (
-                    totals.get(currency, Decimal("0")) + Decimal(str(value))
+                    totals.get(currency, Decimal("0"))
+                    + Decimal(str(value))
                 )
             except Exception:
                 continue
@@ -775,7 +1093,11 @@ def _payroll_response(
 
         if len(totals) == 1:
             currency, total = next(iter(totals.items()))
-            prefix = "" if currency == "unspecified currency" else f"{currency} "
+            prefix = (
+                ""
+                if currency == "unspecified currency"
+                else f"{currency} "
+            )
             return (
                 f"Your total {label}{where} was "
                 f"{prefix}{money(total)}."
@@ -840,13 +1162,25 @@ def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
         "data": [],
     }
 
+def _result(
+    question: str,
+    answer: str,
+    intent: str,
+    period: dict[str, Any],
+    show_table: bool,
+    data: list,
+) -> dict[str, Any]:
+    """Build a consistent response for every supported entity."""
 
-def _result(question: str, answer: str, intent: str, period: dict[str, Any], show_table: bool, data: list) -> dict[str, Any]:
+    # Listing responses should display the structured table without
+    # repeating a natural-language introduction above it.
+    response_text = "" if show_table else answer
+
     return {
         "success": True,
         "question": question,
-        "answer": answer,
-        "message": answer,
+        "answer": response_text,
+        "message": response_text,
         "intent": intent,
         "confidence": None,
         "period": period,
@@ -856,6 +1190,7 @@ def _result(question: str, answer: str, intent: str, period: dict[str, Any], sho
     }
 
 
+
 def _execute(plan: dict[str, Any], employee_id: int, limit: int, organization_id: int | None = None) -> Any:
     try:
         return execute_query_plan(plan, employee_id=employee_id, limit=limit, organization_id=organization_id)
@@ -863,17 +1198,73 @@ def _execute(plan: dict[str, Any], employee_id: int, limit: int, organization_id
         raise ModelServiceError(f"The query plan failed validation: {exc}") from exc
 
 
-def _attended_sentence(rows, span):
-    counts = Counter(
-        str(row.get("status") or "").upper()
+
+def _attended_sentence(rows, span, office_only=False):
+    """Build an attendance summary from database records."""
+
+    attended_statuses = {"PRESENT", "LATE", "HALF_DAY"}
+
+    matching_rows = [
+        row
         for row in rows
-        if str(row.get("status") or "").upper() in ATTENDED_STATUSES
-    )
-    total = sum(counts.values())
-    detail = ", ".join(f"{count} {ATTENDED_STATUSES[status]}" for status, count in counts.items())
-    noun = "day" if total == 1 else "days"
+        if str(row.get("status") or "").upper() in attended_statuses
+        and (
+            not office_only
+            or str(row.get("work_location") or "").strip().lower() == "office"
+        )
+    ]
+
+    # Count unique attendance dates rather than accidentally counting
+    # duplicate records as separate days.
+    daily_statuses = {}
+    for row in matching_rows:
+        attendance_day = row.get("attendance_date") or row.get("work_date")
+        if isinstance(attendance_day, datetime):
+            attendance_day = attendance_day.date()
+        elif isinstance(attendance_day, str):
+            try:
+                attendance_day = date.fromisoformat(attendance_day[:10])
+            except ValueError:
+                continue
+
+        if attendance_day is not None:
+            status = str(row.get("status") or "").upper()
+            previous = daily_statuses.get(attendance_day)
+
+            # Prefer a late or half-day classification if duplicate
+            # records for the same day contain different statuses.
+            priority = {"PRESENT": 1, "LATE": 2, "HALF_DAY": 3}
+            if previous is None or priority[status] > priority[previous]:
+                daily_statuses[attendance_day] = status
+
+    counts = Counter(daily_statuses.values())
+    total = len(daily_statuses)
     where = f" {span}" if span else ""
-    return f"You attended {total} {noun}{where}" + (f" ({detail})." if detail else ".")
+
+    if total == 0:
+        subject = "office attendance records" if office_only else "attendance records"
+        return f"I couldn't find any matching {subject}{where}."
+
+    noun = "day" if total == 1 else "days"
+
+    if office_only:
+        answer = f"You were recorded as attending the office on {total} {noun}{where}"
+    else:
+        answer = f"You were recorded as attending on {total} {noun}{where}"
+
+    details = []
+    if counts.get("PRESENT"):
+        details.append(f"{counts['PRESENT']} marked present")
+    if counts.get("LATE"):
+        details.append(f"{counts['LATE']} marked late")
+    if counts.get("HALF_DAY"):
+        details.append(f"{counts['HALF_DAY']} marked half-day")
+
+    if details:
+        answer += " (" + ", ".join(details) + ")"
+
+    return answer + "."
+
 
 
 def _daily_working_hours_answer(rows, requested_dates, tz):
@@ -920,6 +1311,71 @@ def _hours_sentence(rows, span, overtime):
     name = "overtime" if overtime else "worked time"
     where = f" {span}" if span else ""
     return f"Your total {name}{where} was {hours} hours and {minutes} minutes ({total:,} minutes)."
+
+
+def _worked_hours_list_answer(rows, tz):
+    """List recorded worked hours for each attendance record."""
+    if not rows:
+        return "No attendance records were found for the requested period."
+
+    def get_day(row):
+        value = row.get("attendance_date") or row.get("work_date")
+
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            try:
+                return date.fromisoformat(value[:10])
+            except ValueError:
+                return None
+        return None
+
+    lines = []
+
+    for row in sorted(
+        rows,
+        key=lambda item: (
+            get_day(item) or date.min
+        ),
+    ):
+        day = get_day(row)
+        day_label = (
+            f"{day.day} {day:%B %Y}"
+            if day
+            else "Date unavailable"
+        )
+
+        minutes = row.get("worked_minutes")
+
+        # Calculate from recorded timestamps only when the stored
+        # worked_minutes value is unavailable.
+        if minutes is None:
+            clock_in = row.get("clock_in")
+            clock_out = row.get("clock_out")
+
+            if isinstance(clock_in, datetime) and isinstance(clock_out, datetime):
+                if clock_in.tzinfo is not None:
+                    clock_in = clock_in.astimezone(tz)
+                if clock_out.tzinfo is not None:
+                    clock_out = clock_out.astimezone(tz)
+
+                minutes = int(
+                    (clock_out - clock_in).total_seconds() // 60
+                )
+
+        if minutes is None:
+            lines.append(f"- {day_label}: worked hours not recorded.")
+            continue
+
+        hours, remainder = divmod(int(minutes), 60)
+        lines.append(
+            f"- {day_label}: {hours} hours and {remainder} minutes."
+        )
+
+    return "Your worked hours by attendance date:\n" + "\n".join(lines)
+
 
 
 def _work_location_answer(rows, requested_dates=None):
@@ -1211,13 +1667,88 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             period_out, False, [],
         )
     span = period_phrase(start, end)
+    
+    q = normalized_question.lower()
+
+    asks_worked_hours = bool(re.search(
+        r"\b(?:worked|working|work)\s+hours?\b"
+        r"|\bhours?\s+worked\b",
+        q,
+    ))
+
+    if wants_list and asks_worked_hours:
+        display_rows = []
+
+        for row in rows:
+            work_date = row.get("attendance_date") or row.get("work_date")
+            minutes = row.get("worked_minutes")
+
+            if minutes is None:
+                continue
+
+            minutes = int(minutes)
+            hours, remainder = divmod(minutes, 60)
+
+            display_rows.append({
+                "attendance_date": work_date,
+                "worked_hours": f"{hours}h {remainder}m",
+            })
+
+        display_rows.sort(
+            key=lambda row: str(row["attendance_date"] or "")
+        )
+
+        if display_rows:
+            answer = f"Your worked hours from {span}:"
+        else:
+            answer = f"No recorded worked hours were found {span}."
+
+        return _result(
+            question,
+            answer,
+            "attendance_records",
+            period_out,
+            bool(display_rows),
+            display_rows,
+        )
 
     if ATTENDED_RE.search(normalized_question.lower()):
-        return _result(question, _attended_sentence(rows, span), "attendance_summary",
-                       period_out, False, [])
+        office_only = bool(
+            re.search(
+                r"\b(?:in|at)\s+(?:the\s+)?office\b|\boffice\s+days?\b",
+                normalized_question,
+                re.IGNORECASE,
+            )
+        )
+
+        answer = _attended_sentence(
+            rows,
+            span,
+            office_only=office_only,
+        )
+
+        return _result(
+            question,
+            answer,
+            "attendance_summary",
+            period_out,
+            False,
+            [],
+        )
+
     if SUM_QUESTION_RE.search(normalized_question.lower()):
-        return _result(question, _hours_sentence(rows, span, "overtime" in normalized_question.lower()),
-                       "attendance_summary", period_out, False, [])
+        return _result(
+            question,
+            _hours_sentence(
+                rows,
+                span,
+                "overtime" in normalized_question.lower(),
+            ),
+            "attendance_summary",
+            period_out,
+            False,
+            [],
+        )
 
     # Status-filtered questions (e.g. "late") list only matching records.
     status_filter = filters.get("status")
@@ -1269,13 +1800,14 @@ def _answer_requests(question, normalized_question, plan, period, employee_id):
     return _result(question, answer, intent, period, show_table, rows)
 
 
-def _answer_holidays(question, normalized_question, plan, period, employee_id):
+def _answer_holidays(question, normalized_question, plan, period, employee_id, organization_id=None):
     wants_list = question_wants_list(normalized_question)
     is_upcoming = bool(UPCOMING_RE.search(normalized_question.lower()))
     result = _execute(
         {"operation_id": "holiday.list", "filters": dict(plan.get("filters", {}))},
         employee_id,
         limit=100,
+        organization_id=organization_id,
     )
     rows = normalize_result_fields("holiday.list", result["data"])
     start, end = as_date(period.get("start_date")), as_date(period.get("end_date"))
@@ -1408,9 +1940,15 @@ def _answer_timesheet(question, normalized_question, period, employee_id, target
         else:
             answer = f"No, {subject} {period_text} is currently {status_label}."
     else:
-        answer = f"{subject.capitalize()} {period_text} is currently {status_label}."
-        if submitted_basis and submitted:
-            answer += f" It was submitted on {submitted.day} {submitted:%B %Y}."
+        answer = f"{subject.capitalize()} {period_text}"
+
+        if submitted:
+            answer += (
+                f" was submitted on "
+                f"{submitted.day} {submitted:%B %Y}")
+            answer += f" and is currently {status_label}."
+        else:
+            answer += f" is currently {status_label}."
 
     return _result(question, answer, "timesheet_lookup", period, False, [])
 
@@ -1430,7 +1968,7 @@ def _answer_leave_balance(question, normalized_question, employee_id, today):
     balance_result = _execute({"operation_id": "leave_balance.list", "filters": filters}, employee_id, limit=100)
     rows = balance_result["data"] if isinstance(balance_result["data"], list) else []
 
-    answer = answer_leave_balance(rows, leave_types, year, metric, selected)
+    answer = answer_leave_balance(rows, leave_types, year, metric, selected,normalized_question)
     show_table = question_wants_list(normalized_question) and bool(rows)
     period = {"start_date": f"{year}-01-01", "end_date": f"{year}-12-31"}
     return _result(question, answer, "leave_balance", period, show_table, enrich_rows(rows, leave_types))
@@ -1452,7 +1990,56 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
 
     normalized_question = correct_typos(question)
     today = get_current_date()
+
+    # Route explicit leave-type availability/list questions before the broad
+    # leave-balance detector, which can otherwise capture "leave ... available".
+    if (
+        _LEAVE_TYPE_LOOKUP_RE.search(normalized_question)
+        and _LEAVE_TYPE_AVAILABILITY_RE.search(normalized_question)
+        and not re.search(
+            r"\b(?:balance|remaining|allocated|used|taken|pending|"
+            r"how\s+much|days?\s+(?:left|remaining|used|taken))\b",
+            normalized_question,
+            re.IGNORECASE,
+        )
+    ):
+        print("\n--- TICKORA ROUTE DEBUG ---")
+        print("Question:", question)
+        print("Selected route: leave_type.list")
+        print("Reason: Leave-type availability/list question")
+        print("--- END ROUTE DEBUG ---\n")
+
+        type_result = _execute(
+            {"operation_id": "leave_type.list", "filters": {}},
+            employee_id,
+            limit=100,
+        )
+
+        type_result = _execute(
+            {"operation_id": "leave_type.list", "filters": {}},
+            employee_id,
+            limit=100,
+        )
+        leave_types = (
+            type_result["data"]
+            if isinstance(type_result.get("data"), list)
+            else []
+        )
+        return _result(
+            question,
+            leave_type_response(leave_types),
+            "leave_type_lookup",
+            {"start_date": None, "end_date": None},
+            bool(leave_types),
+            leave_types,
+        )
+
     if is_leave_balance_question(normalized_question):
+        print("\n--- TICKORA ROUTE DEBUG ---")
+        print("Question:", question)
+        print("Selected route: leave_balance")
+        print("Reason: Leave-balance question")
+        print("--- END ROUTE DEBUG ---\n")
         return _answer_leave_balance(question, normalized_question, employee_id, today)
 
     
@@ -1499,6 +2086,40 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
 
     try:
         plan, period = normalize_and_correct_plan(raw_plan, normalized_question, today)
+    
+        # Resolve self-referential task queries from authenticated identity.
+        if plan.get("operation_id", "").startswith("task."):
+            q = normalized_question.lower()
+            task_filters = dict(plan.get("filters", {}))
+
+            # The model must not send natural-language identity values to SQL.
+            for field in (
+                "assigned_to_employee_id",
+                "managed_by_employee_id",
+            ):
+                value = task_filters.get(field)
+                if (
+                    isinstance(value, str)
+                    and value.strip().lower()
+                    in {"me", "myself", "my", "current user"}
+                ):
+                    task_filters.pop(field, None)
+
+            if re.search(
+                r"\b(?:assigned|assigned\s+to)\s+me\b",
+                q,
+            ):
+                task_filters["assigned_to_employee_id"] = employee_id
+
+            elif re.search(
+                r"\b(?:manage|managing|managed)\s+by\s+me\b"
+                r"|\bwhat\s+tasks\s+am\s+i\s+managing\b",
+                q,
+            ):
+                task_filters["managed_by_employee_id"] = employee_id
+
+            plan["filters"] = task_filters
+
     except InvalidDateError as exc:
         answer = f"'{exc}' is not a valid date. Please check the day and month, for example: 19 October 2026."
         return _text_result(question, answer, intent="attendance_records")
@@ -1513,7 +2134,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             return _answer_status_check(question, normalized_question, plan, period, employee_id, status_target)
         return _answer_requests(question, normalized_question, plan, period, employee_id)
     if operation_id == "holiday.list":
-        return _answer_holidays(question, normalized_question, plan, period, employee_id)
+        return _answer_holidays(question, normalized_question, plan, period, employee_id, organization_id)
     if operation_id == "timesheet.list" and (
         status_target or TIMESHEET_STATUS_Q_RE.search(normalized_question.lower())
     ):
@@ -1571,6 +2192,10 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         "leave_type.list": "leave_type_lookup",
         "leave_type.count": "leave_type_lookup",
         "payroll_summary.list": "payroll_lookup",
+        "task.list": "task_lookup",
+        "task.count": "task_lookup",
+        "task.sum": "task_lookup",
+        "task.group_by": "task_lookup",
     }
     intent = operation_to_intent.get(operation_id, "attendance_records")
 
@@ -1578,12 +2203,21 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         count = data.get("count", 0) if isinstance(data, dict) else 0
         status_filter = plan.get("filters", {}).get("status")
         span = period_phrase(as_date(period.get("start_date")), as_date(period.get("end_date")))
-        answer = count_response(
-            entity,
-            int(count),
-            str(status_filter) if status_filter else None,
-            span,
-        )
+        if operation_id == "task.count":
+            answer = task_count_response(
+                int(count),
+                plan.get("filters", {}),
+                normalized_question,
+                span,
+                employee_id,
+            )
+        else:
+            answer = count_response(
+                entity,
+                int(count),
+                str(status_filter) if status_filter else None,
+                span,
+            )
         return _result(question, answer, intent, period, False, data)
 
     if operation == "group_by":
@@ -1617,42 +2251,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
                 for row in type_result.get("data", [])
                 if isinstance(row, dict)
             }
-    elif operation_id == "payroll_summary.list":
-        message = _payroll_response(
-            data,
-            period,
-            normalized_question,
-        )
-
-    # Specific metric questions return a concise answer without a table.
-    asks_specific_metric = bool(
-        re.search(
-            r"\b(?:deductions?|tax(?:es)?\s+deducted|"
-            r"deduction\s+amount|deducted\s+amount|"
-            r"net\s+(?:amount|salary|pay|income)|"
-            r"take[- ]home\s+(?:pay|salary|amount)|"
-            r"amount\s+(?:received|credited)|"
-            r"gross\s+(?:amount|salary|pay|earnings)|"
-            r"earnings\s+before\s+deductions)\b",
-            normalized_question.lower(),
-        )
-    )
-
-    show_payroll_table = (
-        isinstance(data, list)
-        and bool(data)
-        and not asks_specific_metric
-    )
-
-    return _result(
-        question,
-        message,
-        "payroll_lookup",
-        period,
-        show_payroll_table,
-        data if show_payroll_table else [],
-    )
-    answer = grouped_response(
+        answer = grouped_response(
             entity,
             rows,
             group_by_field,
@@ -1661,7 +2260,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             span,
             group_labels,
         )
-    return _result(question, answer, intent, period, False, data)
+        return _result(question, answer, intent, period, False, data)
 
     if operation == "sum":
         field = data.get("field", "value") if isinstance(data, dict) else "value"
@@ -1672,6 +2271,40 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
 
     if operation_id == "leave_balance.list":
         return _answer_leave_balance(question, normalized_question, employee_id, today)
+
+    if operation_id == "payroll_summary.list":
+        message = _payroll_response(
+            data,
+            period,
+            normalized_question,
+        )
+        # Specific metric questions return a concise answer without a table.
+        asks_specific_metric = bool(
+            re.search(
+                r"\b(?:deductions?|deductible|deductibles|"
+                r"tax(?:es)?\s+deducted|"
+                r"deduction\s+amount|deducted\s+amount|"
+                r"net\s+(?:amount|salary|pay|income)|"
+                r"take[- ]home\s+(?:pay|salary|amount)|"
+                r"amount\s+(?:received|credited)|"
+                r"gross\s+(?:amount|salary|pay|earnings)|"
+                r"earnings\s+before\s+deductions)\b",
+                normalized_question.lower(),
+            )
+        )
+        show_payroll_table = (
+            isinstance(data, list)
+            and bool(data)
+            and not asks_specific_metric
+        )
+        return _result(
+            question,
+            message,
+            "payroll_lookup",
+            period,
+            show_payroll_table,
+            data if show_payroll_table else [],
+        )
 
     if operation_id == "timesheet.list":
         timesheet_rows = query_result["data"] if isinstance(query_result["data"], list) else []

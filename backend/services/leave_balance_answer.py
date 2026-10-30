@@ -62,6 +62,29 @@ def detect_metric(question: str) -> str | None:
             return name
     return None
 
+def detect_requested_metrics(question: str) -> list[str]:
+    """Return all leave-balance metrics explicitly requested, in display order."""
+    q = question.lower()
+
+    patterns = {
+        "allocated": re.compile(
+            r"\b(?:allocated|entitled|entitlement|granted|quota|accrued|credited)\b"
+        ),
+        "used": re.compile(
+            r"\b(?:used|use|uses|taken|take|took|consumed|utili[sz]ed|spent)\b"
+        ),
+        "pending": re.compile(r"\bpending\b"),
+        "remaining": re.compile(
+            r"\b(?:balance|left|remaining|available|carry(?:ied)?\s*over|carried\s*over)\b"
+        ),
+    }
+
+    return [
+        metric
+        for metric, pattern in patterns.items()
+        if pattern.search(q)
+    ]
+
 
 def detect_year(question: str, default_year: int) -> int:
     matches = YEAR_RE.findall(question)
@@ -156,6 +179,7 @@ def answer_leave_balance(
     year: int,
     metric: str | None,
     selected: dict[str, Any] | None,
+    question: str = "",
 ) -> str:
     rows = [r for r in rows if str(r.get("year")) == str(year)]
     if selected is not None:
@@ -171,24 +195,69 @@ def answer_leave_balance(
     if selected is not None:
         row = rows[0]
         label = _label(selected)
-        allocated = format_days(row.get("allocated_days"))
-        used = format_days(row.get("used_days"))
-        pending = format_days(row.get("pending_days"))
-        remaining = format_days(_remaining(row))
+
+        allocated_value = float(row.get("allocated_days") or 0)
+        used_value = float(row.get("used_days") or 0)
+        pending_value = float(row.get("pending_days") or 0)
+        remaining_value = _remaining(row)
+
+        allocated = format_days(allocated_value)
+        used = format_days(used_value)
+        pending = format_days(pending_value)
+        remaining = format_days(remaining_value)
+
+        requested_metrics = detect_requested_metrics(question)
+
         if metric == "allocated":
-            return f"You have {allocated} allocated {label} {_day_noun(row.get('allocated_days'))} in {year}."
+            return (
+                f"You have {allocated} allocated {label} "
+                f"{_day_noun(allocated_value)} in {year}."
+            )
+        
+        if len(requested_metrics) > 1:
+            requested_parts = {
+                "allocated": f"{allocated} allocated",
+                "used": f"{used} used",
+                "pending": f"{pending} pending",
+                "remaining": f"{remaining} remaining",
+            }
+
+            details = [
+                requested_parts[name]
+                for name in requested_metrics
+            ]
+
+            return (
+                f"Your {label} balance for {year}: "
+                + ", ".join(details)
+                + " days."
+            )
+
         if metric == "used":
-            return f"You have used {used} {label} {_day_noun(row.get('used_days'))} in {year}."
+            return (
+                f"You have used {used} {label} "
+                f"{_day_noun(used_value)} in {year}."
+            )
+
         if metric == "pending":
-            return f"You have {pending} pending {label} {_day_noun(row.get('pending_days'))} in {year}."
+            return (
+                f"You have {pending} pending {label} "
+                f"{_day_noun(pending_value)} in {year}."
+            )
+
         if metric == "remaining":
             return (
-                f"You have {remaining} {label} {_day_noun(_remaining(row))} remaining in {year} "
-                f"({allocated} allocated, {used} used, {pending} pending)."
+                f"You have {remaining} {label} "
+                f"{_day_noun(remaining_value)} remaining in {year} "
+                f"({allocated} allocated, {used} used, "
+                f"{pending} pending)."
             )
+
         return (
-            f"Your {label} balance for {year} is {remaining} {_day_noun(_remaining(row))}: "
-            f"{allocated} allocated, {used} used, and {pending} pending."
+            f"Your {label} balance for {year} is "
+            f"{remaining} {_day_noun(remaining_value)}: "
+            f"{allocated} allocated, {used} used, "
+            f"and {pending} pending."
         )
 
     if metric in METRIC_PHRASE and metric != "remaining":

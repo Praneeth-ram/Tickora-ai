@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from backend.services.answer_builder import fmt_range
 from backend.services.llm_chat_service import (
@@ -7,7 +8,9 @@ from backend.services.llm_chat_service import (
     format_timesheet_response,
     grouped_response,
     leave_type_response,
+    normalize_and_correct_plan,
     sum_response,
+    task_count_response,
 )
 from backend.services.request_answer_builder import request_answer
 
@@ -19,6 +22,131 @@ def test_count_answers_use_entity_names_and_singular_grammar():
     assert count_response("holiday", 0, None, "in October 2026") == (
         "No holidays were found in October 2026."
     )
+
+
+def test_task_count_answers_describe_task_filters_and_periods():
+    cases = [
+        (
+            5,
+            {},
+            "How many tasks are there?",
+            "",
+            12,
+            "There are 5 tasks.",
+        ),
+        (
+            5,
+            {"assigned_to_employee_id": 12},
+            "How many tasks are assigned to me?",
+            "",
+            12,
+            "You have 5 tasks assigned to you.",
+        ),
+        (
+            3,
+            {"status": "completed"},
+            "How many completed tasks are there?",
+            "",
+            12,
+            "There are 3 completed tasks.",
+        ),
+        (
+            2,
+            {"managed_by_employee_id": 12},
+            "How many tasks am I managing?",
+            "",
+            12,
+            "You manage 2 tasks.",
+        ),
+        (
+            4,
+            {"project_id": 27},
+            "How many tasks are in project 27?",
+            "",
+            12,
+            "There are 4 tasks for project 27.",
+        ),
+        (
+            6,
+            {},
+            "How many tasks are there in October 2026?",
+            "in October 2026",
+            12,
+            "There are 6 tasks in October 2026.",
+        ),
+        (
+            1,
+            {"status": "completed"},
+            "How many completed tasks are there?",
+            "from 1 to 15 October 2026",
+            12,
+            "There is 1 completed task from 1 to 15 October 2026.",
+        ),
+        (
+            3,
+            {},
+            "How many tasks are in my organization?",
+            "",
+            12,
+            "There are 3 tasks in your organization that you're assigned to or manage.",
+        ),
+        (
+            2,
+            {"assigned_to_employee_id": 34},
+            "How many tasks are assigned to employee 34?",
+            "",
+            12,
+            "There are 2 tasks assigned to employee 34.",
+        ),
+        (
+            0,
+            {"status": "completed"},
+            "How many completed tasks are there?",
+            "",
+            12,
+            "No completed tasks were found.",
+        ),
+    ]
+
+    for count, filters, question, span, employee_id, expected in cases:
+        assert task_count_response(
+            count, filters, question, span, employee_id
+        ) == expected
+
+
+def test_multi_status_task_count_groups_by_status_without_status_filter():
+    task_definition = {
+        "filters": ["status", "project_id", "task_date"],
+        "identity_filters": {},
+        "aggregate_fields": ["performance_score"],
+    }
+    registry = {
+        "task.count": task_definition,
+        "task.sum": task_definition,
+        "task.group_by": task_definition,
+    }
+
+    with patch(
+        "backend.services.llm_chat_service.build_operation_registry",
+        return_value=registry,
+    ):
+        grouped_plan, _ = normalize_and_correct_plan(
+            {"operation_id": "task.count", "filters": {"status": "pending"}},
+            "How many tasks are pending, completed, and in progress?",
+            date(2026, 10, 30),
+        )
+        single_status_plan, _ = normalize_and_correct_plan(
+            {"operation_id": "task.list", "filters": {}},
+            "How many completed tasks are there?",
+            date(2026, 10, 30),
+        )
+
+    assert grouped_plan["operation_id"] == "task.group_by"
+    assert grouped_plan["group_by_field"] == "status"
+    assert grouped_plan["aggregate_function"] == "count"
+    assert "status" not in grouped_plan["filters"]
+    assert single_status_plan["operation_id"] == "task.count"
+    assert single_status_plan["filters"]["status"] == "completed"
 
 
 def test_sum_answers_humanize_metrics_and_decimal_results():
@@ -45,6 +173,30 @@ def test_grouped_answer_formats_statuses_as_a_summary():
         "Your attendance breakdown by status in October 2026: "
         "present: 4 days, late: 1 day."
     )
+
+
+def test_grouped_task_count_uses_task_labels_and_pluralization():
+    assert grouped_response(
+        "task",
+        [
+            {"group_value": "completed", "record_count": 1},
+            {"group_value": "in_progress", "record_count": 2},
+            {"group_value": "pending", "record_count": 3},
+        ],
+        "status",
+        "count",
+        None,
+        "",
+    ) == (
+        "Your task breakdown by status: "
+        "completed: 1 task, in progress: 2 tasks, pending: 3 tasks."
+    )
+
+
+def test_empty_grouped_task_response_names_tasks():
+    assert grouped_response(
+        "task", [], "status", "count", None, ""
+    ) == "No task breakdown is available."
 
 
 def test_timesheet_answer_formats_periods_and_caps_long_lists():

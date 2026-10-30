@@ -3,6 +3,43 @@ from backend.services.dynamic_query_service import (
     QueryPlanError,
     execute_query_plan,
 )
+from unittest.mock import patch
+
+def execute_without_database(plan):
+    attendance_columns = [
+        "employee_id",
+        "attendance_date",
+        "clock_in",
+        "clock_out",
+        "status",
+        "work_location",
+        "worked_minutes",
+        "overtime_minutes",
+        "is_late",
+    ]
+
+    mock_catalog = {
+        "attendance_records": {
+            "schema": "public",
+            "columns": [
+                {
+                    "name": name,
+                    "type": "TEXT",
+                    "nullable": True,
+                    "primary_key": False,
+                }
+                for name in attendance_columns
+            ],
+            "foreign_keys": [],
+        }
+    }
+
+    with patch(
+        "backend.services.operation_registry.discover_schema",
+        return_value=mock_catalog,
+    ):
+        return execute_query_plan(plan, employee_id=1)
+
 
 def test_rejects_unapproved_aggregate_field():
     plan = {
@@ -11,7 +48,8 @@ def test_rejects_unapproved_aggregate_field():
     }
 
     with pytest.raises(QueryPlanError):
-        execute_query_plan(plan, employee_id=1)
+        execute_without_database(plan)
+
 
 def test_rejects_unapproved_grouping_field():
     plan = {
@@ -21,7 +59,8 @@ def test_rejects_unapproved_grouping_field():
     }
 
     with pytest.raises(QueryPlanError):
-        execute_query_plan(plan, employee_id=1)
+        execute_without_database(plan)
+
 
 def test_rejects_unsupported_aggregate_function():
     plan = {
@@ -31,7 +70,8 @@ def test_rejects_unsupported_aggregate_function():
     }
 
     with pytest.raises(QueryPlanError):
-        execute_query_plan(plan, employee_id=1)
+        execute_without_database(plan)
+
 
 def test_rejects_invalid_date_range():
     plan = {
@@ -46,7 +86,8 @@ def test_rejects_invalid_date_range():
     }
 
     with pytest.raises(QueryPlanError):
-        execute_query_plan(plan, employee_id=1)
+        execute_without_database(plan)
+
 
 def test_employee_scope_changes_with_authenticated_employee():
     plan = {
@@ -62,14 +103,8 @@ def test_employee_scope_changes_with_authenticated_employee():
     employee_1_result = execute_query_plan(plan, employee_id=1)
     employee_2_result = execute_query_plan(plan, employee_id=2)
 
-    # The query must execute successfully for each authenticated employee.
     assert employee_1_result["operation_id"] == "attendance.count"
     assert employee_2_result["operation_id"] == "attendance.count"
-
-    # This confirms distinct employee-scoped execution only if the database
-    # contains different counts for these employees.
-    # Do not assert unequal counts: two employees can legitimately have
-    # the same number of attendance records.
 
 
 def test_existing_list_operation_still_works():
@@ -109,3 +144,4 @@ def test_existing_count_operation_still_works():
     assert result["operation"] == "count"
     assert isinstance(result["data"]["count"], int)
     assert result["data"]["count"] >= 0
+

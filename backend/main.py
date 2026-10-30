@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from fastapi import FastAPI, HTTPException, Query, Depends
 from backend.dependencies.auth import get_current_employee
 from sqlalchemy import text
@@ -7,7 +7,6 @@ from backend.repositories.attendance_repository import (
     get_attendance_records,
     get_attendance_summary,
 )
-
 from backend.repositories.timesheet_repository import get_timesheets
 from backend.repositories.leave_repository import get_leave_requests
 from backend.repositories.wfh_repository import get_wfh_requests
@@ -15,7 +14,6 @@ from backend.repositories.calendar_repository import (
     get_holidays,
     get_work_schedules,
 )
-
 from pydantic import BaseModel, Field
 from fastapi.encoders import jsonable_encoder
 from backend.services.chat_service import run_chat
@@ -29,6 +27,8 @@ from backend.services.llm_chat_service import (
     run_llm_chat,
     ModelServiceError,
 )
+import re
+from zoneinfo import ZoneInfo
 
 app = FastAPI(
     title="Tickora AI API",
@@ -60,7 +60,7 @@ class LoginRequest(BaseModel):
 def find_employee_id(employee_code: str) -> int:
     # Resolve a sample employee code to its database ID.
     query = text("""
-        SELECT employee_id
+        SELECT id
         FROM public.employees
         WHERE employee_code = :employee_code
           AND is_active = TRUE
@@ -299,6 +299,77 @@ def work_schedules(
         "records": records,
     }
 
+def get_greeting_response(question: str, current_employee: dict) -> dict | None:
+    """Respond to standalone greetings without invoking the query planner."""
+
+    greeting_pattern = re.compile(
+        r"^\s*(?:hi|hello|hey|howdy|greetings|"
+        r"good\s+morning|good\s+afternoon|good\s+evening|good\s+night)"
+        r"(?:\s+there)?[!,.?\s]*$",
+        re.IGNORECASE,
+    )
+
+    # Only handle a standalone greeting.
+    # Questions such as "Hi, what is my salary?" must continue normally.
+    if not greeting_pattern.fullmatch(question):
+        return None
+
+    employee_name = current_employee.get("full_name")
+
+    # If the authentication dependency doesn't provide the name,
+    # retrieve it using the authenticated employee's ID and code.
+    if not employee_name:
+        query = text("""
+            SELECT full_name
+            FROM public.employees
+            WHERE id = :employee_id
+              AND employee_code = :employee_code
+              AND is_active = TRUE
+        """)
+
+        with engine.connect() as connection:
+            employee_name = connection.execute(
+                query,
+                {
+                    "employee_id": current_employee["employee_id"],
+                    "employee_code": current_employee["employee_code"],
+                },
+            ).scalar_one_or_none()
+
+    first_name = str(employee_name or "there").strip().split()[0]
+
+    timezone_name = os.getenv(
+        "APP_TIMEZONE",
+        os.getenv("TICKORA_TIMEZONE", "Asia/Kolkata"),
+    )
+    try:
+        hour = datetime.now(ZoneInfo(timezone_name)).hour
+    except Exception:
+        hour = datetime.now().hour
+
+    if 5 <= hour < 12:
+        greeting = "Good morning"
+    elif 12 <= hour < 17:
+        greeting = "Good afternoon"
+    elif 17 <= hour < 21:
+        greeting = "Good evening"
+    else:
+        greeting = "Hello"
+
+    answer = f"{greeting}, {first_name}! How can I help you today?"
+
+    return {
+        "success": True,
+        "question": question,
+        "answer": answer,
+        "message": answer,
+        "intent": "greeting",
+        "confidence": None,
+        "period": {"start_date": None, "end_date": None},
+        "show_table": False,
+        "raw_data": None,
+        "data": [],
+    }
 
 @app.post("/api/chat/{employee_code}")
 def chat_with_tickora(
@@ -310,6 +381,12 @@ def chat_with_tickora(
         employee_code,
         current_employee,
     )
+    greeting_result = get_greeting_response(
+        body.question.strip(),
+        current_employee,
+    )
+    if greeting_result is not None:
+        return jsonable_encoder(greeting_result)
 
     try:
         use_llm = os.getenv(

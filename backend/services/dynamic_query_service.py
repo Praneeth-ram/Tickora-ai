@@ -187,6 +187,58 @@ def execute_query_plan(
         for key in filters
     ):
         raise QueryPlanError("Filter is not allowed.")
+    
+        # Resolve approved identity-context filters using trusted
+    # authentication data, never model-generated identity values.
+    identity_filters = definition.get("identity_filters", {})
+    resolved_filters = {}
+
+    for field, value in filters.items():
+        if isinstance(value, dict) and "$context" in value:
+            expected_context = identity_filters.get(field)
+
+            if (
+                expected_context != "employee_id"
+                or value != {"$context": expected_context}
+            ):
+                raise QueryPlanError(
+                    "Identity context reference is not allowed."
+                )
+
+            resolved_filters[field] = employee_id
+
+        else:
+            # Reject unresolved identity placeholders instead of
+            # treating them as literal database filter values.
+            if (
+                field in identity_filters
+                and isinstance(value, str)
+                and value.strip().lower()
+                in {
+                    "employee_id",
+                    "me",
+                    "myself",
+                    "my",
+                    "current user",
+                }
+            ):
+                raise QueryPlanError(
+                    "Identity reference must be normalized "
+                    "before query execution."
+                )
+
+            resolved_filters[field] = value
+
+    filters = resolved_filters
+    print(
+    "[TASK FILTER DEBUG]",
+    {
+        "operation_id": operation_id,
+        "authenticated_employee_id": employee_id,
+        "organization_id": organization_id,
+        "resolved_filters": filters,
+    },
+)
 
     if db_engine is None:
         from backend.db import engine as db_engine
@@ -369,12 +421,334 @@ def execute_query_plan(
         }
 
     # ---------------------------------------------------------
+    # HOLIDAYS: scope through the employee's organization calendar.
+    # The holidays table has calendar_id, not organization_id.
+    # ---------------------------------------------------------
+    if operation_id in {"holiday.list", "holiday.count"}:
+        if organization_id is None:
+            raise QueryPlanError(
+                "Authenticated organization ID is required "
+                "for holiday queries."
+            )
+
+        calendar_table = "holiday_calendars"
+        holiday_conditions = [
+            "hc.id = h.calendar_id",
+            "hc.organization_id = :authenticated_organization_id",
+        ]
+        holiday_params: dict[str, Any] = {
+            "authenticated_organization_id": organization_id,
+            "query_limit": limit,
+        }
+
+        for field, value in filters.items():
+            quoted_field = f"h.{preparer.quote(field)}"
+
+            if isinstance(value, dict):
+                if field != "holiday_date":
+                    raise QueryPlanError(
+                        "Range filters are allowed only on holiday_date."
+                    )
+                if not value or set(value) - {"gte", "lte"}:
+                    raise QueryPlanError(
+                        "Date ranges accept only gte and lte."
+                    )
+
+                for bound, comparator in (("gte", ">="), ("lte", "<=")):
+                    if bound not in value:
+                        continue
+                    parsed = _parse_date(
+                        value[bound], f"{field}.{bound}"
+                    )
+                    param_name = f"holiday_date_{bound}"
+                    holiday_params[param_name] = parsed
+                    holiday_conditions.append(
+                        f"CAST({quoted_field} AS DATE) "
+                        f"{comparator} :{param_name}"
+                    )
+
+                if (
+                    "gte" in value
+                    and "lte" in value
+                    and holiday_params["holiday_date_gte"]
+                    > holiday_params["holiday_date_lte"]
+                ):
+                    raise QueryPlanError(
+                        "Date range start must not be after end."
+                    )
+            else:
+                if value is None or isinstance(value, (dict, list)):
+                    raise QueryPlanError(
+                        f"Invalid value for filter {field}."
+                    )
+                if not isinstance(value, (str, int, float, bool, date, datetime)):
+                    raise QueryPlanError(
+                        f"Invalid value for filter {field}."
+                    )
+                if isinstance(value, str) and len(value) > 200:
+                    raise QueryPlanError("Filter value is too long.")
+                holiday_params[field] = value
+                holiday_conditions.append(
+                    f"{quoted_field} = :{field}"
+                )
+
+        where_sql = " AND ".join(holiday_conditions)
+
+        if operation == "count":
+            holiday_sql = (
+                f"SELECT COUNT(*) AS record_count "
+                f"FROM {quoted_schema}.{preparer.quote('holidays')} h "
+                f"JOIN {quoted_schema}.{preparer.quote(calendar_table)} hc "
+                f"ON hc.{preparer.quote('id')} = "
+                f"h.{preparer.quote('calendar_id')} "
+                f"WHERE {where_sql}"
+            )
+        else:
+            selected = ", ".join(
+                f"h.{preparer.quote(field)} AS {preparer.quote(field)}"
+                for field in requested_fields
+            )
+            holiday_sql = (
+                f"SELECT {selected} "
+                f"FROM {quoted_schema}.{preparer.quote('holidays')} h "
+                f"JOIN {quoted_schema}.{preparer.quote(calendar_table)} hc "
+                f"ON hc.{preparer.quote('id')} = "
+                f"h.{preparer.quote('calendar_id')} "
+                f"WHERE {where_sql} "
+                f"ORDER BY h.{preparer.quote('holiday_date')} "
+                "DESC NULLS LAST LIMIT :query_limit"
+            )
+
+        with engine.connect() as connection:
+            holiday_rows = connection.execute(
+                text(holiday_sql), holiday_params
+            ).mappings().all()
+
+        if operation == "count":
+            holiday_data: Any = {
+                "count": int(holiday_rows[0]["record_count"])
+            }
+        else:
+            holiday_data = [dict(row) for row in holiday_rows]
+
+        return {
+            "operation_id": operation_id,
+            "entity": definition["entity"],
+            "operation": operation,
+            "data": holiday_data,
+            "limit": limit if operation == "list" else None,
+        }
+
+    # ---------------------------------------------------------
     # EXISTING GENERIC QUERY PATH FOR OTHER ENTITIES.
     # ---------------------------------------------------------
+    
+    # ---------------------------------------------------------
+    # TASK LIST: join employees twice so the UI receives names
+    # instead of employee IDs. Other task operations remain generic.
+    # ---------------------------------------------------------
+    if operation_id == "task.list":
+        if organization_id is None:
+            raise QueryPlanError(
+                "Authenticated organization ID is required "
+                "for task queries."
+            )
+
+        task_alias = preparer.quote("t")
+        assigned_alias = preparer.quote("assigned")
+        manager_alias = preparer.quote("manager")
+
+        task_field_sql = {
+            "id": f"{task_alias}.{preparer.quote('id')}",
+            "title": f"{task_alias}.{preparer.quote('title')}",
+            "project_id": f"{task_alias}.{preparer.quote('project_id')}",
+            "task_date": f"{task_alias}.{preparer.quote('task_date')}",
+            "description": f"{task_alias}.{preparer.quote('description')}",
+            "start_time": f"{task_alias}.{preparer.quote('start_time')}",
+            "end_time": f"{task_alias}.{preparer.quote('end_time')}",
+            "status": f"{task_alias}.{preparer.quote('status')}",
+            "assigned_to_employee_id": (
+                f"{assigned_alias}.{preparer.quote('full_name')}"
+            ),
+            "managed_by_employee_id": (
+                f"{manager_alias}.{preparer.quote('full_name')}"
+            ),
+            "performance_score": (
+                f"{task_alias}.{preparer.quote('performance_score')}"
+            ),
+        }
+
+        if any(field not in task_field_sql for field in requested_fields):
+            raise QueryPlanError("Requested task field is not allowed.")
+
+        task_conditions = [
+            (
+                f"{task_alias}.{preparer.quote('organization_id')} "
+                "= :authenticated_organization_id"
+            ),
+            (
+                f"("
+                f"{task_alias}.{preparer.quote('assigned_to_employee_id')} "
+                "= :authenticated_employee_id OR "
+                f"{task_alias}.{preparer.quote('managed_by_employee_id')} "
+                "= :authenticated_employee_id"
+                f")"
+            ),
+        ]
+        task_params: dict[str, Any] = {
+            "authenticated_organization_id": organization_id,
+            "authenticated_employee_id": employee_id,
+            "query_limit": limit,
+        }
+
+        task_date_field = definition.get("date_field")
+        task_allowed_date_fields = (
+            definition.get("date_fields") or [task_date_field]
+        )
+
+        for field, value in filters.items():
+            quoted_field = f"{task_alias}.{preparer.quote(field)}"
+
+            if isinstance(value, dict):
+                if field not in task_allowed_date_fields:
+                    raise QueryPlanError(
+                        "Range filters are allowed only "
+                        "on the approved task date field."
+                    )
+                if not value or set(value) - {"gte", "lte"}:
+                    raise QueryPlanError(
+                        "Date ranges accept only gte and lte."
+                    )
+
+                for bound, comparator in (("gte", ">="), ("lte", "<=")):
+                    if bound not in value:
+                        continue
+                    param_name = f"{field}_{bound}"
+                    task_params[param_name] = _parse_date(
+                        value[bound],
+                        f"{field}.{bound}",
+                    )
+                    task_conditions.append(
+                        f"{quoted_field} "
+                        f"{comparator} :{param_name}"
+                    )
+
+                if (
+                    "gte" in value
+                    and "lte" in value
+                    and task_params[f"{field}_gte"]
+                    > task_params[f"{field}_lte"]
+                ):
+                    raise QueryPlanError(
+                        "Date range start must not be after end."
+                    )
+            else:
+                if value is None or isinstance(value, (dict, list)):
+                    raise QueryPlanError(
+                        f"Invalid value for filter {field}."
+                    )
+                if isinstance(value, bool):
+                    pass
+                elif not isinstance(
+                    value,
+                    (str, int, float, date, datetime),
+                ):
+                    raise QueryPlanError(
+                        f"Invalid value for filter {field}."
+                    )
+                if isinstance(value, str) and len(value) > 200:
+                    raise QueryPlanError("Filter value is too long.")
+                if isinstance(value, float):
+                    import math
+                    if not math.isfinite(value):
+                        raise QueryPlanError(
+                            "Filter value must be finite."
+                        )
+                task_params[field] = value
+                task_conditions.append(
+                    f"{quoted_field} = :{field}"
+                )
+
+        selected_task_fields = []
+        for field in requested_fields:
+            if field == "assigned_to_employee_id":
+                expression = task_field_sql[field]
+                output_name = "assigned_to"
+            elif field == "managed_by_employee_id":
+                expression = task_field_sql[field]
+                output_name = "managed_by"
+            else:
+                expression = task_field_sql[field]
+                output_name = field
+
+            selected_task_fields.append(
+                f"{expression} AS {preparer.quote(output_name)}"
+            )
+
+        task_sql = (
+            f"SELECT {', '.join(selected_task_fields)} "
+            f"FROM {quoted_schema}.{quoted_table} {task_alias} "
+            f"LEFT JOIN {quoted_schema}.{preparer.quote('employees')} "
+            f"{assigned_alias} "
+            f"ON {assigned_alias}.{preparer.quote('id')} = "
+            f"{task_alias}.{preparer.quote('assigned_to_employee_id')} "
+            f"AND {assigned_alias}.{preparer.quote('organization_id')} = "
+            f"{task_alias}.{preparer.quote('organization_id')} "
+            f"LEFT JOIN {quoted_schema}.{preparer.quote('employees')} "
+            f"{manager_alias} "
+            f"ON {manager_alias}.{preparer.quote('id')} = "
+            f"{task_alias}.{preparer.quote('managed_by_employee_id')} "
+            f"AND {manager_alias}.{preparer.quote('organization_id')} = "
+            f"{task_alias}.{preparer.quote('organization_id')} "
+            f"WHERE {' AND '.join(task_conditions)} "
+            f"ORDER BY {task_alias}.{preparer.quote(task_date_field)} "
+            "DESC NULLS LAST "
+            "LIMIT :query_limit"
+        )
+
+        with engine.connect() as connection:
+            task_rows = connection.execute(
+                text(task_sql),
+                task_params,
+            ).mappings().all()
+
+        return {
+            "operation_id": operation_id,
+            "entity": definition["entity"],
+            "operation": operation,
+            "data": [dict(row) for row in task_rows],
+            "limit": limit,
+        }
+
+    # Enforce access scope using authenticated identity.
     if definition["scope"] == "employee_id":
         conditions.append(
             f"{preparer.quote('employee_id')} "
             "= :authenticated_employee_id"
+        )
+        params["authenticated_employee_id"] = employee_id
+
+    elif definition["scope"] == "employee_task":
+        if organization_id is None:
+            raise QueryPlanError(
+                "Authenticated organization ID is required "
+                "for task queries."
+            )
+
+        conditions.append(
+            f"{preparer.quote('organization_id')} "
+            "= :authenticated_organization_id"
+        )
+        params["authenticated_organization_id"] = organization_id
+
+        conditions.append(
+            f"("
+            f"{preparer.quote('assigned_to_employee_id')} "
+            "= :authenticated_employee_id "
+            f"OR "
+            f"{preparer.quote('managed_by_employee_id')} "
+            "= :authenticated_employee_id"
+            f")"
         )
         params["authenticated_employee_id"] = employee_id
 
@@ -388,6 +762,11 @@ def execute_query_plan(
 
     for field, value in filters.items():
         quoted_field = preparer.quote(field)
+        date_filter_column = (
+            quoted_field
+            if definition["entity"] == "task"
+            else f"CAST({quoted_field} AS DATE)"
+        )
 
         if isinstance(value, dict):
             if field not in allowed_date_fields:
@@ -411,8 +790,7 @@ def execute_query_plan(
                 )
 
                 conditions.append(
-                    f"CAST({quoted_field} AS DATE) "
-                    f">= :{field}_gte"
+                    f"{date_filter_column} >= :{field}_gte"
                 )
 
             if "lte" in value:
@@ -422,8 +800,7 @@ def execute_query_plan(
                 )
 
                 conditions.append(
-                    f"CAST({quoted_field} AS DATE) "
-                    f"<= :{field}_lte"
+                    f"{date_filter_column} <= :{field}_lte"
                 )
 
             if (

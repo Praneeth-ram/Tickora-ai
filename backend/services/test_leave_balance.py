@@ -6,7 +6,7 @@ import os
 from datetime import date
 import pytest
 
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://u:p@localhost:5432/x")
+# os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://u:p@localhost:5432/x")
 
 from backend.services import leave_balance_answer as lba  # noqa: E402
 from backend.services import llm_chat_service as svc  # noqa: E402
