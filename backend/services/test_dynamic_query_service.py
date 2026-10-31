@@ -1,9 +1,11 @@
 import pytest
+from sqlalchemy import create_engine
 from backend.services.dynamic_query_service import (
     QueryPlanError,
     execute_query_plan,
 )
-from unittest.mock import patch
+from backend.services.operation_registry import build_operation_registry
+from unittest.mock import MagicMock, patch
 
 def execute_without_database(plan):
     attendance_columns = [
@@ -49,6 +51,212 @@ def test_rejects_unapproved_aggregate_field():
 
     with pytest.raises(QueryPlanError):
         execute_without_database(plan)
+
+
+def test_sum_query_separates_alias_from_from_clause():
+    plan = {
+        "operation_id": "attendance.sum",
+        "aggregate_field": "worked_minutes",
+    }
+    engine = create_engine("sqlite://")
+    connection = MagicMock()
+    connection.execute.return_value.mappings.return_value.all.return_value = [
+        {"total": 0}
+    ]
+    engine.connect = MagicMock()
+    engine.connect.return_value.__enter__.return_value = connection
+
+    with patch(
+        "backend.services.operation_registry.discover_schema",
+        return_value={
+            "attendance_records": {
+                "schema": "public",
+                "columns": [
+                    {"name": name, "type": "INTEGER"}
+                    for name in (
+                        "employee_id",
+                        "attendance_date",
+                        "worked_minutes",
+                        "overtime_minutes",
+                        "status",
+                        "work_location",
+                        "is_late",
+                    )
+                ],
+                "foreign_keys": [],
+            }
+        },
+    ):
+        execute_query_plan(plan, employee_id=1, db_engine=engine)
+
+    generated_sql = str(connection.execute.call_args.args[0])
+    assert "AS total FROM " in generated_sql
+    assert "AS totalFROM " not in generated_sql
+
+
+def test_organization_scoped_leave_type_list_is_registered_and_filtered():
+    plan = {
+        "operation_id": "leave_type.list",
+        "fields": ["code", "name", "is_paid"],
+        "filters": {},
+    }
+    engine = create_engine("sqlite://")
+    connection = MagicMock()
+    connection.execute.return_value.mappings.return_value.all.return_value = [
+        {"code": "VAC", "name": "Vacation", "is_paid": True}
+    ]
+    engine.connect = MagicMock()
+    engine.connect.return_value.__enter__.return_value = connection
+
+    with patch(
+        "backend.services.operation_registry.discover_schema",
+        return_value={
+            "leave_types": {
+                "schema": "public",
+                "columns": [
+                    {"name": name, "type": "INTEGER"}
+                    for name in (
+                        "id",
+                        "code",
+                        "name",
+                        "is_paid",
+                        "organization_id",
+                    )
+                ],
+                "foreign_keys": [],
+            }
+        },
+    ):
+        result = execute_query_plan(
+            plan,
+            employee_id=1,
+            organization_id=7,
+            db_engine=engine,
+        )
+
+    generated_sql, parameters = connection.execute.call_args.args
+    assert result["operation_id"] == "leave_type.list"
+    assert result["data"] == [
+        {"code": "VAC", "name": "Vacation", "is_paid": True}
+    ]
+    assert "organization_id = :authenticated_organization_id" in str(
+        generated_sql
+    )
+    assert parameters["authenticated_organization_id"] == 7
+
+
+def test_loan_start_month_filter_expands_iso_month_to_valid_date_range():
+    plan = {
+        "operation_id": "loan_request.list",
+        "fields": ["component"],
+        "filters": {
+            "start_month": "2026-10",
+        },
+    }
+    engine = create_engine("sqlite://")
+    connection = MagicMock()
+    connection.execute.return_value.mappings.return_value.all.return_value = [
+        {
+            "component": "Emergency Loan",
+            "employee_name": "Employee",
+            "employee_code": "EMP001",
+            "managed_by_name": None,
+            "managed_by_code": None,
+        }
+    ]
+    engine.connect = MagicMock()
+    engine.connect.return_value.__enter__.return_value = connection
+
+    loan_columns = [
+        "id",
+        "organization_id",
+        "employee_id",
+        "managed_by_employee_id",
+        "component",
+        "mode",
+        "total_amount",
+        "deducted_amount",
+        "remaining_amount",
+        "installment_amount",
+        "installments",
+        "installments_paid",
+        "start_month",
+        "next_deduction",
+        "remarks",
+        "status",
+        "loan_status",
+        "created_at",
+    ]
+    employee_columns = [
+        "id",
+        "organization_id",
+        "full_name",
+        "employee_code",
+    ]
+
+    with patch(
+        "backend.services.operation_registry.discover_schema",
+        return_value={
+            "loan_requests": {
+                "schema": "public",
+                "columns": [
+                    {"name": name, "type": "TEXT"}
+                    for name in loan_columns
+                ],
+                "foreign_keys": [],
+            },
+            "employees": {
+                "schema": "public",
+                "columns": [
+                    {"name": name, "type": "TEXT"}
+                    for name in employee_columns
+                ],
+                "foreign_keys": [],
+            },
+        },
+    ):
+        result = execute_query_plan(
+            plan,
+            employee_id=1,
+            organization_id=1,
+            db_engine=engine,
+        )
+
+    generated_sql, parameters = connection.execute.call_args.args
+    sql = str(generated_sql)
+    assert result["data"][0]["component"] == "Emergency Loan"
+    assert "CAST(lr.start_month AS DATE) >= :loan_start_month_gte" in sql
+    assert "CAST(lr.start_month AS DATE) <= :loan_start_month_lte" in sql
+    assert parameters["loan_start_month_gte"].isoformat() == "2026-10-01"
+    assert parameters["loan_start_month_lte"].isoformat() == "2026-10-31"
+
+
+def test_timesheet_status_grouping_is_registered_from_entity_policy():
+    timesheet_columns = [
+        "employee_id",
+        "period_start",
+        "period_end",
+        "status",
+        "submitted_at",
+        "approved_at",
+    ]
+
+    with patch(
+        "backend.services.operation_registry.discover_schema",
+        return_value={
+            "timesheets": {
+                "schema": "public",
+                "columns": [
+                    {"name": name, "type": "TEXT"}
+                    for name in timesheet_columns
+                ],
+                "foreign_keys": [],
+            }
+        },
+    ):
+        registry = build_operation_registry()
+
+    assert registry["timesheet.group_by"]["group_by_fields"] == ["status"]
 
 
 def test_rejects_unapproved_grouping_field():
@@ -144,4 +352,3 @@ def test_existing_count_operation_still_works():
     assert result["operation"] == "count"
     assert isinstance(result["data"]["count"], int)
     assert result["data"]["count"] >= 0
-

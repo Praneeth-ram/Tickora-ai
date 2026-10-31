@@ -272,6 +272,7 @@ def holidays(
     start_date: date = Query(...),
     end_date: date = Query(...),
     region: str | None = None,
+    current_employee: dict = Depends(get_current_employee),
 ):
     if start_date > end_date:
         raise HTTPException(
@@ -279,7 +280,12 @@ def holidays(
             detail="start_date cannot be after end_date",
         )
 
-    records = get_holidays(start_date, end_date, region)
+    records = get_holidays(
+        start_date,
+        end_date,
+        region,
+        organization_id=current_employee["organization_id"],
+    )
     return {"records": records}
 
 @app.get("/api/schedules/{employee_code}")

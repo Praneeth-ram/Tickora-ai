@@ -95,6 +95,7 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
         ],
         "date_field": "period_start",
         "count_allowed": True,
+        "group_by_fields": ["status"],
     },
     "holidays": {
         "entity": "holiday",
@@ -140,7 +141,7 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
     },
     "leave_types": {
         "entity": "leave_type",
-        "scope": "global_read",
+        "scope": "organization_read",
         "list_fields": ["id", "code", "name", "is_paid"],
         "filter_fields": ["code"],
         "date_field": None,
@@ -272,6 +273,9 @@ def build_operation_registry(
         }.issubset(available):
             continue
 
+        if scope == "organization_read" and "organization_id" not in available:
+            continue
+
         if scope == "organization_calendar":
             calendar_table = catalog.get("holiday_calendars")
             if calendar_table is None:
@@ -289,6 +293,7 @@ def build_operation_registry(
             "employee_task",
             "employee_manager",
             "global_read",
+            "organization_read",
             "organization_calendar",
         }:
             continue

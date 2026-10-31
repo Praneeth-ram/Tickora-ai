@@ -12,11 +12,55 @@ from backend.services.llm_chat_service import (
     leave_type_response,
     loan_amount_response,
     normalize_and_correct_plan,
+    _payroll_response,
     run_llm_chat,
     sum_response,
     task_count_response,
 )
 from backend.services.request_answer_builder import request_answer
+
+
+def test_payroll_response_detects_net_salary_without_regex_type_error():
+    response = _payroll_response(
+        [{
+            "period_start": date(2026, 10, 1),
+            "period_end": date(2026, 10, 31),
+            "net_amount": Decimal("4250.00"),
+            "currency": "USD",
+        }],
+        {},
+        "What is my net salary?",
+    )
+
+    assert response == (
+        "Your net salary:\n"
+        "- Net salary for October 2026: USD 4,250.00."
+    )
+
+
+def test_leave_type_lookup_passes_authenticated_organization():
+    with patch(
+        "backend.services.llm_chat_service._execute",
+        return_value={
+            "data": [
+                {
+                    "id": 3,
+                    "code": "VAC",
+                    "name": "Vacation",
+                    "is_paid": True,
+                }
+            ]
+        },
+    ) as execute:
+        response = run_llm_chat(
+            "Show all available leave types.",
+            employee_id=12,
+            organization_id=7,
+        )
+
+    assert execute.call_args.kwargs["organization_id"] == 7
+    assert execute.call_args.args[0]["operation_id"] == "leave_type.list"
+    assert response["data"][0]["name"] == "Vacation"
 
 
 def test_count_answers_use_entity_names_and_singular_grammar():
@@ -153,6 +197,46 @@ def test_multi_status_task_count_groups_by_status_without_status_filter():
     assert single_status_plan["filters"]["status"] == "completed"
 
 
+def test_grouping_explicitly_named_entity_overrides_wrong_model_entity():
+    timesheet_definition = {
+        "entity": "timesheet",
+        "table": "timesheets",
+        "fields": ["period_start", "period_end", "status"],
+        "filters": ["period_start", "status"],
+        "identity_filters": {},
+        "date_field": "period_start",
+        "date_fields": ["period_start", "submitted_at"],
+        "group_by_fields": ["status"],
+    }
+    registry = {
+        "timesheet.list": timesheet_definition,
+        "timesheet.count": timesheet_definition,
+        "timesheet.group_by": {
+            **timesheet_definition,
+            "group_by_fields": ["status"],
+        },
+    }
+
+    with patch(
+        "backend.services.llm_chat_service.build_operation_registry",
+        return_value=registry,
+    ):
+        plan, period = normalize_and_correct_plan(
+            {
+                "operation_id": "attendance.list",
+                "filters": {"attendance_date": {"gte": "2026-10-01"}},
+            },
+            "Group my timesheets by status.",
+            date(2026, 10, 31),
+        )
+
+    assert plan["operation_id"] == "timesheet.group_by"
+    assert plan["group_by_field"] == "status"
+    assert plan["aggregate_function"] == "count"
+    assert "attendance_date" not in plan["filters"]
+    assert period == {"start_date": None, "end_date": None}
+
+
 def test_loan_component_and_metric_are_resolved_without_component_constants():
     fields = ["total_amount", "deducted_amount", "remaining_amount"]
     question = "What is the deducted amount for Penalty Deduction?"
@@ -160,10 +244,88 @@ def test_loan_component_and_metric_are_resolved_without_component_constants():
 
     assert metric == "deducted_amount"
     assert _loan_component_phrase(question, metric) == "Penalty Deduction"
+    assert _loan_component_phrase(
+        "Show my approved loan requests.",
+        None,
+    ) is None
     assert _loan_metric_field(
         "What is the remaining amount for Emergency Loan?",
         fields,
     ) == "remaining_amount"
+
+
+def test_approved_loan_request_list_does_not_add_status_as_component():
+    loan_definition = {
+        "fields": [
+            "component",
+            "total_amount",
+            "deducted_amount",
+            "remaining_amount",
+            "status",
+        ],
+        "filters": [
+            "employee_id",
+            "managed_by_employee_id",
+            "component",
+            "status",
+        ],
+        "identity_filters": {
+            "employee_id": "employee_id",
+            "managed_by_employee_id": "employee_id",
+        },
+        "aggregate_fields": [
+            "total_amount",
+            "deducted_amount",
+            "remaining_amount",
+        ],
+    }
+    registry = {
+        "loan_request.list": loan_definition,
+        "loan_request.sum": loan_definition,
+        "loan_request.count": loan_definition,
+    }
+    approved_record = {
+        "component": "Emergency Loan",
+        "status": "approved",
+    }
+
+    with (
+        patch(
+            "backend.services.llm_chat_service.get_query_plan",
+            return_value={
+                "operation_id": "loan_request.list",
+                "filters": {"status": "approved"},
+            },
+        ),
+        patch(
+            "backend.services.llm_chat_service._approved_operations",
+            return_value=frozenset({"loan_request.list"}),
+        ),
+        patch(
+            "backend.services.llm_chat_service.build_operation_registry",
+            return_value=registry,
+        ),
+        patch(
+            "backend.services.llm_chat_service._execute",
+            return_value={
+                "operation_id": "loan_request.list",
+                "operation": "list",
+                "entity": "loan_request",
+                "data": [approved_record],
+            },
+        ) as execute,
+    ):
+        response = run_llm_chat(
+            "Show my approved loan requests.",
+            employee_id=1,
+            organization_id=1,
+        )
+
+    final_plan = execute.call_args.args[0]
+    assert execute.call_count == 1
+    assert final_plan["filters"]["status"] == "approved"
+    assert "component" not in final_plan["filters"]
+    assert response["data"] == [approved_record]
 
 
 def test_loan_amount_response_uses_database_value_and_missing_record_message():

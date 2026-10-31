@@ -1,20 +1,15 @@
 import re
+from calendar import monthrange
 from datetime import date, datetime
 from typing import Any
-
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
-
 from backend.services.operation_registry import build_operation_registry
-
 
 _SCHEMA_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 _MAX_LIMIT = 100
-
-
 class QueryPlanError(ValueError):
     """Raised when a query plan violates the approved contract."""
-
 
 def _parse_date(value: Any, label: str) -> date:
     if isinstance(value, datetime):
@@ -32,7 +27,6 @@ def _parse_date(value: Any, label: str) -> date:
         raise QueryPlanError(
             f"{label} must be an ISO date."
         ) from exc
-
 
 def execute_query_plan(
     plan: dict[str, Any],
@@ -869,6 +863,38 @@ def execute_query_plan(
                         "Filter value is too long."
                     )
 
+                if (
+                    field in allowed_date_fields
+                    and isinstance(value, str)
+                    and re.fullmatch(r"\d{4}-\d{2}", value)
+                ):
+                    try:
+                        month_start = date.fromisoformat(
+                            f"{value}-01"
+                        )
+                    except ValueError as exc:
+                        raise QueryPlanError(
+                            f"{field} must be a valid ISO month."
+                        ) from exc
+
+                    month_end = date(
+                        month_start.year,
+                        month_start.month,
+                        monthrange(
+                            month_start.year,
+                            month_start.month,
+                        )[1],
+                    )
+                    start_param = f"loan_{field}_gte"
+                    end_param = f"loan_{field}_lte"
+                    loan_params[start_param] = month_start
+                    loan_params[end_param] = month_end
+                    loan_conditions.extend([
+                        f"CAST({quoted_field} AS DATE) >= :{start_param}",
+                        f"CAST({quoted_field} AS DATE) <= :{end_param}",
+                    ])
+                    continue
+
                 loan_params[field] = value
 
                 if field == "component" and isinstance(value, str):
@@ -1009,7 +1035,19 @@ def execute_query_plan(
         )
         params["authenticated_employee_id"] = employee_id
 
-    elif definition["scope"] != "global_read":
+    elif definition["scope"] == "organization_read":
+        if organization_id is None:
+            raise QueryPlanError(
+                "Authenticated organization ID is required."
+            )
+
+        conditions.append(
+            f"{preparer.quote('organization_id')} "
+            "= :authenticated_organization_id"
+        )
+        params["authenticated_organization_id"] = organization_id
+
+    else:
         raise QueryPlanError("Unknown access scope.")
 
     date_field = definition.get("date_field")
@@ -1136,13 +1174,13 @@ def execute_query_plan(
         )
 
         record_count_sql = (
-            ", COUNT(*) AS record_count "
+            ", COUNT(*) AS record_count"
             if definition["entity"] == "loan_request"
             else ""
         )
         sql = (
             f"SELECT COALESCE(SUM({quoted_aggregate}), 0) "
-            f"AS total{record_count_sql}"
+            f"AS total{record_count_sql} "
             f"FROM {quoted_schema}.{quoted_table}"
             f"{where_sql}"
         )

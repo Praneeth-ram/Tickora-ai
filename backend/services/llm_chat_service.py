@@ -227,6 +227,10 @@ def rule_based_plan(question: str) -> dict[str, Any]:
         entity = "wfh_request"
     elif is_leave_balance_question(q):
         entity = "leave_balance"
+    elif re.search(r"\bleave\s+types?\b", q):
+        entity = "leave_type"
+    elif re.search(r"\btasks?\b", q):
+        entity = "task"
     elif _LEAVE_RE.search(q):
         entity = "leave_request"
     elif re.search(r"\b(?:loans?|penalty\s+deduction)\b", q):
@@ -368,7 +372,8 @@ def _loan_component_phrase(
 
     if match is None:
         match = re.search(
-            r"\b(?:my|the)\s+(?P<component>[\w &'/-]*?\s+loan)\b",
+            r"\b(?:my|the)\s+(?P<component>[\w &'/-]*?\s+loan)"
+            r"(?:\s+requests?)?\s*$",
             q,
             re.IGNORECASE,
         )
@@ -377,6 +382,18 @@ def _loan_component_phrase(
         return None
 
     component = match.group("component").strip(" '\"")
+    component = re.sub(
+        r"\s+loan\s+requests?$",
+        " loan",
+        component,
+        flags=re.IGNORECASE,
+    )
+    component = re.sub(
+        r"^(?:pending|approved|rejected|cancelled)\s+",
+        "",
+        component,
+        flags=re.IGNORECASE,
+    )
 
     # Remove the requested metric if it was included in the extracted phrase.
     if metric_field:
@@ -401,6 +418,41 @@ def _loan_component_phrase(
         return None
 
     return component or None
+
+
+def _registered_entity_mentioned(
+    question: str,
+    registry: dict[str, dict[str, Any]],
+) -> str | None:
+    """Resolve an explicitly named entity using registered entity/table names."""
+    matches: list[tuple[int, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for definition in registry.values():
+        entity = definition.get("entity")
+        table = definition.get("table")
+        if not isinstance(entity, str):
+            continue
+
+        for name in (entity, table):
+            if not isinstance(name, str):
+                continue
+            phrase = name.replace("_", " ").strip()
+            candidate = (entity, phrase)
+            if not phrase or candidate in seen:
+                continue
+            seen.add(candidate)
+            pattern = r"(?<!\w)" + re.escape(phrase).replace(
+                r"\ ", r"\s+"
+            ) + r"(?!\w)"
+            if re.search(pattern, question, re.IGNORECASE):
+                matches.append((len(phrase), entity))
+
+    if not matches:
+        return None
+
+    matches.sort(reverse=True)
+    return matches[0][1]
 
 
 def normalize_and_correct_plan(
@@ -472,7 +524,9 @@ def normalize_and_correct_plan(
         # Guard: leave-balance questions use "how many" too — do NOT reroute them
         # to leave_request.count.  is_leave_balance_question already short-circuits
         # in run_llm_chat, but this protects against model plans that reach here.
-        if "leave" in q and not is_leave_balance_question(q):
+        if re.search(r"\bleave\s+types?\b", q):
+            op_id = "leave_type.count"
+        elif "leave" in q and not is_leave_balance_question(q):
             op_id = "leave_request.count"
         elif "wfh" in q or "work from home" in q:
             op_id = "wfh_request.count"
@@ -514,6 +568,71 @@ def normalize_and_correct_plan(
         is_task_query and is_count_query and len(task_statuses) > 1
     )
     registry = build_operation_registry()
+
+    # Prefer an entity explicitly named by the user over a conflicting model
+    # classification. Entity and table names come from the approved registry.
+    requested_entity = _registered_entity_mentioned(question, registry)
+    if requested_entity:
+        grouped_request = bool(
+            re.search(
+                r"\b(?:group(?:ed)?|breakdown|break\s+down|"
+                r"categorize|category)\b",
+                q,
+            )
+            and re.search(r"\bby\b", q)
+        )
+        if grouped_request:
+            group_definition = registry.get(
+                f"{requested_entity}.group_by"
+            )
+            group_fields = (
+                group_definition.get("group_by_fields", [])
+                if group_definition
+                else []
+            )
+            group_by_field = next(
+                (
+                    field
+                    for field in sorted(
+                        group_fields,
+                        key=len,
+                        reverse=True,
+                    )
+                    if re.search(
+                        r"\bby\s+"
+                        + re.escape(field.replace("_", " "))
+                        .replace(r"\ ", r"\s+")
+                        + r"(?!\w)",
+                        q,
+                    )
+                ),
+                None,
+            )
+            if group_definition and group_by_field:
+                op_id = f"{requested_entity}.group_by"
+                normalized.update(
+                    {
+                        "operation_id": op_id,
+                        "group_by_field": group_by_field,
+                        "aggregate_function": "count",
+                    }
+                )
+                for key in ("fields", "aggregate_field"):
+                    normalized.pop(key, None)
+            else:
+                requested_entity = None
+
+        if requested_entity and not grouped_request:
+            requested_operation = (
+                "count" if is_count_query else "list"
+            )
+            operation_id = (
+                f"{requested_entity}.{requested_operation}"
+            )
+            if operation_id in registry:
+                op_id = operation_id
+                normalized["operation_id"] = operation_id
+
     task_sum_definition = registry.get("task.sum", {})
     task_aggregate_fields = task_sum_definition.get("aggregate_fields", [])
     task_aggregate_field = next(
@@ -683,7 +802,10 @@ def normalize_and_correct_plan(
     for word, status_value in status_keywords.items():
         if word == "submitted" and SUBMITTED_DATE_RE.search(q):
             continue
-        if re.search(r"\b" + re.escape(word) + r"\b", q):
+        status_pattern = re.escape(word).replace(
+            r"\ ", r"[\s-]+"
+        )
+        if re.search(r"\b" + status_pattern + r"\b", q):
             explicit_status = status_value
             break
 
@@ -760,6 +882,8 @@ def normalize_and_correct_plan(
                 filters["managed_by_employee_id"] = {"$context": context}
 
     date_field = OPERATION_DATE_FIELDS.get(op_id)
+    if date_field is None:
+        date_field = registry.get(op_id, {}).get("date_field")
     if op_id.startswith("timesheet.") and SUBMITTED_DATE_RE.search(q):
         date_field = "submitted_at"
     if date_field and op_id.startswith(("leave_request.", "wfh_request.")) and APPLIED_RE.search(q):
@@ -964,7 +1088,7 @@ def count_response(
 
     # Generic entity count responses.
     if count == 0:
-        return f"No {description}{where} were found."
+        return f"No {description} were found{where}."
 
     if entity in {"holiday", "leave_type"}:
         return (
@@ -1171,7 +1295,10 @@ def grouped_response(
         "task": ("task", "task"),
         "leave_balance": ("leave balance", "record"),
     }
-    title, count_unit = entity_labels.get(entity, ("record", "record"))
+    title, count_unit = entity_labels.get(
+        entity,
+        (entity.replace("_", " "), "record"),
+    )
 
     if not rows:
         where = f" {span}" if span else ""
@@ -1249,7 +1376,7 @@ def _payroll_response(
     if re.search(
     r"\b(?:deductions?|deductible|deductibles|"
     r"tax(?:es)?\s+deducted|"
-    r"deduction\s+amount|deducted\s+amount)\b",
+    r"deduction\s+amount|deducted(?:\s+(?:amount|from|for))?)\b",
     q,
     ):
         metric = "deduction_amount"
@@ -1260,7 +1387,6 @@ def _payroll_response(
         r"take[- ]home\s+(?:pay|salary|amount)|"
         r"amount\s+(?:received|credited)|"
         r"credited\s+to\s+(?:my\s+)?account)\b",
-        r"tasks?\s+(?:assigned\s+to\s+)?me)\b",
         q,
     ):
         metric = "net_amount"
@@ -1533,15 +1659,11 @@ def _result(
         "data": data if show_table else [],
     }
 
-
-
 def _execute(plan: dict[str, Any], employee_id: int, limit: int, organization_id: int | None = None) -> Any:
     try:
         return execute_query_plan(plan, employee_id=employee_id, limit=limit, organization_id=organization_id)
     except QueryPlanError as exc:
         raise ModelServiceError(f"The query plan failed validation: {exc}") from exc
-
-
 
 def _attended_sentence(rows, span, office_only=False):
     """Build an attendance summary from database records."""
@@ -2297,9 +2419,14 @@ def _answer_timesheet(question, normalized_question, period, employee_id, target
     return _result(question, answer, "timesheet_lookup", period, False, [])
 
 
-def _answer_leave_balance(question, normalized_question, employee_id, today):
+def _answer_leave_balance(question, normalized_question, employee_id, today, organization_id=None):
     """Answer leave balance questions from leave_balances, matched to leave types in the database."""
-    types_result = _execute({"operation_id": "leave_type.list", "filters": {}}, employee_id, limit=100)
+    types_result = _execute(
+        {"operation_id": "leave_type.list", "filters": {}},
+        employee_id,
+        limit=100,
+        organization_id=organization_id,
+    )
     leave_types = types_result["data"] if isinstance(types_result["data"], list) else []
 
     year = detect_year(normalized_question, today.year)
@@ -2357,13 +2484,9 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             {"operation_id": "leave_type.list", "filters": {}},
             employee_id,
             limit=100,
+            organization_id=organization_id,
         )
 
-        type_result = _execute(
-            {"operation_id": "leave_type.list", "filters": {}},
-            employee_id,
-            limit=100,
-        )
         leave_types = (
             type_result["data"]
             if isinstance(type_result.get("data"), list)
@@ -2384,7 +2507,13 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         print("Selected route: leave_balance")
         print("Reason: Leave-balance question")
         print("--- END ROUTE DEBUG ---\n")
-        return _answer_leave_balance(question, normalized_question, employee_id, today)
+        return _answer_leave_balance(
+            question,
+            normalized_question,
+            employee_id,
+            today,
+            organization_id=organization_id,
+        )
 
     
     # Route payroll questions directly so an incorrect model plan
@@ -2527,6 +2656,48 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
 
             plan["filters"] = loan_filters
 
+        if plan.get("operation_id") == "task.list":
+            task_fields = build_operation_registry().get(
+                "task.list", {}
+            ).get("fields", [])
+            field_phrases = {
+                "title": ("title", "task name"),
+                "project_id": ("project", "project id"),
+                "task_date": ("task date", "due date"),
+                "description": ("description",),
+                "start_time": ("start time",),
+                "end_time": ("end time",),
+                "status": ("status",),
+                "assigned_to_employee_id": (
+                    "assignee",
+                    "assigned to",
+                ),
+                "managed_by_employee_id": (
+                    "manager",
+                    "managed by",
+                ),
+                "performance_score": ("performance score",),
+            }
+            requested_fields = [
+                field
+                for field in task_fields
+                if any(
+                    re.search(
+                        r"(?<!\w)"
+                        + re.escape(phrase).replace(r"\ ", r"\s+")
+                        + r"(?!\w)",
+                        normalized_question,
+                        re.IGNORECASE,
+                    )
+                    for phrase in field_phrases.get(field, ())
+                )
+            ]
+            plan["fields"] = requested_fields or [
+                field
+                for field in ("title", "status", "task_date")
+                if field in task_fields
+            ]
+
     except InvalidDateError as exc:
         answer = f"'{exc}' is not a valid date. Please check the day and month, for example: 19 October 2026."
         return _text_result(question, answer, intent="attendance_records")
@@ -2589,6 +2760,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         "attendance.group_by": "attendance_summary",
         "timesheet.list": "timesheet_lookup",
         "timesheet.count": "timesheet_lookup",
+        "timesheet.group_by": "timesheet_lookup",
         "holiday.count": "holiday_lookup",
         "leave_request.count": "leave_status",
         "wfh_request.count": "wfh_status",
@@ -2657,6 +2829,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
                 {"operation_id": "leave_type.list", "filters": {}},
                 employee_id,
                 limit=100,
+                organization_id=organization_id,
             )
             group_labels = {
                 row.get("id"): str(row.get("name") or row.get("code") or "Leave type")
@@ -2690,7 +2863,13 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         return _result(question, answer, intent, period, False, data)
 
     if operation_id == "leave_balance.list":
-        return _answer_leave_balance(question, normalized_question, employee_id, today)
+        return _answer_leave_balance(
+            question,
+            normalized_question,
+            employee_id,
+            today,
+            organization_id=organization_id,
+        )
 
     if operation_id == "payroll_summary.list":
         message = _payroll_response(
@@ -2703,7 +2882,8 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             re.search(
                 r"\b(?:deductions?|deductible|deductibles|"
                 r"tax(?:es)?\s+deducted|"
-                r"deduction\s+amount|deducted\s+amount|"
+                r"deduction\s+amount|"
+                r"deducted(?:\s+(?:amount|from|for))?|"
                 r"net\s+(?:amount|salary|pay|income)|"
                 r"take[- ]home\s+(?:pay|salary|amount)|"
                 r"amount\s+(?:received|credited)|"
