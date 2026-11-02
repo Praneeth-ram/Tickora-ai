@@ -455,6 +455,23 @@ def _registered_entity_mentioned(
     return matches[0][1]
 
 
+def _task_identity_filter(question: str) -> str | None:
+    """Return the task ownership field explicitly requested by the user."""
+    q = question.lower()
+    if re.search(r"\bassigned(?:\s+to)?\s+me\b", q):
+        return "assigned_to_employee_id"
+    if re.search(
+        r"\b(?:managed|manage|managing)\s+by\s+me\b"
+        r"|\b(?:what|which)\s+tasks?\s+(?:am\s+i\s+)?managing\b"
+        r"|\btasks?\s+(?:(?:which|that)\s+)?"
+        r"(?:i\s+am|i['’]m)\s+managing\b"
+        r"|\btasks?\s+(?:(?:which|that)\s+)?i\s+manage\b",
+        q,
+    ):
+        return "managed_by_employee_id"
+    return None
+
+
 def normalize_and_correct_plan(
     plan: dict[str, Any],
     question: str,
@@ -868,18 +885,11 @@ def normalize_and_correct_plan(
                 }
 
     if op_id.startswith("task."):
-        if re.search(r"\bassigned(?:\s+to)?\s+me\b", q):
-            context = identity_filters.get("assigned_to_employee_id")
+        identity_field = _task_identity_filter(q)
+        if identity_field:
+            context = identity_filters.get(identity_field)
             if context:
-                filters["assigned_to_employee_id"] = {"$context": context}
-        elif re.search(
-            r"\b(?:manage|managing|managed)\s+by\s+me\b"
-            r"|\bwhat\s+tasks\s+am\s+i\s+managing\b",
-            q,
-        ):
-            context = identity_filters.get("managed_by_employee_id")
-            if context:
-                filters["managed_by_employee_id"] = {"$context": context}
+                filters[identity_field] = {"$context": context}
 
     date_field = OPERATION_DATE_FIELDS.get(op_id)
     if date_field is None:
@@ -2649,18 +2659,9 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
                 ):
                     task_filters.pop(field, None)
 
-            if re.search(
-                r"\b(?:assigned|assigned\s+to)\s+me\b",
-                q,
-            ):
-                task_filters["assigned_to_employee_id"] = employee_id
-
-            elif re.search(
-                r"\b(?:manage|managing|managed)\s+by\s+me\b"
-                r"|\bwhat\s+tasks\s+am\s+i\s+managing\b",
-                q,
-            ):
-                task_filters["managed_by_employee_id"] = employee_id
+            identity_field = _task_identity_filter(q)
+            if identity_field:
+                task_filters[identity_field] = employee_id
 
             plan["filters"] = task_filters
 
@@ -2757,9 +2758,52 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
                     for phrase in field_phrases.get(field, ())
                 )
             ]
-            plan["fields"] = requested_fields or [
+           
+            default_task_fields = [
                 field
                 for field in ("title", "status", "task_date")
+                if field in task_fields
+            ]
+
+            q = normalized_question.lower()
+
+            asks_assigned_to_self = bool(
+                re.search(
+                    r"\b(?:assigned|assigned\s+to)\s+me\b",
+                    q,
+                )
+            )
+
+            asks_managed_by_self = bool(
+                re.search(
+                    r"\b(?:managed|manage|managing)\s+by\s+me\b"
+                    r"|\b(?:what|which)\s+tasks?\s+"
+                    r"(?:am\s+i\s+)?managing\b",
+                    q,
+                )
+            )
+
+            # Always include task-identifying information.
+            selected_fields = list(default_task_fields)
+
+            if asks_assigned_to_self:
+                selected_fields.append(
+                    "assigned_to_employee_id"
+                )
+
+            if asks_managed_by_self:
+                selected_fields.append(
+                    "managed_by_employee_id"
+                )
+
+            # Preserve explicitly requested fields.
+            for field in requested_fields:
+                if field not in selected_fields:
+                    selected_fields.append(field)
+
+            plan["fields"] = [
+                field
+                for field in selected_fields
                 if field in task_fields
             ]
 

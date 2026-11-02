@@ -348,10 +348,10 @@ def execute_query_plan(
                 # requested window:
                 # period_end >= requested start
                 # period_start <= requested end
-                if field == "period_start" and bound == "gte":
+                if bound == "gte":
                     filter_column = payroll_field_sql["period_end"]
 
-                elif field == "period_start" and bound == "lte":
+                elif bound == "lte":
                     filter_column = payroll_field_sql["period_start"]
 
                 else:
@@ -914,25 +914,25 @@ def execute_query_plan(
             for field in requested_fields
         ]
 
-        # Additional display fields for the frontend.
-        selected_fields.extend([
-            (
-                f"{employee_alias}.{preparer.quote('full_name')} "
-                f"AS {preparer.quote('employee_name')}"
-            ),
-            (
-                f"{employee_alias}.{preparer.quote('employee_code')} "
-                f"AS {preparer.quote('employee_code')}"
-            ),
-            (
-                f"{manager_alias}.{preparer.quote('full_name')} "
-                f"AS {preparer.quote('managed_by_name')}"
-            ),
-            (
-                f"{manager_alias}.{preparer.quote('employee_code')} "
-                f"AS {preparer.quote('managed_by_code')}"
-            ),
-        ])
+        # # Additional display fields for the frontend.
+        # selected_fields.extend([
+        #     (
+        #         f"{employee_alias}.{preparer.quote('full_name')} "
+        #         f"AS {preparer.quote('employee_name')}"
+        #     ),
+        #     (
+        #         f"{employee_alias}.{preparer.quote('employee_code')} "
+        #         f"AS {preparer.quote('employee_code')}"
+        #     ),
+        #     (
+        #         f"{manager_alias}.{preparer.quote('full_name')} "
+        #         f"AS {preparer.quote('managed_by_name')}"
+        #     ),
+        #     (
+        #         f"{manager_alias}.{preparer.quote('employee_code')} "
+        #         f"AS {preparer.quote('managed_by_code')}"
+        #     ),
+        # ])
 
         loan_sql = (
             f"SELECT {', '.join(selected_fields)} "
@@ -977,6 +977,219 @@ def execute_query_plan(
             "operation": operation,
             "data": [dict(row) for row in loan_rows],
             "limit": limit,
+        }
+
+    
+    # ---------------------------------------------------------
+    # ATTENDANCE CHILD ENTITIES:
+    # Punches and adjustments are accessible only through
+    # attendance_records owned by the authenticated employee.
+    # ---------------------------------------------------------
+    attendance_child_operations = {
+        "attendance_punch.list": "attendance_punches",
+        "attendance_punch.count": "attendance_punches",
+        "attendance_adjustment.list": "attendance_adjustments",
+        "attendance_adjustment.count": "attendance_adjustments",
+    }
+
+    if operation_id in attendance_child_operations:
+        expected_table = attendance_child_operations[operation_id]
+
+        if definition["table"] != expected_table:
+            raise QueryPlanError(
+                "Invalid attendance child entity configuration."
+            )
+
+        if definition.get("scope") != "attendance_owner":
+            raise QueryPlanError(
+        "Invalid attendance child access scope."
+        )
+
+        if operation not in {"list", "count"}:
+            raise QueryPlanError(
+                "Unsupported attendance child operation."
+            )
+
+        child_alias = preparer.quote("child")
+        attendance_alias = preparer.quote("attendance")
+
+        child_conditions = [
+            (
+                f"{attendance_alias}.{preparer.quote('employee_id')} "
+                "= :authenticated_employee_id"
+            ),
+            (
+                f"{attendance_alias}.{preparer.quote('id')} "
+                f"= {child_alias}.{preparer.quote('attendance_id')}"
+            ),
+        ]
+
+        child_params: dict[str, Any] = {
+            "authenticated_employee_id": employee_id,
+            "query_limit": limit,
+        }
+
+        child_date_field = definition.get("date_field")
+        child_date_fields = (
+            definition.get("date_fields") or [child_date_field]
+        )
+
+        for field, value in filters.items():
+            quoted_field = (
+                f"{child_alias}.{preparer.quote(field)}"
+            )
+
+            if isinstance(value, dict):
+                if field not in child_date_fields:
+                    raise QueryPlanError(
+                        "Range filters are allowed only "
+                        "on approved attendance child date fields."
+                    )
+
+                if not value or set(value) - {"gte", "lte"}:
+                    raise QueryPlanError(
+                        "Date ranges accept only gte and lte."
+                    )
+
+                for bound, comparator in (
+                    ("gte", ">="),
+                    ("lte", "<="),
+                ):
+                    if bound not in value:
+                        continue
+
+                    param_name = (
+                        f"attendance_child_{field}_{bound}"
+                    )
+
+                    child_params[param_name] = _parse_date(
+                        value[bound],
+                        f"{field}.{bound}",
+                    )
+
+                    child_conditions.append(
+                        f"CAST({quoted_field} AS DATE) "
+                        f"{comparator} :{param_name}"
+                    )
+
+                if (
+                    "gte" in value
+                    and "lte" in value
+                    and child_params[
+                        f"attendance_child_{field}_gte"
+                    ]
+                    > child_params[
+                        f"attendance_child_{field}_lte"
+                    ]
+                ):
+                    raise QueryPlanError(
+                        "Date range start must not be after end."
+                    )
+
+            else:
+                if (
+                    value is None
+                    or isinstance(value, (dict, list))
+                ):
+                    raise QueryPlanError(
+                        f"Invalid value for filter {field}."
+                    )
+
+                if isinstance(value, bool):
+                    pass
+                elif not isinstance(
+                    value,
+                    (str, int, float, date, datetime),
+                ):
+                    raise QueryPlanError(
+                        f"Invalid value for filter {field}."
+                    )
+
+                if isinstance(value, str) and len(value) > 200:
+                    raise QueryPlanError(
+                        "Filter value is too long."
+                    )
+
+                if isinstance(value, float):
+                    import math
+
+                    if not math.isfinite(value):
+                        raise QueryPlanError(
+                            "Filter value must be finite."
+                        )
+
+                param_name = f"attendance_child_{field}"
+                child_params[param_name] = value
+
+                child_conditions.append(
+                    f"{quoted_field} = :{param_name}"
+                )
+
+        child_where_sql = " AND ".join(child_conditions)
+
+        child_from_sql = (
+            f"FROM {quoted_schema}.{quoted_table} {child_alias} "
+            f"INNER JOIN {quoted_schema}."
+            f"{preparer.quote('attendance_records')} "
+            f"{attendance_alias} "
+            f"ON {attendance_alias}.{preparer.quote('id')} "
+            f"= {child_alias}.{preparer.quote('attendance_id')} "
+            f"WHERE {child_where_sql}"
+        )
+
+        if operation == "count":
+            child_sql = (
+                "SELECT COUNT(*) AS record_count "
+                f"{child_from_sql}"
+            )
+        else:
+            if not requested_fields:
+                raise QueryPlanError(
+                    "No approved attendance child fields selected."
+                )
+
+            selected_fields = ", ".join(
+                f"{child_alias}.{preparer.quote(field)} "
+                f"AS {preparer.quote(field)}"
+                for field in requested_fields
+            )
+
+            child_sql = (
+                f"SELECT {selected_fields} "
+                f"{child_from_sql}"
+            )
+
+            if child_date_field:
+                child_sql += (
+                    f" ORDER BY "
+                    f"{child_alias}.{preparer.quote(child_date_field)} "
+                    "DESC NULLS LAST"
+                )
+
+            child_sql += " LIMIT :query_limit"
+
+        with engine.connect() as connection:
+            child_rows = connection.execute(
+                text(child_sql),
+                child_params,
+            ).mappings().all()
+
+        if operation == "count":
+            child_data: Any = {
+                "count": int(child_rows[0]["record_count"])
+            }
+        else:
+            child_data = [
+                dict(row)
+                for row in child_rows
+            ]
+
+        return {
+            "operation_id": operation_id,
+            "entity": definition["entity"],
+            "operation": operation,
+            "data": child_data,
+            "limit": limit if operation == "list" else None,
         }
 
         # Enforce access scope using authenticated identity.

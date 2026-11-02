@@ -233,6 +233,135 @@ def test_task_count_answers_describe_task_filters_and_periods():
         ) == expected
 
 
+def test_task_lists_scope_self_assignment_and_management_requests():
+    task_definition = {
+        "entity": "task",
+        "table": "tasks",
+        "fields": [
+            "id",
+            "title",
+            "task_date",
+            "status",
+            "assigned_to_employee_id",
+            "managed_by_employee_id",
+        ],
+        "filters": [
+            "task_date",
+            "status",
+            "assigned_to_employee_id",
+            "managed_by_employee_id",
+        ],
+        "identity_filters": {
+            "assigned_to_employee_id": "employee_id",
+            "managed_by_employee_id": "employee_id",
+        },
+        "date_field": "task_date",
+        "date_fields": ["task_date"],
+        "aggregate_fields": ["performance_score"],
+        "group_by_fields": ["status"],
+    }
+    registry = {
+        f"task.{operation}": task_definition
+        for operation in ("list", "count", "sum", "group_by")
+    }
+    cases = [
+        ("Which task is assigned to me?", "assigned_to_employee_id"),
+        ("List the task which I am managing.", "managed_by_employee_id"),
+        ("Show tasks that I manage.", "managed_by_employee_id"),
+        ("List tasks managed by me.", "managed_by_employee_id"),
+    ]
+
+    with patch(
+        "backend.services.llm_chat_service.build_operation_registry",
+        return_value=registry,
+    ):
+        for question, identity_field in cases:
+            plan, _ = normalize_and_correct_plan(
+                {"operation_id": "task.list", "filters": {}},
+                question,
+                date(2026, 11, 2),
+            )
+
+            assert plan["operation_id"] == "task.list"
+            assert plan["filters"][identity_field] == {
+                "$context": "employee_id"
+            }
+            other_field = (
+                "managed_by_employee_id"
+                if identity_field == "assigned_to_employee_id"
+                else "assigned_to_employee_id"
+            )
+            assert other_field not in plan["filters"]
+
+
+def test_task_list_execution_uses_authenticated_assignment_or_manager_filter():
+    task_definition = {
+        "entity": "task",
+        "table": "tasks",
+        "fields": [
+            "id",
+            "title",
+            "task_date",
+            "status",
+            "assigned_to_employee_id",
+            "managed_by_employee_id",
+        ],
+        "filters": [
+            "task_date",
+            "status",
+            "project_id",
+            "assigned_to_employee_id",
+            "managed_by_employee_id",
+        ],
+        "identity_filters": {
+            "assigned_to_employee_id": "employee_id",
+            "managed_by_employee_id": "employee_id",
+        },
+        "date_field": "task_date",
+        "date_fields": ["task_date"],
+        "aggregate_fields": ["performance_score"],
+        "group_by_fields": ["status"],
+    }
+    registry = {
+        f"task.{operation}": task_definition
+        for operation in ("list", "count", "sum", "group_by")
+    }
+    cases = [
+        ("Which task is assigned to me?", "assigned_to_employee_id"),
+        ("List the task which I am managing.", "managed_by_employee_id"),
+    ]
+
+    for question, identity_field in cases:
+        with (
+            patch(
+                "backend.services.llm_chat_service.get_query_plan",
+                return_value={"operation_id": "task.list", "filters": {}},
+            ),
+            patch(
+                "backend.services.llm_chat_service._approved_operations",
+                return_value=frozenset({"task.list"}),
+            ),
+            patch(
+                "backend.services.llm_chat_service.build_operation_registry",
+                return_value=registry,
+            ),
+            patch(
+                "backend.services.llm_chat_service._execute",
+                return_value={
+                    "operation_id": "task.list",
+                    "entity": "task",
+                    "operation": "list",
+                    "data": [{"title": "Example task"}],
+                },
+            ) as execute,
+        ):
+            run_llm_chat(question, employee_id=12, organization_id=7)
+
+        assert execute.call_args.args[0]["filters"] == {
+            identity_field: 12
+        }
+
+
 def test_multi_status_task_count_groups_by_status_without_status_filter():
     task_definition = {
         "filters": ["status", "project_id", "task_date"],

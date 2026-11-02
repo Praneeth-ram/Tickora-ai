@@ -426,6 +426,112 @@ def build_operation_registry(
             )
             if field in available
         ]
+            # Attendance child entities use a dedicated ownership join
+    # through attendance_records. They must never use the generic
+    # single-table employee_id scope.
+    attendance_child_entities = {
+        "attendance_punches": {
+            "entity": "attendance_punch",
+            "list_fields": [
+                "id",
+                "attendance_id",
+                "punched_at",
+                "punch_type",
+                "source",
+            ],
+            "filter_fields": [
+                "punched_at",
+                "punch_type",
+                "source",
+            ],
+            "date_field": "punched_at",
+        },
+        "attendance_adjustments": {
+            "entity": "attendance_adjustment",
+            "list_fields": [
+                "id",
+                "attendance_id",
+                "reason",
+                "created_at",
+            ],
+            "filter_fields": [
+                "created_at",
+            ],
+            "date_field": "created_at",
+        },
+    }
+
+    attendance_table = catalog.get("attendance_records")
+    attendance_columns = {
+        column["name"]
+        for column in attendance_table["columns"]
+    } if attendance_table else set()
+
+    attendance_parent_is_valid = {
+        "id",
+        "employee_id",
+    }.issubset(attendance_columns)
+
+    if attendance_parent_is_valid:
+        for table_name, policy in attendance_child_entities.items():
+            table = catalog.get(table_name)
+
+            if table is None:
+                continue
+
+            available = {
+                column["name"]
+                for column in table["columns"]
+            }
+
+            # The child table must link to attendance_records.
+            if "attendance_id" not in available:
+                continue
+
+            fields = [
+                field
+                for field in policy["list_fields"]
+                if field in available
+            ]
+
+            filters = [
+                field
+                for field in policy["filter_fields"]
+                if field in available
+            ]
+
+            if not fields:
+                continue
+
+            date_field = (
+                policy["date_field"]
+                if policy["date_field"] in available
+                else None
+            )
+
+            date_fields = [date_field] if date_field else []
+
+            definition = {
+                "entity": policy["entity"],
+                "table": table_name,
+                "operation": "list",
+                "scope": "attendance_owner",
+                "fields": fields,
+                "filters": filters,
+                "identity_filters": {},
+                "date_field": date_field,
+                "date_fields": date_fields,
+                "aggregate_fields": [],
+                "group_by_fields": [],
+            }
+
+            registry[f"{policy['entity']}.list"] = definition
+
+            registry[f"{policy['entity']}.count"] = {
+                **definition,
+                "operation": "count",
+                "fields": [],
+            }
 
     # Payroll uses a dedicated three-table join in
     # dynamic_query_service.py, not the single-table query path.
