@@ -36,3 +36,7 @@ class ValidationFailedError(AppError):
 class ServiceUnavailableError(AppError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "service_unavailable"
+
+class RateLimitedError(AppError):
+    status_code = 429
+    code = "rate_limited"

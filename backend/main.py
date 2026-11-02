@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from backend.dependencies.auth import get_current_employee
 from sqlalchemy import text
 from backend.db import engine
@@ -32,6 +32,7 @@ from backend.services.llm_chat_service import (
 import re
 from backend.services.date_resolver import validate_date_range
 import logging
+from backend.services.login_rate_limiter import login_limiter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -99,8 +100,15 @@ def require_matching_employee(
     return current_employee["employee_id"]
 
 @app.post("/api/auth/login")
-def login(body: LoginRequest):
+def login(body: LoginRequest, request: Request):
     email = body.email.strip().lower()
+    client_ip = request.client.host if request.client else "unknown"
+    ip_key = f"ip:{client_ip}"
+    email_key = f"email:{email}"
+
+    login_limiter.check(ip_key)
+    login_limiter.check(email_key)
+
     query = text("""
     SELECT
         e.id AS employee_id,
@@ -126,10 +134,14 @@ def login(body: LoginRequest):
     if employee is None or not verify_password(
         body.password, employee["password_hash"]
     ):
+        login_limiter.record_failure(ip_key)
+        login_limiter.record_failure(email_key)
         raise HTTPException(
             status_code=401,
             detail="Invalid email or password",
         )
+
+    login_limiter.reset(email_key)
 
     token = create_access_token(
         employee_id=employee["employee_id"],
