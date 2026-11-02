@@ -18,6 +18,7 @@ _MON = "|".join(sorted(MONTHS, key=len, reverse=True))
 _TO = r"(?:\s+(?:to|through|thru|till|until|and)\s+|\s*-\s*)"
 _DAY = r"(\d{1,2})(?:st|nd|rd|th)?(?!\d)"
 _YEAR_OPT = r"(?:,?\s*(\d{4}))?"
+MAX_DATE_RANGE_DAYS = 366
 class InvalidDateError(ValueError):
     """Raised when a question names a date that does not exist, such as 31 February."""
 @dataclass(frozen=True)
@@ -341,3 +342,14 @@ def resolve_date_spec(question: str, today: date) -> DateSpec | None:
         return DateSpec(date(y, 1, 1), date(y, 12, 31), "year")
 
     return None
+
+def validate_date_range(start: date, end: date) -> None:
+    """Reject inverted or oversized date ranges before they reach a loop."""
+    from backend.exceptions import BadRequestError
+
+    if start > end:
+        raise BadRequestError("start_date cannot be after end_date.")
+    if (end - start).days + 1 > MAX_DATE_RANGE_DAYS:
+        raise BadRequestError(
+            f"The date range cannot exceed {MAX_DATE_RANGE_DAYS} days."
+        )

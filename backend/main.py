@@ -1,9 +1,13 @@
+from contextlib import asynccontextmanager
 from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import FastAPI, HTTPException, Query, Depends
 from backend.dependencies.auth import get_current_employee
 from sqlalchemy import text
 from backend.db import engine
-from backend.repositories.attendance_repository import get_attendance_records
+from backend.repositories.attendance_repository import (
+    get_attendance_records,
+)
 from backend.repositories.timesheet_repository import get_timesheets
 from backend.repositories.leave_repository import get_leave_requests
 from backend.repositories.wfh_repository import get_wfh_requests
@@ -12,8 +16,9 @@ from backend.repositories.calendar_repository import (
     get_work_schedules,
 )
 from pydantic import BaseModel, Field
+from backend.services import model_inference
+from backend.errors import ServiceUnavailableError, register_exception_handlers
 from fastapi.encoders import jsonable_encoder
-# from backend.services.chat_service import run_chat
 from fastapi.middleware.cors import CORSMiddleware
 from backend.services.auth_service import (
     verify_password,
@@ -25,24 +30,48 @@ from backend.services.llm_chat_service import (
     ModelServiceError,
 )
 import re
-from zoneinfo import ZoneInfo
-from backend.config import get_settings
+from backend.services.date_resolver import validate_date_range
+import logging
 
-settings = get_settings()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load the model once per process. If it cannot load, the API still starts
+    # and chat answers 503 until the problem is fixed and the server restarted.
+    try:
+        model_inference.load_model()
+    except Exception:
+        logger.exception("Tickora model failed to load; chat is unavailable.")
+    yield
+
 
 app = FastAPI(
+    lifespan=lifespan,
     title="Tickora AI API",
     description="Attendance data API for the Tickora assistant",
     version="0.1.0",
 )
 
+register_exception_handlers(app)
+logger = logging.getLogger(__name__)
+
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
 # Add CORS middleware to allow frontend to call this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
+    allow_origins=[
+        "http://localhost:5173",  # React dev server
+        "http://localhost:5174",
+        # Add any other origins (e.g., deployed frontend URL)
+    ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allow all headers
 )
 
 class ChatRequest(BaseModel):
@@ -53,28 +82,6 @@ class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
-# def find_employee_id(employee_code: str) -> int:
-#     # Resolve a sample employee code to its database ID.
-#     query = text("""
-#         SELECT id
-#         FROM public.employees
-#         WHERE employee_code = :employee_code
-#           AND is_active = TRUE
-#     """)
-
-#     with engine.connect() as connection:
-#         employee_id = connection.execute(
-#             query,
-#             {"employee_code": employee_code},
-#         ).scalar_one_or_none()
-
-#     if employee_id is None:
-#         raise HTTPException(
-#             status_code=404,
-#             detail="Active employee not found",
-#         )
-
-#     return employee_id
 
 def require_matching_employee(
     requested_employee_code: str,
@@ -142,8 +149,10 @@ def login(body: LoginRequest):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "tickora-ai"}
-
+    return {
+        "status": "ok",
+        "model_loaded": model_inference.is_loaded(),
+    }
 @app.get("/api/attendance/{employee_code}")
 def attendance_records(
     employee_code: str,
@@ -156,6 +165,8 @@ def attendance_records(
             status_code=400,
             detail="start_date cannot be after end_date",
         )
+
+    validate_date_range(start_date, end_date)
 
     employee_id = require_matching_employee(
         employee_code, current_employee
@@ -185,6 +196,8 @@ def timesheets(
             detail="start_date cannot be after end_date",
         )
 
+    validate_date_range(start_date, end_date)
+
     employee_id = require_matching_employee(
         employee_code, current_employee
     )
@@ -206,6 +219,9 @@ def leave_requests(
     employee_id = require_matching_employee(
         employee_code, current_employee
     )
+    
+    if start_date is not None and end_date is not None:   # NEW
+        validate_date_range(start_date, end_date) 
 
     try:
         records = get_leave_requests(
@@ -231,6 +247,9 @@ def wfh_requests(
     employee_id = require_matching_employee(
         employee_code, current_employee
     )
+
+    if start_date is not None and end_date is not None:   # NEW
+        validate_date_range(start_date, end_date) 
 
     try:
         records = get_wfh_requests(
@@ -275,6 +294,8 @@ def holidays(
             status_code=400,
             detail="start_date cannot be after end_date",
         )
+
+    validate_date_range(start_date, end_date)
 
     records = get_holidays(
         start_date,
@@ -340,10 +361,13 @@ def get_greeting_response(question: str, current_employee: dict) -> dict | None:
 
     first_name = str(employee_name or "there").strip().split()[0]
 
-    timezone_name = settings.app_timezone
+    timezone_name = os.getenv(
+        "APP_TIMEZONE",
+        os.getenv("TICKORA_TIMEZONE", "Asia/Kolkata"),
+    )
     try:
         hour = datetime.now(ZoneInfo(timezone_name)).hour
-    except Exception:
+    except ZoneInfoNotFoundError:
         hour = datetime.now().hour
 
     if 5 <= hour < 12:
@@ -388,7 +412,9 @@ def chat_with_tickora(
         return jsonable_encoder(greeting_result)
 
     try:
-        use_llm = settings.llm_chat_enabled
+        use_llm = os.getenv(
+            "TICKORA_LLM_CHAT_ENABLED", "true"
+        ).lower() == "true"
 
         if use_llm:
             organization_id = current_employee.get("organization_id")
@@ -424,11 +450,7 @@ def chat_with_tickora(
             )
 
         else:
-            result = run_chat(
-                question=body.question.strip(),
-                employee_id=employee_id,
-                session_id=body.session_id,
-            )
+            raise ServiceUnavailableError("Chat is currently disabled.")
 
         return jsonable_encoder(result)
 

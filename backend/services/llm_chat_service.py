@@ -1,4 +1,3 @@
-# from huggingface_hub.inference._generated.types import document_question_answering
 import logging
 import os
 import re
@@ -7,11 +6,8 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import json
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from backend.services.answer_builder import (
     range_clock_answer,
@@ -44,12 +40,8 @@ from backend.services.leave_balance_answer import (
 
 logger = logging.getLogger(__name__)
 
-from backend.config import get_settings
 
-_settings = get_settings()
-MODEL_SERVER_URL = _settings.model_server_url
-MODEL_TIMEOUT_SECONDS = _settings.model_timeout_seconds
-DEFAULT_TIMEZONE = _settings.app_timezone
+DEFAULT_TIMEZONE = os.getenv("APP_TIMEZONE", os.getenv("TICKORA_TIMEZONE", "Asia/Kolkata"))
 
 UNSUPPORTED_MESSAGE = (
     "I can answer questions about your attendance, leave, work-from-home requests, "
@@ -153,43 +145,16 @@ class PlanRejectedError(ModelServiceError):
 def get_current_date() -> date:
     try:
         return datetime.now(ZoneInfo(DEFAULT_TIMEZONE)).date()
-    except Exception:
+    except ZoneInfoNotFoundError:
         return date.today()
 
 
 def get_query_plan(question: str) -> dict[str, Any]:
-    """Ask the model server for a query plan, keeping outages and rejections distinct."""
-    request = Request(
-        MODEL_SERVER_URL,
-        data=json.dumps({"question": question}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=MODEL_TIMEOUT_SECONDS) as response:
-            status_code = response.status
-            response_body = response.read()
-    except HTTPError as exc:
-        if exc.code == 422:
-            raise PlanRejectedError("I couldn't turn that question into a supported query.") from exc
-        raise ModelUnavailableError("The Tickora language model is temporarily unavailable.") from exc
-    except (URLError, TimeoutError, OSError) as exc:
-        raise ModelUnavailableError("The Tickora language model is temporarily unavailable.") from exc
+    """Generate a validated query plan with the in-process model."""
+    # Imported here: model_inference imports this module for its error classes.
+    from backend.services.model_inference import generate_plan
 
-    if status_code == 422:
-        raise PlanRejectedError("I couldn't turn that question into a supported query.")
-    if status_code >= 400:
-        raise ModelUnavailableError("The Tickora language model is temporarily unavailable.")
-
-    try:
-        payload = json.loads(response_body)
-    except ValueError as exc:
-        raise ModelUnavailableError("The Tickora language model returned an unreadable response.") from exc
-
-    plan = payload.get("plan")
-    if not isinstance(plan, dict):
-        raise PlanRejectedError("I couldn't turn that question into a supported query.")
-    return plan
+    return generate_plan(question)
 
 
 _HOLIDAY_RE = re.compile(r"\bholidays?\b")
@@ -1058,7 +1023,6 @@ def count_response(
     noun = singular if count == 1 else plural
 
     filters = filters or {}
-    q = question.lower()
 
     status_text = (
         status.replace("_", " ").strip().lower()
@@ -1474,7 +1438,7 @@ def _payroll_response(
             if value is not None:
                 try:
                     valid_rows.append((Decimal(str(value)), row))
-                except Exception:
+                except (InvalidOperation, ValueError, TypeError):
                     continue
 
         if not valid_rows:
@@ -1576,7 +1540,7 @@ def _payroll_response(
                     totals.get(currency, Decimal("0"))
                     + Decimal(str(value))
                 )
-            except Exception:
+            except (InvalidOperation, ValueError, TypeError):
                 continue
 
         if not totals:
@@ -1808,68 +1772,8 @@ def _hours_sentence(rows, span, overtime):
     return f"Your total {name}{where} was {hours} hours and {minutes} minutes ({total:,} minutes)."
 
 
-# def _worked_hours_list_answer(rows, tz):
-#     """List recorded worked hours for each attendance record."""
-#     if not rows:
-#         return "No attendance records were found for the requested period."
 
-#     def get_day(row):
-#         value = row.get("attendance_date") or row.get("work_date")
 
-#         if isinstance(value, datetime):
-#             return value.date()
-#         if isinstance(value, date):
-#             return value
-#         if isinstance(value, str):
-#             try:
-#                 return date.fromisoformat(value[:10])
-#             except ValueError:
-#                 return None
-#         return None
-
-#     lines = []
-
-#     for row in sorted(
-#         rows,
-#         key=lambda item: (
-#             get_day(item) or date.min
-#         ),
-#     ):
-#         day = get_day(row)
-#         day_label = (
-#             f"{day.day} {day:%B %Y}"
-#             if day
-#             else "Date unavailable"
-#         )
-
-#         minutes = row.get("worked_minutes")
-
-#         # Calculate from recorded timestamps only when the stored
-#         # worked_minutes value is unavailable.
-#         if minutes is None:
-#             clock_in = row.get("clock_in")
-#             clock_out = row.get("clock_out")
-
-#             if isinstance(clock_in, datetime) and isinstance(clock_out, datetime):
-#                 if clock_in.tzinfo is not None:
-#                     clock_in = clock_in.astimezone(tz)
-#                 if clock_out.tzinfo is not None:
-#                     clock_out = clock_out.astimezone(tz)
-
-#                 minutes = int(
-#                     (clock_out - clock_in).total_seconds() // 60
-#                 )
-
-#         if minutes is None:
-#             lines.append(f"- {day_label}: worked hours not recorded.")
-#             continue
-
-#         hours, remainder = divmod(int(minutes), 60)
-#         lines.append(
-#             f"- {day_label}: {hours} hours and {remainder} minutes."
-#         )
-
-#     return "Your worked hours by attendance date:\n" + "\n".join(lines)
 
 def _work_location_answer(rows, requested_dates=None):
     """Return only work locations for the requested dates or rows."""
@@ -2562,11 +2466,6 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             re.IGNORECASE,
         )
     ):
-        print("\n--- TICKORA ROUTE DEBUG ---")
-        print("Question:", question)
-        print("Selected route: leave_type.list")
-        print("Reason: Leave-type availability/list question")
-        print("--- END ROUTE DEBUG ---\n")
 
         type_result = _execute(
             {"operation_id": "leave_type.list", "filters": {}},
@@ -2591,11 +2490,6 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         )
 
     if is_leave_balance_question(normalized_question):
-        print("\n--- TICKORA ROUTE DEBUG ---")
-        print("Question:", question)
-        print("Selected route: leave_balance")
-        print("Reason: Leave-balance question")
-        print("--- END ROUTE DEBUG ---\n")
         return _answer_leave_balance(
             question,
             normalized_question,
@@ -2648,12 +2542,6 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
 
     try:
         plan, period = normalize_and_correct_plan(raw_plan, normalized_question, today)
-        print("\n========== TICKORA NORMALIZED PLAN ==========")
-        print("Question:", normalized_question)
-        print("Normalized operation:", plan.get("operation_id"))
-        print("Normalized filters:", plan.get("filters"))
-        print("Resolved period:", period)
-        print("=============================================\n")
     
         # Resolve self-referential task queries from authenticated identity.
         if plan.get("operation_id", "").startswith("task."):
