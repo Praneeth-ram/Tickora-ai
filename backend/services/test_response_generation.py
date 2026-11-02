@@ -6,6 +6,8 @@ from backend.services.answer_builder import fmt_range
 from backend.services.llm_chat_service import (
     _loan_component_phrase,
     _loan_metric_field,
+    _answer_status_check,
+    _answer_timesheet,
     count_response,
     format_timesheet_response,
     grouped_response,
@@ -16,6 +18,7 @@ from backend.services.llm_chat_service import (
     run_llm_chat,
     sum_response,
     task_count_response,
+    _result,
 )
 from backend.services.request_answer_builder import request_answer
 
@@ -36,6 +39,73 @@ def test_payroll_response_detects_net_salary_without_regex_type_error():
         "Your net salary:\n"
         "- Net salary for October 2026: USD 4,250.00."
     )
+
+
+def test_result_keeps_structured_and_raw_data_when_table_is_hidden():
+    structured = {"count": 4}
+    raw = {"record_count": 4}
+
+    response = _result(
+        "How many tasks?",
+        "There are 4 tasks.",
+        "task_lookup",
+        {"start_date": None, "end_date": None},
+        False,
+        structured,
+        raw,
+    )
+
+    assert response["show_table"] is False
+    assert response["data"] == structured
+    assert response["raw_data"] == raw
+
+
+def test_status_check_returns_the_matching_structured_and_raw_rows():
+    raw_rows = [{
+        "start_date": date(2026, 10, 5),
+        "applied_at": date(2026, 9, 30),
+        "status": "approved",
+    }]
+    with patch(
+        "backend.services.llm_chat_service._execute",
+        return_value={"data": raw_rows},
+    ):
+        response = _answer_status_check(
+            "Was my leave approved?",
+            "Was my leave approved?",
+            {"operation_id": "leave_request.list", "filters": {}},
+            {"start_date": None, "end_date": None},
+            12,
+            "approved",
+        )
+
+    assert response["show_table"] is False
+    assert response["data"][0]["requested_at"] == date(2026, 9, 30)
+    assert response["raw_data"] == raw_rows
+
+
+def test_timesheet_status_returns_structured_and_raw_rows():
+    raw_rows = [{
+        "period_start": date(2026, 10, 5),
+        "period_end": date(2026, 10, 11),
+        "status": "approved",
+    }]
+    with patch(
+        "backend.services.llm_chat_service._execute",
+        return_value={"data": raw_rows},
+    ):
+        response = _answer_timesheet(
+            "What is my latest timesheet status?",
+            "What is my latest timesheet status?",
+            {"start_date": None, "end_date": None},
+            12,
+            None,
+        )
+
+    assert response["show_table"] is False
+    assert response["data"][0]["work_date"] == date(2026, 10, 5)
+    assert response["data"][0]["submission_status"] == "approved"
+    assert response["raw_data"] == raw_rows
 
 
 def test_leave_type_lookup_passes_authenticated_organization():
@@ -61,6 +131,7 @@ def test_leave_type_lookup_passes_authenticated_organization():
     assert execute.call_args.kwargs["organization_id"] == 7
     assert execute.call_args.args[0]["operation_id"] == "leave_type.list"
     assert response["data"][0]["name"] == "Vacation"
+    assert response["raw_data"] == response["data"]
 
 
 def test_count_answers_use_entity_names_and_singular_grammar():

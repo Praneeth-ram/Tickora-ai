@@ -1638,13 +1638,16 @@ def _result(
     intent: str,
     period: dict[str, Any],
     show_table: bool,
-    data: list,
+    data: Any,
+    raw_data: Any = None,
 ) -> dict[str, Any]:
     """Build a consistent response for every supported entity."""
 
     # Listing responses should display the structured table without
     # repeating a natural-language introduction above it.
     response_text = "" if show_table else answer
+    if raw_data is None:
+        raw_data = data
 
     return {
         "success": True,
@@ -1655,8 +1658,8 @@ def _result(
         "confidence": None,
         "period": period,
         "show_table": show_table,
-        "raw_data": None,
-        "data": data if show_table else [],
+        "raw_data": raw_data,
+        "data": data,
     }
 
 def _execute(plan: dict[str, Any], employee_id: int, limit: int, organization_id: int | None = None) -> Any:
@@ -1991,6 +1994,11 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             r for r in all_rows
             if (r.get("attendance_date") or r.get("work_date")) in wanted
         ]
+        raw_requested_rows = [
+            row
+            for row in span_result["data"]
+            if (row.get("attendance_date") or row.get("work_date")) in wanted
+        ]
 
         q_lower = normalized_question.lower()
         if asks_work_location:
@@ -2007,7 +2015,8 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
                     "end_date": discrete_dates[-1].isoformat(),
                 },
                 False,
-                [],
+                requested_rows,
+                raw_requested_rows,
             )
         asks_working_hours = bool(re.search(
             r"\b(?:working|worked)\s+hours?\b|\btotal\s+worked\s+time\b",
@@ -2062,7 +2071,7 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             )
         return _result(question, answer, "attendance_records",
             {"start_date": discrete_dates[0].isoformat(), "end_date": discrete_dates[-1].isoformat()},
-            False, [])
+            False, requested_rows, raw_requested_rows)
 
     filters: dict[str, Any] = {"attendance_date": {"gte": start.isoformat(), "lte": end.isoformat()}}
     if not is_single_day and plan.get("filters", {}).get("status"):
@@ -2094,7 +2103,8 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             "work_location",
             period_out,
             False,
-            [],
+            rows,
+            result["data"],
         )
 
     asks_if_late = bool(
@@ -2130,7 +2140,7 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
 
         return _result(
             question, answer, "attendance_records",
-            period_out, False, [],
+            period_out, False, rows, result["data"],
         )
     span = period_phrase(start, end)
     
@@ -2176,6 +2186,7 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             period_out,
             bool(display_rows),
             display_rows,
+            result["data"],
         )
 
     if ATTENDED_RE.search(normalized_question.lower()):
@@ -2199,7 +2210,8 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             "attendance_summary",
             period_out,
             False,
-            [],
+            rows,
+            result["data"],
         )
 
     if SUM_QUESTION_RE.search(normalized_question.lower()):
@@ -2213,7 +2225,8 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
             "attendance_summary",
             period_out,
             False,
-            [],
+            rows,
+            result["data"],
         )
 
     # Status-filtered questions (e.g. "late") list only matching records.
@@ -2223,9 +2236,25 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         if wants_list:
             answer = status_list_answer(rows, start, end, label, tz)
             show_table = bool(rows)
-            return _result(question, answer, "attendance_records", period_out, show_table, rows)
+            return _result(
+                question,
+                answer,
+                "attendance_records",
+                period_out,
+                show_table,
+                rows,
+                result["data"],
+            )
         answer = status_records_answer(rows, span, label)
-        return _result(question, answer, "attendance_records", period_out, False, [])
+        return _result(
+            question,
+            answer,
+            "attendance_records",
+            period_out,
+            False,
+            rows,
+            result["data"],
+        )
 
     if is_single_day:
         answer_kind = kind if kind in {"clock_in", "clock_out", "clock_both"} else "status"
@@ -2241,7 +2270,15 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         answer = range_summary_answer(rows, start, end)
         show_table = False
 
-    return _result(question, answer, "attendance_records", period_out, show_table, rows)
+    return _result(
+        question,
+        answer,
+        "attendance_records",
+        period_out,
+        show_table,
+        rows,
+        result["data"],
+    )
 
 
 def _answer_requests(question, normalized_question, plan, period, employee_id):
@@ -2263,7 +2300,7 @@ def _answer_requests(question, normalized_question, plan, period, employee_id):
     span = period_phrase(start, end)
     answer = request_answer(kind, rows, normalized_question, span, wants_list)
     show_table = wants_list and bool(rows)
-    return _result(question, answer, intent, period, show_table, rows)
+    return _result(question, answer, intent, period, show_table, rows, result["data"])
 
 
 def _answer_holidays(question, normalized_question, plan, period, employee_id, organization_id=None):
@@ -2279,13 +2316,12 @@ def _answer_holidays(question, normalized_question, plan, period, employee_id, o
     start, end = as_date(period.get("start_date")), as_date(period.get("end_date"))
     answer = holiday_answer(rows, start, end, wants_list, is_upcoming=is_upcoming)
     show_table = wants_list and bool(rows)
-    return _result(question, answer, "holiday_lookup", period, show_table, rows)
+    return _result(question, answer, "holiday_lookup", period, show_table, rows, result["data"])
 
 
 def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     answer = "\n\n".join(result["answer"] for result in results)
-    tables = [result for result in results if result.get("show_table")]
-    show_table = len(tables) == 1
+    show_table = len(results) == 1 and results[0].get("show_table", False)
     return {
         "success": True,
         "question": question,
@@ -2295,8 +2331,14 @@ def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, 
         "confidence": None,
         "period": results[0].get("period", {"start_date": None, "end_date": None}),
         "show_table": show_table,
-        "raw_data": None,
-        "data": tables[0]["data"] if show_table else [],
+        "raw_data": [
+            {"intent": result.get("intent"), "data": result.get("raw_data")}
+            for result in results
+        ],
+        "data": [
+            {"intent": result.get("intent"), "data": result.get("data", [])}
+            for result in results
+        ],
     }
 
 
@@ -2335,7 +2377,7 @@ def _answer_status_check(question, normalized_question, plan, period, employee_i
     rows = normalize_result_fields(operation_id, result["data"])
     span = period_phrase(as_date(period.get("start_date")), as_date(period.get("end_date")))
     answer = status_check_answer(kind, rows, target, span)
-    return _result(question, answer, intent, period, False, [])
+    return _result(question, answer, intent, period, False, rows, result["data"])
 
 
 def is_third_party_request(question: str) -> bool:
@@ -2362,33 +2404,45 @@ def _answer_timesheet(question, normalized_question, period, employee_id, target
     submitted_basis = bool(SUBMITTED_DATE_RE.search(q)) and start is not None
 
     if submitted_basis:
-        rows = _execute(
+        result = _execute(
             {"operation_id": "timesheet.list",
              "filters": {"submitted_at": {"gte": start.isoformat(), "lte": end.isoformat()}}},
             employee_id, limit=100,
-        )["data"]
+        )
+        raw_rows = result["data"]
+        rows = raw_rows
     elif start is not None:
         # Timesheet periods are at most seven days, so a period that overlaps the day
         # must start within the six days before it. Overlap is checked in code.
         window_start = start - timedelta(days=6)
-        rows = _execute(
+        result = _execute(
             {"operation_id": "timesheet.list",
              "filters": {"period_start": {"gte": window_start.isoformat(), "lte": end.isoformat()}}},
             employee_id, limit=100,
-        )["data"]
-        rows = [row for row in rows if _timesheet_overlaps(row, start, end)]
+        )
+        raw_rows = result["data"]
+        rows = [row for row in raw_rows if _timesheet_overlaps(row, start, end)]
+        raw_rows = rows
     else:
-        rows = _execute({"operation_id": "timesheet.list", "filters": {}}, employee_id, limit=100)["data"]
+        result = _execute({"operation_id": "timesheet.list", "filters": {}}, employee_id, limit=100)
+        raw_rows = result["data"]
+        rows = raw_rows
 
     rows = sorted(rows, key=lambda row: as_date(row.get("period_start")) or date.min, reverse=True)
+    structured_rows = normalize_result_fields("timesheet.list", rows)
+    raw_rows = sorted(
+        raw_rows,
+        key=lambda row: as_date(row.get("period_start")) or date.min,
+        reverse=True,
+    )
     when = period_phrase(start, end) if start is not None else ""
 
     if not rows:
         if target:
             return _result(question, f"No, I couldn't find any timesheets {when}".rstrip() + ".",
-                           "timesheet_lookup", period, False, [])
+                           "timesheet_lookup", period, False, structured_rows, raw_rows)
         return _result(question, f"I couldn't find any timesheets {when}".rstrip() + ".",
-                       "timesheet_lookup", period, False, [])
+                       "timesheet_lookup", period, False, structured_rows, raw_rows)
 
     head = rows[0]
     period_start = as_date(head.get("period_start"))
@@ -2416,7 +2470,9 @@ def _answer_timesheet(question, normalized_question, period, employee_id, target
         else:
             answer += f" is currently {status_label}."
 
-    return _result(question, answer, "timesheet_lookup", period, False, [])
+    return _result(
+        question, answer, "timesheet_lookup", period, False, structured_rows, raw_rows
+    )
 
 
 def _answer_leave_balance(question, normalized_question, employee_id, today, organization_id=None):
@@ -2442,7 +2498,15 @@ def _answer_leave_balance(question, normalized_question, employee_id, today, org
     answer = answer_leave_balance(rows, leave_types, year, metric, selected,normalized_question)
     show_table = question_wants_list(normalized_question) and bool(rows)
     period = {"start_date": f"{year}-01-01", "end_date": f"{year}-12-31"}
-    return _result(question, answer, "leave_balance", period, show_table, enrich_rows(rows, leave_types))
+    return _result(
+        question,
+        answer,
+        "leave_balance",
+        period,
+        show_table,
+        enrich_rows(rows, leave_types),
+        rows,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -2499,6 +2563,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             {"start_date": None, "end_date": None},
             bool(leave_types),
             leave_types,
+            type_result["data"],
         )
 
     if is_leave_balance_question(normalized_question):
@@ -2752,7 +2817,8 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
 
     operation = query_result["operation"]
     entity = query_result["entity"]
-    data = normalize_result_fields(operation_id, query_result["data"])
+    raw_data = query_result["data"]
+    data = normalize_result_fields(operation_id, raw_data)
 
     operation_to_intent = {
         "attendance.count": "attendance_summary",
@@ -2802,7 +2868,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
                 filters=plan.get("filters", {}),
         question=normalized_question,
     )
-        return _result(question, answer, intent, period, False, data)
+        return _result(question, answer, intent, period, False, data, raw_data)
 
     if operation == "group_by":
         rows = data if isinstance(data, list) else []
@@ -2822,7 +2888,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             noun = "day" if attended_total == 1 else "days"
             detail = f" ({', '.join(breakdown)})" if breakdown else ""
             answer = f"You attended {attended_total} {noun}" + (f" {span}" if span else "") + f"{detail}."
-            return _result(question, answer, intent, period, False, data)
+            return _result(question, answer, intent, period, False, data, raw_data)
         group_labels = None
         if entity == "leave_balance" and group_by_field == "leave_type_id":
             type_result = _execute(
@@ -2845,7 +2911,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             span,
             group_labels,
         )
-        return _result(question, answer, intent, period, False, data)
+        return _result(question, answer, intent, period, False, data, raw_data)
 
     if operation == "sum":
         field = data.get("field", "value") if isinstance(data, dict) else "value"
@@ -2858,9 +2924,9 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
                 plan.get("filters", {}).get("component"),
                 span,
             )
-            return _result(question, answer, intent, period, False, data)
+            return _result(question, answer, intent, period, False, data, raw_data)
         answer = sum_response(field, total, span)
-        return _result(question, answer, intent, period, False, data)
+        return _result(question, answer, intent, period, False, data, raw_data)
 
     if operation_id == "leave_balance.list":
         return _answer_leave_balance(
@@ -2903,11 +2969,12 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             "payroll_lookup",
             period,
             show_payroll_table,
-            data if show_payroll_table else [],
+            data if isinstance(data, list) else [],
+            raw_data,
         )
 
     if operation_id == "timesheet.list":
-        timesheet_rows = query_result["data"] if isinstance(query_result["data"], list) else []
+        timesheet_rows = data if isinstance(data, list) else []
         if asks_latest_timesheet:
             if not timesheet_rows:
                 message = "You don't have any timesheet records."
@@ -2947,7 +3014,7 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
                     as_date(period.get("end_date")),
                 ),
             )
-            return _result(question, message, intent, period, False, [])
+            return _result(question, message, intent, period, False, data, raw_data)
         message = (
             "Your matching records are listed below."
             if data
@@ -2962,4 +3029,12 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
     else:
         message = "Your requested information was retrieved."
 
-    return _result(question, message, intent, period, isinstance(data, list) and bool(data), data)
+    return _result(
+        question,
+        message,
+        intent,
+        period,
+        isinstance(data, list) and bool(data),
+        data,
+        raw_data,
+    )

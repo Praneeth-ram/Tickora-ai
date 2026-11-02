@@ -832,7 +832,5 @@ def run_chat(question: str, employee_id: int, session_id: str | None = None) -> 
     )
     formatted["show_table"] = show_table
     formatted["raw_data"] = data
-    if not show_table and isinstance(data, list):
-        formatted["data"] = []
 
     return formatted
