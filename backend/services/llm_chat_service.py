@@ -9,7 +9,9 @@ from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import httpx
+import json
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from backend.services.answer_builder import (
     range_clock_answer,
@@ -155,18 +157,30 @@ def get_current_date() -> date:
 
 def get_query_plan(question: str) -> dict[str, Any]:
     """Ask the model server for a query plan, keeping outages and rejections distinct."""
+    request = Request(
+        MODEL_SERVER_URL,
+        data=json.dumps({"question": question}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
     try:
-        response = httpx.post(MODEL_SERVER_URL, json={"question": question}, timeout=MODEL_TIMEOUT_SECONDS)
-    except httpx.HTTPError as exc:
+        with urlopen(request, timeout=MODEL_TIMEOUT_SECONDS) as response:
+            status_code = response.status
+            response_body = response.read()
+    except HTTPError as exc:
+        if exc.code == 422:
+            raise PlanRejectedError("I couldn't turn that question into a supported query.") from exc
+        raise ModelUnavailableError("The Tickora language model is temporarily unavailable.") from exc
+    except (URLError, TimeoutError, OSError) as exc:
         raise ModelUnavailableError("The Tickora language model is temporarily unavailable.") from exc
 
-    if response.status_code == 422:
+    if status_code == 422:
         raise PlanRejectedError("I couldn't turn that question into a supported query.")
-    if response.status_code >= 400:
+    if status_code >= 400:
         raise ModelUnavailableError("The Tickora language model is temporarily unavailable.")
 
     try:
-        payload = response.json()
+        payload = json.loads(response_body)
     except ValueError as exc:
         raise ModelUnavailableError("The Tickora language model returned an unreadable response.") from exc
 
