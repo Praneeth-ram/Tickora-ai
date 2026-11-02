@@ -13,6 +13,8 @@ from transformers import (
 )
 from peft import PeftModel
 from backend.services.operation_registry import build_operation_registry
+import os
+
 
 BASE_MODEL = "Qwen/Qwen2.5-3B-Instruct"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +28,7 @@ tokenizer = None
 model = None
 catalog = {}
 generation_lock = Lock()
+
 class QuestionRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
 

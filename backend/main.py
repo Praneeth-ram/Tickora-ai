@@ -3,10 +3,7 @@ from fastapi import FastAPI, HTTPException, Query, Depends
 from backend.dependencies.auth import get_current_employee
 from sqlalchemy import text
 from backend.db import engine
-from backend.repositories.attendance_repository import (
-    get_attendance_records,
-    get_attendance_summary,
-)
+from backend.repositories.attendance_repository import get_attendance_records
 from backend.repositories.timesheet_repository import get_timesheets
 from backend.repositories.leave_repository import get_leave_requests
 from backend.repositories.wfh_repository import get_wfh_requests
@@ -16,7 +13,7 @@ from backend.repositories.calendar_repository import (
 )
 from pydantic import BaseModel, Field
 from fastapi.encoders import jsonable_encoder
-from backend.services.chat_service import run_chat
+# from backend.services.chat_service import run_chat
 from fastapi.middleware.cors import CORSMiddleware
 from backend.services.auth_service import (
     verify_password,
@@ -29,6 +26,9 @@ from backend.services.llm_chat_service import (
 )
 import re
 from zoneinfo import ZoneInfo
+from backend.config import get_settings
+
+settings = get_settings()
 
 app = FastAPI(
     title="Tickora AI API",
@@ -39,14 +39,10 @@ app = FastAPI(
 # Add CORS middleware to allow frontend to call this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # React dev server
-        "http://localhost:5174",
-        # Add any other origins (e.g., deployed frontend URL)
-    ],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 class ChatRequest(BaseModel):
@@ -57,28 +53,28 @@ class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
-def find_employee_id(employee_code: str) -> int:
-    # Resolve a sample employee code to its database ID.
-    query = text("""
-        SELECT id
-        FROM public.employees
-        WHERE employee_code = :employee_code
-          AND is_active = TRUE
-    """)
+# def find_employee_id(employee_code: str) -> int:
+#     # Resolve a sample employee code to its database ID.
+#     query = text("""
+#         SELECT id
+#         FROM public.employees
+#         WHERE employee_code = :employee_code
+#           AND is_active = TRUE
+#     """)
 
-    with engine.connect() as connection:
-        employee_id = connection.execute(
-            query,
-            {"employee_code": employee_code},
-        ).scalar_one_or_none()
+#     with engine.connect() as connection:
+#         employee_id = connection.execute(
+#             query,
+#             {"employee_code": employee_code},
+#         ).scalar_one_or_none()
 
-    if employee_id is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Active employee not found",
-        )
+#     if employee_id is None:
+#         raise HTTPException(
+#             status_code=404,
+#             detail="Active employee not found",
+#         )
 
-    return employee_id
+#     return employee_id
 
 def require_matching_employee(
     requested_employee_code: str,
@@ -344,10 +340,7 @@ def get_greeting_response(question: str, current_employee: dict) -> dict | None:
 
     first_name = str(employee_name or "there").strip().split()[0]
 
-    timezone_name = os.getenv(
-        "APP_TIMEZONE",
-        os.getenv("TICKORA_TIMEZONE", "Asia/Kolkata"),
-    )
+    timezone_name = settings.app_timezone
     try:
         hour = datetime.now(ZoneInfo(timezone_name)).hour
     except Exception:
@@ -395,9 +388,7 @@ def chat_with_tickora(
         return jsonable_encoder(greeting_result)
 
     try:
-        use_llm = os.getenv(
-            "TICKORA_LLM_CHAT_ENABLED", "true"
-        ).lower() == "true"
+        use_llm = settings.llm_chat_enabled
 
         if use_llm:
             organization_id = current_employee.get("organization_id")

@@ -1,4 +1,4 @@
-from huggingface_hub.inference._generated.types import document_question_answering
+# from huggingface_hub.inference._generated.types import document_question_answering
 import logging
 import os
 import re
@@ -44,10 +44,12 @@ from backend.services.leave_balance_answer import (
 
 logger = logging.getLogger(__name__)
 
-MODEL_SERVER_URL = "http://127.0.0.1:8001/predict"
-MODEL_TIMEOUT_SECONDS = 60
+from backend.config import get_settings
 
-DEFAULT_TIMEZONE = os.getenv("APP_TIMEZONE", os.getenv("TICKORA_TIMEZONE", "Asia/Kolkata"))
+_settings = get_settings()
+MODEL_SERVER_URL = _settings.model_server_url
+MODEL_TIMEOUT_SECONDS = _settings.model_timeout_seconds
+DEFAULT_TIMEZONE = _settings.app_timezone
 
 UNSUPPORTED_MESSAGE = (
     "I can answer questions about your attendance, leave, work-from-home requests, "
@@ -1806,70 +1808,68 @@ def _hours_sentence(rows, span, overtime):
     return f"Your total {name}{where} was {hours} hours and {minutes} minutes ({total:,} minutes)."
 
 
-def _worked_hours_list_answer(rows, tz):
-    """List recorded worked hours for each attendance record."""
-    if not rows:
-        return "No attendance records were found for the requested period."
+# def _worked_hours_list_answer(rows, tz):
+#     """List recorded worked hours for each attendance record."""
+#     if not rows:
+#         return "No attendance records were found for the requested period."
 
-    def get_day(row):
-        value = row.get("attendance_date") or row.get("work_date")
+#     def get_day(row):
+#         value = row.get("attendance_date") or row.get("work_date")
 
-        if isinstance(value, datetime):
-            return value.date()
-        if isinstance(value, date):
-            return value
-        if isinstance(value, str):
-            try:
-                return date.fromisoformat(value[:10])
-            except ValueError:
-                return None
-        return None
+#         if isinstance(value, datetime):
+#             return value.date()
+#         if isinstance(value, date):
+#             return value
+#         if isinstance(value, str):
+#             try:
+#                 return date.fromisoformat(value[:10])
+#             except ValueError:
+#                 return None
+#         return None
 
-    lines = []
+#     lines = []
 
-    for row in sorted(
-        rows,
-        key=lambda item: (
-            get_day(item) or date.min
-        ),
-    ):
-        day = get_day(row)
-        day_label = (
-            f"{day.day} {day:%B %Y}"
-            if day
-            else "Date unavailable"
-        )
+#     for row in sorted(
+#         rows,
+#         key=lambda item: (
+#             get_day(item) or date.min
+#         ),
+#     ):
+#         day = get_day(row)
+#         day_label = (
+#             f"{day.day} {day:%B %Y}"
+#             if day
+#             else "Date unavailable"
+#         )
 
-        minutes = row.get("worked_minutes")
+#         minutes = row.get("worked_minutes")
 
-        # Calculate from recorded timestamps only when the stored
-        # worked_minutes value is unavailable.
-        if minutes is None:
-            clock_in = row.get("clock_in")
-            clock_out = row.get("clock_out")
+#         # Calculate from recorded timestamps only when the stored
+#         # worked_minutes value is unavailable.
+#         if minutes is None:
+#             clock_in = row.get("clock_in")
+#             clock_out = row.get("clock_out")
 
-            if isinstance(clock_in, datetime) and isinstance(clock_out, datetime):
-                if clock_in.tzinfo is not None:
-                    clock_in = clock_in.astimezone(tz)
-                if clock_out.tzinfo is not None:
-                    clock_out = clock_out.astimezone(tz)
+#             if isinstance(clock_in, datetime) and isinstance(clock_out, datetime):
+#                 if clock_in.tzinfo is not None:
+#                     clock_in = clock_in.astimezone(tz)
+#                 if clock_out.tzinfo is not None:
+#                     clock_out = clock_out.astimezone(tz)
 
-                minutes = int(
-                    (clock_out - clock_in).total_seconds() // 60
-                )
+#                 minutes = int(
+#                     (clock_out - clock_in).total_seconds() // 60
+#                 )
 
-        if minutes is None:
-            lines.append(f"- {day_label}: worked hours not recorded.")
-            continue
+#         if minutes is None:
+#             lines.append(f"- {day_label}: worked hours not recorded.")
+#             continue
 
-        hours, remainder = divmod(int(minutes), 60)
-        lines.append(
-            f"- {day_label}: {hours} hours and {remainder} minutes."
-        )
+#         hours, remainder = divmod(int(minutes), 60)
+#         lines.append(
+#             f"- {day_label}: {hours} hours and {remainder} minutes."
+#         )
 
-    return "Your worked hours by attendance date:\n" + "\n".join(lines)
-
-
+#     return "Your worked hours by attendance date:\n" + "\n".join(lines)
 
 def _work_location_answer(rows, requested_dates=None):
     """Return only work locations for the requested dates or rows."""

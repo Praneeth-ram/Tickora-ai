@@ -97,24 +97,24 @@ def discover_schema(
 
     return catalog
 
-def clear_schema_catalog_cache() -> None:
-    """Call after a trusted schema migration."""
-    discover_schema.cache_clear()
+# def clear_schema_catalog_cache() -> None:
+#     """Call after a trusted schema migration."""
+#     discover_schema.cache_clear()
 
-def discover_schema_candidates(
-    schema_name: str = "public",
-) -> list[dict[str, Any]]:
-    """List discovered tables for review, not automatic authorization."""
-    catalog = discover_schema(schema_name)
+# def discover_schema_candidates(
+#     schema_name: str = "public",
+# ) -> list[dict[str, Any]]:
+#     """List discovered tables for review, not automatic authorization."""
+#     catalog = discover_schema(schema_name)
 
-    return [
-        {
-            "table": table_name,
-            "columns": [
-                column["name"] for column in metadata["columns"]
-            ],
-            "foreign_keys": metadata["foreign_keys"],
-            "requires_policy_review": True,
-        }
-        for table_name, metadata in catalog.items()
-    ]
+#     return [
+#         {
+#             "table": table_name,
+#             "columns": [
+#                 column["name"] for column in metadata["columns"]
+#             ],
+#             "foreign_keys": metadata["foreign_keys"],
+#             "requires_policy_review": True,
+#         }
+#         for table_name, metadata in catalog.items()
+#     ]

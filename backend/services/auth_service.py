@@ -1,17 +1,13 @@
-import os
-from datetime import datetime, timedelta, timezone
 import jwt
+from datetime import datetime, timedelta, timezone
 from pwdlib import PasswordHash
-from dotenv import load_dotenv
+from backend.config import get_settings
 
-load_dotenv()
+settings = get_settings()
 password_hash = PasswordHash.recommended()
-
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(
-    os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
-)
+JWT_SECRET_KEY = settings.jwt_secret_key
+JWT_ALGORITHM = settings.jwt_algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 
 if JWT_ALGORITHM != "HS256":
     raise RuntimeError(
