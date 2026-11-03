@@ -1,12 +1,11 @@
 """In-process Qwen + LoRA model that turns a question into a query plan.
-
 The model is loaded once at application startup (see backend/main.py lifespan)
 and shared by all requests. Generation is serialized with a lock because a
 single GPU can run one generation at a time.
-
 torch and transformers are imported inside load_model(), so the backend can
 start on machines that do not have the model dependencies installed.
 """
+import copy
 import json
 import logging
 import threading
@@ -33,12 +32,11 @@ _state: dict[str, Any] = {
     "model": None,
     "catalog": {},
     "system_prompt": None,
+    "prefix": None,
 }
-
 
 def is_loaded() -> bool:
     return _state["model"] is not None and _state["tokenizer"] is not None
-
 
 def _load_catalog() -> dict[str, dict[str, Any]]:
     """Load the saved catalog and merge in the currently registered operations."""
@@ -62,7 +60,6 @@ def _load_catalog() -> dict[str, dict[str, Any]]:
             "group_by_fields": definition.get("group_by_fields", []),
         }
     return catalog_items
-
 
 def _build_system_prompt(catalog: dict[str, dict[str, Any]]) -> str:
     with DATASET_PATH.open("r", encoding="utf-8") as f:
@@ -132,6 +129,19 @@ def _build_system_prompt(catalog: dict[str, dict[str, Any]]) -> str:
     )
     return system_prompt
 
+def _build_prefix(tokenizer, model, system_prompt: str) -> dict[str, Any]:
+    """Run the fixed system prompt through the model once and keep its KV cache."""
+    import torch
+
+    device = model.get_input_embeddings().weight.device
+    prefix_text = tokenizer.apply_chat_template(
+        [{"role": "system", "content": system_prompt}],
+        tokenize=False,
+    )
+    prefix_ids = tokenizer(prefix_text, return_tensors="pt").input_ids.to(device)
+    with torch.inference_mode():
+        cache = model(prefix_ids, use_cache=True).past_key_values
+    return {"ids": prefix_ids, "cache": cache, "date": date.today(), "system_prompt": system_prompt}
 
 def load_model() -> None:
     """Load the tokenizer, base model, and LoRA adapter. Raises on failure."""
@@ -167,13 +177,14 @@ def load_model() -> None:
     model = PeftModel.from_pretrained(base_model, str(ADAPTER_PATH), is_trainable=False)
     model.eval()
 
-    _state.update(tokenizer=tokenizer, model=model, catalog=catalog, system_prompt=system_prompt)
-    logger.info("Tickora model loaded on %s", torch.cuda.get_device_name(0))
+    prefix = _build_prefix(tokenizer, model, system_prompt)
+    _state.update(tokenizer=tokenizer, model=model, catalog=catalog,
+                  system_prompt=system_prompt, prefix=prefix)
 
+    logger.info("Tickora model loaded on %s", torch.cuda.get_device_name(0))
 
 def generate_plan(question: str) -> dict[str, Any]:
     """Return a validated query plan for the question.
-
     Raises ModelUnavailableError when the model is not loaded or generation fails,
     and PlanRejectedError when the output is not a plan from the catalog.
     """
@@ -185,29 +196,42 @@ def generate_plan(question: str) -> dict[str, Any]:
     tokenizer = _state["tokenizer"]
     model = _state["model"]
     catalog = _state["catalog"]
+    device = model.get_input_embeddings().weight.device
 
-    messages = [
-        {"role": "system", "content": _state["system_prompt"]},
-        {"role": "user", "content": question},
-    ]
-    prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = tokenizer(prompt, return_tensors="pt")
-    input_device = model.get_input_embeddings().weight.device
-    inputs = {key: value.to(input_device) for key, value in inputs.items()}
     started = time.perf_counter()
+    with _generation_lock, torch.inference_mode():
+        # The system prompt contains today's date, so rebuild it when the day changes.
+        if _state["prefix"]["date"] != date.today():
+            _state["system_prompt"] = _build_system_prompt(catalog)
+            _state["prefix"] = _build_prefix(tokenizer, model, _state["system_prompt"])
+        prefix = _state["prefix"]
 
-    try:
-        with _generation_lock, torch.inference_mode():
+        messages = [
+            {"role": "system", "content": _state["system_prompt"]},
+            {"role": "user", "content": question},
+        ]
+        full_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        full_ids = tokenizer(full_text, return_tensors="pt").input_ids.to(device)
+        prefix_len = prefix["ids"].shape[1]
+
+        # Reuse the cached prefix only if the prompt really starts with it.
+        same_prefix = torch.equal(full_ids[:, :prefix_len], prefix["ids"])
+        cache = copy.deepcopy(prefix["cache"]) if same_prefix else None
+
+        try:
             output = model.generate(
-                **inputs,
+                input_ids=full_ids,
+                attention_mask=torch.ones_like(full_ids),
+                past_key_values=cache,
                 max_new_tokens=MAX_NEW_TOKENS,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id,
             )
-    except Exception as exc:
-        logger.exception("Model generation failed")
-        raise ModelUnavailableError("The Tickora language model is temporarily unavailable.") from exc
+        except Exception as exc:
+            logger.exception("Model generation failed")
+            raise ModelUnavailableError("The Tickora language model is temporarily unavailable.") from exc
 
+    inputs = {"input_ids": full_ids}
     generated_tokens = output[0, inputs["input_ids"].shape[1]:]
     answer = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
     elapsed = time.perf_counter() - started
