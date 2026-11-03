@@ -2749,10 +2749,24 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             if key != "status"
         }
 
+    asks_single_payroll_metric = bool(
+        operation_id == "payroll_summary.list"
+        and period.get("start_date") is None
+        and re.search(
+            r"\b(?:gross|net|deduct\w*|take[- ]home|credited)\b",
+            normalized_question.lower(),
+        )
+        and not re.search(
+            r"\b(?:total|sum|highest|lowest|maximum|minimum|"
+            r"history|all|every|each|list|show)\b",
+            normalized_question.lower(),
+        )
+    )
+
     query_result = _execute(
         execution_plan,
         employee_id,
-        limit=1 if asks_latest_timesheet else 100 if asks_pending_timesheets else 50,
+        limit=1 if asks_latest_timesheet or asks_single_payroll_metric else 100 if asks_pending_timesheets else 50,
         organization_id=organization_id,
     )
     if asks_pending_timesheets:
