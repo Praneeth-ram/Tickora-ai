@@ -235,18 +235,13 @@ def leave_requests(
     if start_date is not None and end_date is not None:   # NEW
         validate_date_range(start_date, end_date) 
 
-    try:
-        records = get_leave_requests(
-            employee_id, start_date, end_date, status
-        )
-        return {
-            "employee_code": current_employee["employee_code"],
-            "records": records,
-        }
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail=str(exc)
-        ) from exc
+    records = get_leave_requests(
+        employee_id, start_date, end_date, status
+    )
+    return {
+        "employee_code": current_employee["employee_code"],
+        "records": records,
+    }
 
 @app.get("/api/wfh/{employee_code}")
 def wfh_requests(
@@ -263,35 +258,22 @@ def wfh_requests(
     if start_date is not None and end_date is not None:   # NEW
         validate_date_range(start_date, end_date) 
 
-    try:
-        records = get_wfh_requests(
-            employee_id, start_date, end_date, status
-        )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
+    records = get_wfh_requests(
+        employee_id, start_date, end_date, status
+    )
 
+    message = None
     if not records:
-        if status:
-            message = (
-                f"No WFH requests found with status '{status}' "
-                "for the selected date range."
-            )
-        else:
-            message = (
-                "No WFH requests found for the selected date range."
-            )
-
-        raise HTTPException(
-            status_code=404,
-            detail=message,
+        message = (
+            f"No WFH requests found with status '{status}' for the selected date range."
+            if status
+            else "No WFH requests found for the selected date range."
         )
 
     return {
         "employee_code": current_employee["employee_code"],
         "records": records,
+        "message": message,
     }
 
 @app.get("/api/holidays")
@@ -472,8 +454,3 @@ def chat_with_tickora(
             detail=str(exc),
         ) from exc
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc

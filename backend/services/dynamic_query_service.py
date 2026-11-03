@@ -914,26 +914,6 @@ def execute_query_plan(
             for field in requested_fields
         ]
 
-        # # Additional display fields for the frontend.
-        # selected_fields.extend([
-        #     (
-        #         f"{employee_alias}.{preparer.quote('full_name')} "
-        #         f"AS {preparer.quote('employee_name')}"
-        #     ),
-        #     (
-        #         f"{employee_alias}.{preparer.quote('employee_code')} "
-        #         f"AS {preparer.quote('employee_code')}"
-        #     ),
-        #     (
-        #         f"{manager_alias}.{preparer.quote('full_name')} "
-        #         f"AS {preparer.quote('managed_by_name')}"
-        #     ),
-        #     (
-        #         f"{manager_alias}.{preparer.quote('employee_code')} "
-        #         f"AS {preparer.quote('managed_by_code')}"
-        #     ),
-        # ])
-
         loan_sql = (
             f"SELECT {', '.join(selected_fields)} "
             f"FROM {quoted_schema}."

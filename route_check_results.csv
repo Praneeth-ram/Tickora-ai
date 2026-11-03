@@ -1,0 +1,93 @@
+question,http_status,intent,answer,seconds
+What was my clock-in time yesterday?,200,attendance_records,"I couldn't find an attendance record for Monday, 2 November 2026.",22.3
+What was my clock-out time on October 5?,200,attendance_records,"Your clock-out time on Monday, 5 October 2026 was 6:20 PM.",13.0
+How many days was I present this month?,200,attendance_summary,No present attendance records were found in November 2026.,21.9
+Show my attendance records for October.,200,attendance_records,,21.8
+How many hours did I work last week?,200,attendance_summary,Your total worked time from 26 October 2026 to 1 November 2026 was 0 hours and 0 minutes (0 minutes).,24.9
+How many leave days have I used?,200,leave_balance,You have 0 used leave days in 2026.,0.0
+What is my remaining leave balance?,200,leave_balance,"Your leave balance for 2026:
+- Sick Leave: 10 days remaining (10 allocated, 0 used, and 0 pending).
+- Earned Leave: 15 days remaining (15 allocated, 0 used, and 0 pending).
+- Unpaid Leave: 0 days remaining (0 allocated, 0 used, and 0 pending).
+- Casual Leave: 12 days remaining (12 allocated, 0 used, and 0 pending).
+Total remaining: 37 days.",0.0
+What is the status of my leave request?,200,leave_status,Your leave request for 27 to 28 May 2026 is rejected.,8.0
+Which leave types are available?,200,leave_type_lookup,,0.0
+Show my leave history.,200,leave_status,,6.9
+What is my salary for October?,200,payroll_lookup,,0.0
+What is my gross salary?,200,payroll_lookup,"Your gross salary:
+- Gross salary for 1 to 23 October 2026: INR 63,500.00.
+- Gross salary for September 2026: INR 73,500.00.
+- Gross salary for August 2026: INR 84,000.00.
+- Gross salary for July 2026: INR 51,000.00.
+- Gross salary for June 2026: INR 92,500.00.
+- Gross salary for May 2026: INR 58,500.00.
+- Gross salary for April 2026: INR 55,500.00.
+- Gross salary for March 2026: INR 78,500.00.
+- Gross salary for February 2026: INR 73,500.00.
+- Gross salary for January 2026: INR 82,000.00.
+- Gross salary for December 2025: INR 35,000.00.
+- Gross salary for November 2025: INR 35,000.00.
+- Gross salary for October 2025: INR 47,000.00.
+- Gross salary for September 2025: INR 94,000.00.
+- Gross salary for August 2025: INR 65,500.00.
+- Gross salary for July 2025: INR 90,000.00.
+- Gross salary for June 2025: INR 40,500.00.
+- Gross salary for May 2025: INR 44,000.00.
+- Gross salary for April 2025: INR 90,500.00.",0.0
+What amount was deducted?,200,payroll_lookup,"Your payroll deductions:
+- Deductions for 1 to 23 October 2026: INR 7,620.00.
+- Deductions for September 2026: INR 8,820.00.
+- Deductions for August 2026: INR 10,080.00.
+- Deductions for July 2026: INR 6,120.00.
+- Deductions for June 2026: INR 11,100.00.
+- Deductions for May 2026: INR 7,020.00.
+- Deductions for April 2026: INR 6,660.00.
+- Deductions for March 2026: INR 9,420.00.
+- Deductions for February 2026: INR 8,820.00.
+- Deductions for January 2026: INR 9,840.00.
+- Deductions for December 2025: INR 4,200.00.
+- Deductions for November 2025: INR 4,200.00.
+- Deductions for October 2025: INR 5,640.00.
+- Deductions for September 2025: INR 11,280.00.
+- Deductions for August 2025: INR 7,860.00.
+- Deductions for July 2025: INR 10,800.00.
+- Deductions for June 2025: INR 4,860.00.
+- Deductions for May 2025: INR 5,280.00.
+- Deductions for April 2025: INR 10,860.00.",0.0
+What is my net salary?,200,payroll_lookup,"Your net salary:
+- Net salary for 1 to 23 October 2026: INR 55,880.00.
+- Net salary for September 2026: INR 64,680.00.
+- Net salary for August 2026: INR 73,920.00.
+- Net salary for July 2026: INR 44,880.00.
+- Net salary for June 2026: INR 81,400.00.
+- Net salary for May 2026: INR 51,480.00.
+- Net salary for April 2026: INR 48,840.00.
+- Net salary for March 2026: INR 69,080.00.
+- Net salary for February 2026: INR 64,680.00.
+- Net salary for January 2026: INR 72,160.00.
+- Net salary for December 2025: INR 30,800.00.
+- Net salary for November 2025: INR 30,800.00.
+- Net salary for October 2025: INR 41,360.00.
+- Net salary for September 2025: INR 82,720.00.
+- Net salary for August 2025: INR 57,640.00.
+- Net salary for July 2025: INR 79,200.00.
+- Net salary for June 2025: INR 35,640.00.
+- Net salary for May 2025: INR 38,720.00.
+- Net salary for April 2025: INR 79,640.00.",0.0
+Show my payroll history.,200,payroll_lookup,,0.0
+What is my loan request status?,200,loan_lookup,,8.0
+What is the total amount of my emergency loan?,200,loan_lookup,"The total amount for Emergency Loan is 10,000.00.",10.2
+What amount has been deducted from my penalty deduction?,200,loan_lookup,,11.3
+What is the remaining amount for my emergency loan?,200,loan_lookup,"The remaining amount for Emergency Loan is 8,000.00.",16.3
+Show my loan applications.,200,loan_lookup,,6.8
+How many loans are currently active?,200,loan_lookup,You have 2 loan requests.,8.0
+How many tasks are assigned to me?,200,task_lookup,You have 1 task assigned to you.,9.2
+Show my completed tasks.,200,task_lookup,,7.5
+How many pending tasks do I have?,200,task_lookup,There are 3 pending tasks.,7.5
+Show my timesheets for October.,200,timesheet_lookup,,24.6
+What is the status of my WFH request?,200,wfh_status,Your work-from-home request for 19 to 20 August 2025 is approved.,9.3
+How many WFH requests have I submitted?,200,wfh_status,You have 1 work-from-home request.,8.4
+What are the upcoming holidays?,200,holiday_lookup,There are no upcoming holidays in 2026.,15.2
+Is October 31 a holiday?,200,holiday_lookup,There are no holidays on 31 October 2026.,13.3
+Show the holidays for this year.,200,holiday_lookup,,22.3

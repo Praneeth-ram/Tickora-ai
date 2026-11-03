@@ -1,3 +1,4 @@
+from backend.exceptions import BadRequestError
 from datetime import date
 from sqlalchemy import text
 from backend.db import engine
@@ -10,7 +11,7 @@ def get_timesheets(
     """Retrieve an employee's timesheets overlapping a date range."""
 
     if start_date > end_date:
-        raise ValueError("start_date cannot be after end_date")
+        raise BadRequestError("start_date cannot be after end_date")
 
     query = text("""
         SELECT

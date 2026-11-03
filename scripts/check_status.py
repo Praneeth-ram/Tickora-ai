@@ -3,7 +3,7 @@ import urllib.request
 import urllib.error
 
 BASE = "http://127.0.0.1:8000"
-TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1wbG95ZWVfY29kZSI6IkVNUDAwMSIsImlhdCI6MTc5MzYyMzc5NCwiZXhwIjoxNzkzNjI3Mzk0fQ._QtzpNaE0pEDUmaUjFURB3YrmlhyBH6UQcX1GyE8uBU"
+TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1wbG95ZWVfY29kZSI6IkVNUDAwMSIsImlhdCI6MTc5MzY5NzMyNSwiZXhwIjoxNzkzNzAwOTI1fQ.EXvRTg8exHooeAzZ4_v3pYinzH422dWvE5i_8I-Df10"
 
 CASES = [
     ("no token", "GET", "/api/holidays?start_date=2026-10-01&end_date=2026-10-31", None, 401),

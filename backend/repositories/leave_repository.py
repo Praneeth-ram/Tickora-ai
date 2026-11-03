@@ -1,3 +1,4 @@
+from backend.exceptions import BadRequestError
 from datetime import date
 from sqlalchemy import text
 from backend.db import engine
@@ -11,12 +12,12 @@ def get_leave_requests(
     """Retrieve an employee's leave requests."""
 
     if start_date and end_date and start_date > end_date:
-        raise ValueError("start_date cannot be after end_date")
+        raise BadRequestError("start_date cannot be after end_date")
 
     if status is not None:
         status = status.strip().lower()
         if status not in {"pending", "approved", "rejected", "cancelled"}:
-            raise ValueError("Invalid leave-request status")
+            raise BadRequestError("Invalid leave-request status")
 
     query = text("""
         SELECT

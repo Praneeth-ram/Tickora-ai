@@ -1,3 +1,4 @@
+from backend.exceptions import BadRequestError
 from datetime import date
 from sqlalchemy import text
 from backend.db import engine
@@ -11,7 +12,7 @@ def get_holidays(
     """Retrieve holidays from calendars matching the supplied filters."""
 
     if start_date > end_date:
-        raise ValueError("start_date cannot be after end_date")
+        raise BadRequestError("start_date cannot be after end_date")
 
     query = text("""
         SELECT

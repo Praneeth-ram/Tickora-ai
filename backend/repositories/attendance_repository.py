@@ -1,3 +1,4 @@
+from backend.exceptions import BadRequestError
 from datetime import date
 from sqlalchemy import text
 from backend.db import engine
@@ -10,7 +11,7 @@ def get_attendance_records(
     """Return attendance records for one employee within a date range."""
 
     if start_date > end_date:
-        raise ValueError("start_date cannot be after end_date")
+        raise BadRequestError("start_date cannot be after end_date")
 
     query = text("""
         SELECT
@@ -53,7 +54,7 @@ def get_attendance_summary(
     """Return attendance totals for one employee within a date range."""
 
     if start_date > end_date:
-        raise ValueError("start_date cannot be after end_date")
+        raise BadRequestError("start_date cannot be after end_date")
 
     query = text("""
         SELECT
