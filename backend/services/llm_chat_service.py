@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
+from backend.security.access_policy import get_subject
 from backend.services.answer_builder import (
     range_clock_answer,
     range_list_answer,
@@ -1654,6 +1655,31 @@ def _result(
         "data": data,
     }
 
+def _third_person(answer: str, subject_name: str | None) -> str:
+    """When an admin asks about a colleague, speak about that person rather than the requester."""
+    if not subject_name or not answer:
+        return answer
+    first = subject_name.split()[0]
+    replacements = [
+        (r"\bYou don't have\b", f"{first} doesn't have"),
+        (r"\byou don't have\b", f"{first} doesn't have"),
+        (r"\bYou have\b", f"{first} has"),
+        (r"\byou have\b", f"{first} has"),
+        (r"\bYou were\b", f"{first} was"),
+        (r"\byou were\b", f"{first} was"),
+        (r"\bYou worked\b", f"{first} worked"),
+        (r"\byou worked\b", f"{first} worked"),
+        (r"\bYou are\b", f"{first} is"),
+        (r"\byou are\b", f"{first} is"),
+        (r"\bYour\b", f"{first}'s"),
+        (r"\byour\b", f"{first}'s"),
+        (r"\bYou\b", first),
+        (r"\byou\b", first),
+    ]
+    for pattern, replacement in replacements:
+        answer = re.sub(pattern, replacement, answer)
+    return answer
+
 def _execute(plan: dict[str, Any], employee_id: int, limit: int, organization_id: int | None = None) -> Any:
     try:
         return execute_query_plan(plan, employee_id=employee_id, limit=limit, organization_id=organization_id)
@@ -2446,7 +2472,9 @@ def _approved_operations() -> frozenset[str]:
 
 def supervisor(question: str) -> str:
     """Route the request: 'third_party' is refused, everything else continues."""
-    return "third_party" if is_third_party_request(question) else "query"
+    if get_subject() is None and is_third_party_request(question):
+        return "third_party"
+    return "query"
 
 
 def resolve_context(question: str) -> str:

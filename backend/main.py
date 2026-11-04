@@ -6,6 +6,7 @@ from backend.config import get_settings
 from backend.dependencies.auth import get_current_employee
 from sqlalchemy import text
 from backend.db import engine
+from backend.security.access_policy import load_actor, set_actor, reset_actor
 from backend.repositories.attendance_repository import (
     get_attendance_records,
 )
@@ -27,6 +28,7 @@ from backend.services.auth_service import (
 )
 import os
 from backend.services.llm_chat_service import (
+    _text_result,
     run_llm_chat,
     ModelServiceError,
 )
@@ -34,6 +36,8 @@ import re
 from backend.services.date_resolver import validate_date_range
 import logging
 from backend.services.login_rate_limiter import login_limiter
+from backend.security.access_policy import set_subject, reset_subject
+from backend.security.subject_resolution import NOT_FOUND_MESSAGE, resolve_subject, names_a_person
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -83,6 +87,16 @@ class ChatRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
+
+EMPLOYEE_CODE_RE = re.compile(r"\bEMP\d+\b", re.IGNORECASE)
+
+def names_other_employee(question: str, own_code: str) -> bool:
+    """True when the question names an employee code other than the caller's."""
+    own = own_code.strip().upper()
+    return any(
+        match.group(0).upper() != own
+        for match in EMPLOYEE_CODE_RE.finditer(question)
+    )
 
 
 def require_matching_employee(
@@ -396,16 +410,79 @@ def chat_with_tickora(
     body: ChatRequest,
     current_employee: dict = Depends(get_current_employee),
 ):
-    employee_id = require_matching_employee(
-        employee_code,
-        current_employee,
-    )
+    employee_id = require_matching_employee(employee_code, current_employee)
+    with engine.connect() as connection:
+        actor = load_actor(connection, employee_id, current_employee["employee_code"])
+        subject_id = resolve_subject(connection, actor, body.question)
+        if subject_id is None and names_a_person(body.question, actor):
+            return jsonable_encoder(
+                _text_result(body.question, NOT_FOUND_MESSAGE, intent="unsupported")
+            )
+    token = set_actor(actor)
+    subject_token = set_subject(subject_id) if subject_id is not None else None
+    try:
+        return _chat(body, employee_id, current_employee)
+    finally:
+        if subject_token is not None:
+            reset_subject(subject_token)
+        reset_actor(token)
+
+def _localize(result: dict) -> dict:
+    from backend.security.access_policy import get_subject, subject_name
+    from backend.services.llm_chat_service import _third_person
+
+    subject_id = get_subject()
+    if subject_id is None:
+        return result
+    with engine.connect() as connection:
+        name = subject_name(connection, subject_id)
+    for key in ("answer", "message"):
+        if isinstance(result.get(key), str):
+            result[key] = _third_person(result[key], name)
+    return result
+
+def _chat(
+    body: ChatRequest,
+    employee_id: int,
+    current_employee: dict,
+):
+    # if names_other_employee(body.question, current_employee["employee_code"]):
+    #     return jsonable_encoder(
+    #         _text_result(body.question, THIRD_PARTY_MESSAGE, intent="unsupported")
+    #     )
+    
+    # employee_id = require_matching_employee(
+    #     employee_code,
+    #     current_employee,
+    # )
     greeting_result = get_greeting_response(
         body.question.strip(),
         current_employee,
     )
     if greeting_result is not None:
         return jsonable_encoder(greeting_result)
+
+    organization_id = current_employee.get("organization_id")
+    if organization_id is None:
+        with engine.connect() as connection:
+            organization_id = connection.execute(
+                text("""
+                    SELECT organization_id
+                    FROM public.employees
+                    WHERE id = :employee_id
+                      AND employee_code = :employee_code
+                      AND is_active = TRUE
+                """),
+                {
+                    "employee_id": employee_id,
+                    "employee_code": current_employee["employee_code"],
+                },
+            ).scalar_one_or_none()
+    if organization_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Authenticated organization could not be verified.",
+        )
 
     if get_settings().agent_orchestration:
         from backend.agents.graph import get_chat_graph
@@ -415,9 +492,9 @@ def chat_with_tickora(
             "session_id": body.session_id,
             "employee_id": employee_id,
             "employee_code": current_employee["employee_code"],
-            "organization_id": current_employee["organization_id"],
+            "organization_id": organization_id,
         })
-        return jsonable_encoder(state["result"])
+        return jsonable_encoder(_localize(state["result"]))
 
     try:
         use_llm = os.getenv(
@@ -460,11 +537,10 @@ def chat_with_tickora(
         else:
             raise ServiceUnavailableError("Chat is currently disabled.")
 
-        return jsonable_encoder(result)
+        return jsonable_encoder(_localize(result))
 
     except ModelServiceError as exc:
         raise HTTPException(
             status_code=503,
             detail=str(exc),
         ) from exc
-

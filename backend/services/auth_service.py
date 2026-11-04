@@ -24,8 +24,10 @@ def hash_password(password: str) -> str:
     return password_hash.hash(password)
 
 def verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a password against its stored hash."""
-    return password_hash.verify(password, stored_hash)
+    try:
+        return password_hash.verify(password, stored_hash)
+    except Exception:
+        return False
 
 def create_access_token(employee_id: int, employee_code: str) -> str:
     """Create a signed JWT for an authenticated employee."""

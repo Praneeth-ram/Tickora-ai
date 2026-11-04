@@ -6,6 +6,17 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from backend.exceptions import BadRequestError
 from backend.services.operation_registry import build_operation_registry
+from backend.security.access_policy import (
+    EMPLOYEE,
+    Actor,
+    authorize_entity,
+    check_fields,
+    get_actor,
+    owner_column,
+    scope_clause,
+    visible_fields,
+    get_subject,
+)
 
 _SCHEMA_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 _MAX_LIMIT = 100
@@ -112,6 +123,18 @@ def execute_query_plan(
         for field in requested_fields
     ):
         raise QueryPlanError("Requested field is not allowed.")
+
+    actor = get_actor()
+    if actor is None:
+        actor = Actor(employee_id, organization_id, None, EMPLOYEE)
+    authorize_entity(actor, definition["entity"])
+    subject = get_subject()
+    if subject is not None:
+        employee_id = subject
+    if "fields" in plan:
+        check_fields(actor, requested_fields)
+    else:
+        requested_fields = visible_fields(actor, requested_fields)
 
     aggregate_field = None
     group_by_field = None
@@ -225,18 +248,9 @@ def execute_query_plan(
             resolved_filters[field] = value
 
     filters = resolved_filters
-    print(
-    "[TASK FILTER DEBUG]",
-    {
-        "operation_id": operation_id,
-        "authenticated_employee_id": employee_id,
-        "organization_id": organization_id,
-        "resolved_filters": filters,
-    },
-)
-
+    
     if db_engine is None:
-        from backend.db import engine as db_engine
+        from backend.db import agent_engine as db_engine
 
     engine = db_engine
     preparer = engine.dialect.identifier_preparer
@@ -315,6 +329,15 @@ def execute_query_plan(
             "authenticated_organization_id": organization_id,
             "query_limit": limit,
         }
+
+        payroll_scope_clause, payroll_scope_params = scope_clause(
+            actor,
+            "payroll_summary",
+            f"ps.{preparer.quote('employee_id')}",
+        )
+
+        payroll_conditions.append(payroll_scope_clause)
+        payroll_params.update(payroll_scope_params)
 
         for field, value in filters.items():
             if field not in {"period_start", "period_end"}:
@@ -596,6 +619,15 @@ def execute_query_plan(
             "query_limit": limit,
         }
 
+        task_scope_clause, task_scope_params = scope_clause(
+            actor,
+            "task",
+            f"{task_alias}.{preparer.quote('assigned_to_employee_id')}",
+        )
+
+        task_conditions.append(task_scope_clause)
+        task_params.update(task_scope_params)
+
         task_date_field = definition.get("date_field")
         task_allowed_date_fields = (
             definition.get("date_fields") or [task_date_field]
@@ -794,6 +826,15 @@ def execute_query_plan(
             "authenticated_employee_id": employee_id,
             "query_limit": limit,
         }
+
+        loan_scope_clause, loan_scope_params = scope_clause(
+            actor,
+            "loan_request",
+            f"{loan_alias}.{preparer.quote('employee_id')}",
+        )
+
+        loan_conditions.append(loan_scope_clause)
+        loan_params.update(loan_scope_params)
 
         allowed_date_fields = (
             definition.get("date_fields") or []
@@ -1010,6 +1051,15 @@ def execute_query_plan(
             "query_limit": limit,
         }
 
+        child_scope_clause, child_scope_params = scope_clause(
+            actor,
+            definition["entity"],
+            f"{attendance_alias}.{preparer.quote('employee_id')}",
+        )
+
+        child_conditions.append(child_scope_clause)
+        child_params.update(child_scope_params)
+
         child_date_field = definition.get("date_field")
         child_date_fields = (
             definition.get("date_fields") or [child_date_field]
@@ -1173,62 +1223,25 @@ def execute_query_plan(
             "limit": limit if operation == "list" else None,
         }
 
+     # Enforce access scope using authenticated identity.
+    if definition["scope"] in {"employee_id", "employee_task", "employee_manager"}:
+        clause, clause_params = scope_clause(
+            actor,
+            definition["entity"],
+            preparer.quote(owner_column(definition["entity"])),
+        )
+        if clause:
+            conditions.append(clause)
+            params.update(clause_params)
+
+    if definition["entity"] not in {"holiday", "leave_type"}:
+        conditions.append(
+            f"{preparer.quote(owner_column(definition['entity']))} "
+            "= :self_employee_id"
+        )
+        params["self_employee_id"] = employee_id
+
         # Enforce access scope using authenticated identity.
-    if definition["scope"] == "employee_id":
-        conditions.append(
-            f"{preparer.quote('employee_id')} "
-            "= :authenticated_employee_id"
-        )
-        params["authenticated_employee_id"] = employee_id
-
-    elif definition["scope"] == "employee_task":
-        if organization_id is None:
-            raise QueryPlanError(
-                "Authenticated organization ID is required "
-                "for task queries."
-            )
-
-        conditions.append(
-            f"{preparer.quote('organization_id')} "
-            "= :authenticated_organization_id"
-        )
-        params["authenticated_organization_id"] = organization_id
-
-        conditions.append(
-            "("
-            f"{preparer.quote('assigned_to_employee_id')} "
-            "= :authenticated_employee_id "
-            "OR "
-            f"{preparer.quote('managed_by_employee_id')} "
-            "= :authenticated_employee_id"
-            ")"
-        )
-        params["authenticated_employee_id"] = employee_id
-
-    elif definition["scope"] == "employee_manager":
-        if organization_id is None:
-            raise QueryPlanError(
-                "Authenticated organization ID is required "
-                "for loan request queries."
-            )
-
-        conditions.append(
-            f"{preparer.quote('organization_id')} "
-            "= :authenticated_organization_id"
-        )
-        params["authenticated_organization_id"] = organization_id
-
-        conditions.append(
-            "("
-            f"{preparer.quote('employee_id')} "
-            "= :authenticated_employee_id "
-            "OR "
-            f"{preparer.quote('managed_by_employee_id')} "
-            "= :authenticated_employee_id"
-            ")"
-        )
-        params["authenticated_employee_id"] = employee_id
-
     elif definition["scope"] == "organization_read":
         if organization_id is None:
             raise QueryPlanError(

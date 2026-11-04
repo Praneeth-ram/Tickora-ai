@@ -1,6 +1,7 @@
 import re
 from typing import Any
 from backend.agents.state import ChatState
+from backend.security.access_policy import get_subject
 from backend.services.date_resolver import InvalidDateError
 from backend.services.llm_chat_service import (
     THIRD_PARTY_MESSAGE,
@@ -38,6 +39,8 @@ def supervisor_node(state: ChatState) -> dict[str, Any]:
     if len(split_compound_question(question)) > 1:
         return {"request_type": "compound"}
     if is_third_party_request(question):
+        return {"request_type": "third_party"}
+    if get_subject() is None and is_third_party_request(question):
         return {"request_type": "third_party"}
     return {"request_type": "query"}
 
