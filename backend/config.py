@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # Business defaults
     app_timezone: str = "Asia/Kolkata"
 
+    agent_orchestration: bool = False
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

@@ -239,6 +239,8 @@ def _primary_topic(part: str) -> str | None:
         return "holiday"
     if _ATTENDANCE_RE.search(q) or re.search(r"\b(?:clock|check|punch|attend)", q):
         return "attendance"
+    if re.search(r"\b(?:loans?|penalty\s+deduction)\b", q):
+        return "loan"
     return None
 
 
@@ -882,7 +884,7 @@ def normalize_and_correct_plan(
 
     date_range = resolve_date_range_from_question(question, today)
     if date_range is not None:
-        if UPCOMING_RE.search(q) and date_field:
+        if UPCOMING_RE.search(q) and date_field and date_range[1] >= today:
             if date_range[0] < today:
                 date_range = (today, date_range[1])
         if date_field:
@@ -2442,20 +2444,28 @@ def _approved_operations() -> frozenset[str]:
     return frozenset(build_operation_registry(schema_name="public").keys())
 
 
-def run_llm_chat(question: str, employee_id: int, organization_id: int | None = None,) -> dict[str, Any]:
-    """Plan, correct with code, execute with the employee's scope, and answer in sentences."""
-    parts = split_compound_question(question)
-    if len(parts) > 1:
-        return _combine_results(question, [run_llm_chat(part, employee_id, organization_id) for part in parts])
+def supervisor(question: str) -> str:
+    """Route the request: 'third_party' is refused, everything else continues."""
+    return "third_party" if is_third_party_request(question) else "query"
 
-    if is_third_party_request(question):
-        return _text_result(question, THIRD_PARTY_MESSAGE, intent="unsupported")
 
-    normalized_question = correct_typos(question)
-    today = get_current_date()
+def resolve_context(question: str) -> str:
+    """Normalize the question text. Dates are resolved later, during correction."""
+    return correct_typos(question)
 
-    # Route explicit leave-type availability/list questions before the broad
-    # leave-balance detector, which can otherwise capture "leave ... available".
+
+def is_approved_operation(operation_id: Any) -> bool:
+    return operation_id in _approved_operations()
+
+
+def direct_answer(
+    question: str,
+    normalized_question: str,
+    employee_id: int,
+    organization_id: int | None,
+    today: date,
+) -> dict[str, Any] | None:
+    """Answer leave-type and leave-balance questions before any planning."""
     if (
         _LEAVE_TYPE_LOOKUP_RE.search(normalized_question)
         and _LEAVE_TYPE_AVAILABILITY_RE.search(normalized_question)
@@ -2466,14 +2476,12 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             re.IGNORECASE,
         )
     ):
-
         type_result = _execute(
             {"operation_id": "leave_type.list", "filters": {}},
             employee_id,
             limit=100,
             organization_id=organization_id,
         )
-
         leave_types = (
             type_result["data"]
             if isinstance(type_result.get("data"), list)
@@ -2498,36 +2506,29 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
             organization_id=organization_id,
         )
 
-    
-    # Route payroll questions directly so an incorrect model plan
-    # cannot send them to leave_balance.sum or another operation.
+    return None
+
+
+def plan_question(normalized_question: str) -> dict[str, Any]:
+    """Return the raw plan from the model, or the keyword fallback.
+
+    Raises ModelUnavailableError only when the fallback is not an approved operation,
+    which matches the previous behavior.
+    """
     model_error: ModelServiceError | None = None
 
     if _is_payroll_query(normalized_question):
-        raw_plan = {
-            "operation_id": "payroll_summary.list",
-            "filters": {},
-        }
+        raw_plan = {"operation_id": "payroll_summary.list", "filters": {}}
     else:
         try:
             raw_plan = get_query_plan(normalized_question)
         except ModelServiceError as exc:
-            logger.warning(
-                "Model plan unavailable, using keyword plan: %s",
-                exc,
-            )
+            logger.warning("Model plan unavailable, using keyword plan: %s", exc)
             model_error = exc
             raw_plan = rule_based_plan(normalized_question)
 
-
-    # Route payroll and salary questions to the registered operation.
-    # The executor applies employee and organization scope from
-    # the authenticated request context.
     if _is_payroll_query(normalized_question):
-        raw_plan = {
-            "operation_id": "payroll_summary.list",
-            "filters": {},
-        }
+        raw_plan = {"operation_id": "payroll_summary.list", "filters": {}}
 
     status_target = yes_no_status(normalized_question)
     entity = request_entity(normalized_question) if status_target else None
@@ -2535,184 +2536,206 @@ def run_llm_chat(question: str, employee_id: int, organization_id: int | None = 
         raw_plan = {"operation_id": f"{entity}.list", "filters": {}}
     logger.debug("operation=%s", raw_plan.get("operation_id"))
 
-    if raw_plan.get("operation_id") not in _approved_operations():
-        if isinstance(model_error, ModelUnavailableError):
-            raise model_error
-        return _text_result(question, UNSUPPORTED_MESSAGE, intent="unsupported")
+    if (
+        not is_approved_operation(raw_plan.get("operation_id"))
+        and isinstance(model_error, ModelUnavailableError)
+    ):
+        raise model_error
 
-    try:
-        plan, period = normalize_and_correct_plan(raw_plan, normalized_question, today)
-    
-        # Resolve self-referential task queries from authenticated identity.
-        if plan.get("operation_id", "").startswith("task."):
-            q = normalized_question.lower()
-            task_filters = dict(plan.get("filters", {}))
+    return raw_plan
 
-            # The model must not send natural-language identity values to SQL.
-            for field in (
-                "assigned_to_employee_id",
-                "managed_by_employee_id",
-            ):
-                value = task_filters.get(field)
-                if (
-                    isinstance(value, str)
-                    and value.strip().lower()
-                    in {"me", "myself", "my", "current user"}
-                ):
-                    task_filters.pop(field, None)
 
-            identity_field = _task_identity_filter(q)
-            if identity_field:
-                task_filters[identity_field] = employee_id
+def correct_plan(
+    raw_plan: dict[str, Any],
+    question: str,
+    normalized_question: str,
+    employee_id: int,
+    organization_id: int | None,
+    today: date,
+) -> tuple[dict[str, Any], dict[str, str | None]]:
+    """Correct the plan with code, then apply identity and field rules."""
+    plan, period = normalize_and_correct_plan(raw_plan, normalized_question, today)
 
-            plan["filters"] = task_filters
+    if plan.get("operation_id", "").startswith("task."):
+        q = normalized_question.lower()
+        task_filters = dict(plan.get("filters", {}))
+        for field in ("assigned_to_employee_id", "managed_by_employee_id"):
+            value = task_filters.get(field)
+            if isinstance(value, str) and value.strip().lower() in {
+                "me", "myself", "my", "current user",
+            }:
+                task_filters.pop(field, None)
+        identity_field = _task_identity_filter(q)
+        if identity_field:
+            task_filters[identity_field] = employee_id
+        plan["filters"] = task_filters
 
-        if plan.get("operation_id", "").startswith("loan_request."):
-            loan_filters = dict(plan.get("filters", {}))
-            loan_metric = (
-                plan.get("aggregate_field")
-                if plan.get("operation_id") == "loan_request.sum"
-                else _loan_metric_field(
-                    normalized_question,
-                    plan.get("fields", []),
-                )
-            )
-            component_phrase = _loan_component_phrase(
-                normalized_question,
-                loan_metric,
-            )
+    if plan.get("operation_id", "").startswith("loan_request."):
+        loan_filters = dict(plan.get("filters", {}))
+        loan_metric = (
+            plan.get("aggregate_field")
+            if plan.get("operation_id") == "loan_request.sum"
+            else _loan_metric_field(normalized_question, plan.get("fields", []))
+        )
+        component_phrase = _loan_component_phrase(normalized_question, loan_metric)
 
-            if "component" not in loan_filters and (
-                component_phrase or loan_metric
-            ):
-                component_result = _execute(
-                    {
-                        "operation_id": "loan_request.list",
-                        "fields": ["component"],
-                        "filters": {
-                            key: value
-                            for key, value in loan_filters.items()
-                            if key != "component"
-                        },
+        if "component" not in loan_filters and (component_phrase or loan_metric):
+            component_result = _execute(
+                {
+                    "operation_id": "loan_request.list",
+                    "fields": ["component"],
+                    "filters": {
+                        key: value
+                        for key, value in loan_filters.items()
+                        if key != "component"
                     },
-                    employee_id,
-                    limit=100,
-                    organization_id=organization_id,
-                )
-                components = {
-                    " ".join(str(row.get("component") or "").split())
-                    for row in component_result.get("data", [])
-                    if isinstance(row, dict) and row.get("component")
-                }
-                matching_component = next(
-                    (
-                        component
-                        for component in sorted(
-                            components, key=len, reverse=True
-                        )
-                        if re.search(
-                            r"(?<!\w)" + re.escape(component) + r"(?!\w)",
-                            normalized_question,
-                            re.IGNORECASE,
-                        )
-                    ),
-                    None,
-                )
-                selected_component = matching_component or component_phrase
-                if selected_component:
-                    loan_filters["component"] = selected_component
-
-            plan["filters"] = loan_filters
-
-        if plan.get("operation_id") == "task.list":
-            task_fields = build_operation_registry().get(
-                "task.list", {}
-            ).get("fields", [])
-            field_phrases = {
-                "title": ("title", "task name"),
-                "project_id": ("project", "project id"),
-                "task_date": ("task date", "due date"),
-                "description": ("description",),
-                "start_time": ("start time",),
-                "end_time": ("end time",),
-                "status": ("status",),
-                "assigned_to_employee_id": (
-                    "assignee",
-                    "assigned to",
-                ),
-                "managed_by_employee_id": (
-                    "manager",
-                    "managed by",
-                ),
-                "performance_score": ("performance score",),
+                },
+                employee_id,
+                limit=100,
+                organization_id=organization_id,
+            )
+            components = {
+                " ".join(str(row.get("component") or "").split())
+                for row in component_result.get("data", [])
+                if isinstance(row, dict) and row.get("component")
             }
-            requested_fields = [
-                field
-                for field in task_fields
-                if any(
-                    re.search(
-                        r"(?<!\w)"
-                        + re.escape(phrase).replace(r"\ ", r"\s+")
-                        + r"(?!\w)",
+            matching_component = next(
+                (
+                    component
+                    for component in sorted(components, key=len, reverse=True)
+                    if re.search(
+                        r"(?<!\w)" + re.escape(component) + r"(?!\w)",
                         normalized_question,
                         re.IGNORECASE,
                     )
-                    for phrase in field_phrases.get(field, ())
-                )
-            ]
-           
-            default_task_fields = [
-                field
-                for field in ("title", "status", "task_date")
-                if field in task_fields
-            ]
-
-            q = normalized_question.lower()
-
-            asks_assigned_to_self = bool(
-                re.search(
-                    r"\b(?:assigned|assigned\s+to)\s+me\b",
-                    q,
-                )
+                ),
+                None,
             )
+            selected_component = matching_component or component_phrase
+            if selected_component:
+                loan_filters["component"] = selected_component
 
-            asks_managed_by_self = bool(
+        plan["filters"] = loan_filters
+
+    if plan.get("operation_id") == "task.list":
+        task_fields = build_operation_registry().get("task.list", {}).get("fields", [])
+        field_phrases = {
+            "title": ("title", "task name"),
+            "project_id": ("project", "project id"),
+            "task_date": ("task date", "due date"),
+            "description": ("description",),
+            "start_time": ("start time",),
+            "end_time": ("end time",),
+            "status": ("status",),
+            "assigned_to_employee_id": ("assignee", "assigned to"),
+            "managed_by_employee_id": ("manager", "managed by"),
+            "performance_score": ("performance score",),
+        }
+        requested_fields = [
+            field
+            for field in task_fields
+            if any(
                 re.search(
-                    r"\b(?:managed|manage|managing)\s+by\s+me\b"
-                    r"|\b(?:what|which)\s+tasks?\s+"
-                    r"(?:am\s+i\s+)?managing\b",
-                    q,
+                    r"(?<!\w)" + re.escape(phrase).replace(r"\ ", r"\s+") + r"(?!\w)",
+                    normalized_question,
+                    re.IGNORECASE,
                 )
+                for phrase in field_phrases.get(field, ())
             )
+        ]
+        default_task_fields = [
+            field for field in ("title", "status", "task_date") if field in task_fields
+        ]
+        q = normalized_question.lower()
+        asks_assigned_to_self = bool(
+            re.search(r"\b(?:assigned|assigned\s+to)\s+me\b", q)
+        )
+        asks_managed_by_self = bool(
+            re.search(
+                r"\b(?:managed|manage|managing)\s+by\s+me\b"
+                r"|\b(?:what|which)\s+tasks?\s+(?:am\s+i\s+)?managing\b",
+                q,
+            )
+        )
+        selected_fields = list(default_task_fields)
+        if asks_assigned_to_self:
+            selected_fields.append("assigned_to_employee_id")
+        if asks_managed_by_self:
+            selected_fields.append("managed_by_employee_id")
+        for field in requested_fields:
+            if field not in selected_fields:
+                selected_fields.append(field)
+        plan["fields"] = [field for field in selected_fields if field in task_fields]
 
-            # Always include task-identifying information.
-            selected_fields = list(default_task_fields)
+    return plan, period
 
-            if asks_assigned_to_self:
-                selected_fields.append(
-                    "assigned_to_employee_id"
-                )
 
-            if asks_managed_by_self:
-                selected_fields.append(
-                    "managed_by_employee_id"
-                )
+def validate_plan(plan: dict[str, Any]) -> tuple[str, str | None]:
+    """Return ('ok', None) or ('missing_info', question). Rules are added in a later step."""
+    return "ok", None
 
-            # Preserve explicitly requested fields.
-            for field in requested_fields:
-                if field not in selected_fields:
-                    selected_fields.append(field)
 
-            plan["fields"] = [
-                field
-                for field in selected_fields
-                if field in task_fields
-            ]
+def run_llm_chat(
+    question: str,
+    employee_id: int,
+    organization_id: int | None = None,
+) -> dict[str, Any]:
+    """Orchestrate the stages in the same order as before the split."""
+    parts = split_compound_question(question)
+    if len(parts) > 1:
+        return _combine_results(
+            question,
+            [run_llm_chat(part, employee_id, organization_id) for part in parts],
+        )
 
+    if supervisor(question) == "third_party":
+        return _text_result(question, THIRD_PARTY_MESSAGE, intent="unsupported")
+
+    normalized_question = resolve_context(question)
+    today = get_current_date()
+
+    direct = direct_answer(question, normalized_question, employee_id, organization_id, today)
+    if direct is not None:
+        return direct
+
+    raw_plan = plan_question(normalized_question)
+    if not is_approved_operation(raw_plan.get("operation_id")):
+        return _text_result(question, UNSUPPORTED_MESSAGE, intent="unsupported")
+
+    try:
+        plan, period = correct_plan(
+            raw_plan, question, normalized_question, employee_id, organization_id, today,
+        )
     except InvalidDateError as exc:
-        answer = f"'{exc}' is not a valid date. Please check the day and month, for example: 19 October 2026."
+        answer = (
+            f"'{exc}' is not a valid date. Please check the day and month, "
+            "for example: 19 October 2026."
+        )
         return _text_result(question, answer, intent="attendance_records")
 
+    return execute_and_format(
+        question,
+        normalized_question,
+        plan,
+        period,
+        employee_id,
+        organization_id,
+        today,
+        yes_no_status(normalized_question),
+    )
+
+
+def execute_and_format(
+    question: str,
+    normalized_question: str,
+    plan: dict[str, Any],
+    period: dict[str, Any],
+    employee_id: int,
+    organization_id: int | None,
+    today: date,
+    status_target: str | None,
+) -> dict[str, Any]:
+    """Execute the approved plan and format the answer."""
     operation_id = plan["operation_id"]
 
     if operation_id == "attendance.list":

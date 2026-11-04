@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import FastAPI, HTTPException, Query, Depends, Request
+from backend.config import get_settings
 from backend.dependencies.auth import get_current_employee
 from sqlalchemy import text
 from backend.db import engine
@@ -359,6 +360,7 @@ def get_greeting_response(question: str, current_employee: dict) -> dict | None:
         "APP_TIMEZONE",
         os.getenv("TICKORA_TIMEZONE", "Asia/Kolkata"),
     )
+    
     try:
         hour = datetime.now(ZoneInfo(timezone_name)).hour
     except ZoneInfoNotFoundError:
@@ -404,6 +406,18 @@ def chat_with_tickora(
     )
     if greeting_result is not None:
         return jsonable_encoder(greeting_result)
+
+    if get_settings().agent_orchestration:
+        from backend.agents.graph import get_chat_graph
+
+        state = get_chat_graph().invoke({
+            "question": body.question.strip(),
+            "session_id": body.session_id,
+            "employee_id": employee_id,
+            "employee_code": current_employee["employee_code"],
+            "organization_id": current_employee["organization_id"],
+        })
+        return jsonable_encoder(state["result"])
 
     try:
         use_llm = os.getenv(

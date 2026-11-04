@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from backend.exceptions import BadRequestError
 from backend.services.operation_registry import build_operation_registry
 
 _SCHEMA_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
@@ -840,7 +841,7 @@ def execute_query_plan(
                     and loan_params[f"loan_{field}_gte"]
                     > loan_params[f"loan_{field}_lte"]
                 ):
-                    raise QueryPlanError(
+                    raise BadRequestError(
                         "Date range start must not be after end."
                     )
 
@@ -1297,6 +1298,11 @@ def execute_query_plan(
                 and params[f"{field}_gte"]
                 > params[f"{field}_lte"]
             ):
+                if definition["entity"] == "loan_request":
+                    raise BadRequestError(
+                        "Date range start must not be after end."
+                    )
+
                 raise QueryPlanError(
                     "Date range start must not be after end."
                 )

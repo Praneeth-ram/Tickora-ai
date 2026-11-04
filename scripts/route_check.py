@@ -15,7 +15,7 @@ import urllib.request
 BASE = "http://127.0.0.1:8000"
 TOKEN = os.environ["TICKORA_TOKEN"]
 EMPLOYEE_CODE = os.environ.get("TICKORA_EMPLOYEE_CODE", "EMP001")
-OUTPUT = "route_check_results.csv"
+OUTPUT = "route_check_graph.csv"
 
 QUESTIONS = [
     # Attendance

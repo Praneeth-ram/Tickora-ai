@@ -1,5 +1,6 @@
 import pytest
 from sqlalchemy import create_engine
+from backend.exceptions import BadRequestError
 from backend.services.dynamic_query_service import (
     QueryPlanError,
     execute_query_plan,
@@ -41,6 +42,67 @@ def execute_without_database(plan):
         return_value=mock_catalog,
     ):
         return execute_query_plan(plan, employee_id=1)
+
+
+def loan_query_setup():
+    loan_columns = [
+        "id",
+        "organization_id",
+        "employee_id",
+        "managed_by_employee_id",
+        "component",
+        "mode",
+        "total_amount",
+        "deducted_amount",
+        "remaining_amount",
+        "installment_amount",
+        "installments",
+        "installments_paid",
+        "start_month",
+        "next_deduction",
+        "remarks",
+        "status",
+        "loan_status",
+        "created_at",
+    ]
+    employee_columns = [
+        "id",
+        "organization_id",
+        "full_name",
+        "employee_code",
+    ]
+    schema = {
+        "loan_requests": {
+            "schema": "public",
+            "columns": [
+                {"name": name, "type": "TEXT"}
+                for name in loan_columns
+            ],
+            "foreign_keys": [],
+        },
+        "employees": {
+            "schema": "public",
+            "columns": [
+                {"name": name, "type": "TEXT"}
+                for name in employee_columns
+            ],
+            "foreign_keys": [],
+        },
+    }
+    engine = create_engine("sqlite://")
+    connection = MagicMock()
+    connection.execute.return_value.mappings.return_value.all.return_value = [
+        {
+            "component": "Emergency Loan",
+            "employee_name": "Employee",
+            "employee_code": "EMP001",
+            "managed_by_name": None,
+            "managed_by_code": None,
+        }
+    ]
+    engine.connect = MagicMock()
+    engine.connect.return_value.__enter__.return_value = connection
+    return schema, engine, connection
 
 
 def test_rejects_unapproved_aggregate_field():
@@ -153,67 +215,11 @@ def test_loan_start_month_filter_expands_iso_month_to_valid_date_range():
             "start_month": "2026-10",
         },
     }
-    engine = create_engine("sqlite://")
-    connection = MagicMock()
-    connection.execute.return_value.mappings.return_value.all.return_value = [
-        {
-            "component": "Emergency Loan",
-            "employee_name": "Employee",
-            "employee_code": "EMP001",
-            "managed_by_name": None,
-            "managed_by_code": None,
-        }
-    ]
-    engine.connect = MagicMock()
-    engine.connect.return_value.__enter__.return_value = connection
-
-    loan_columns = [
-        "id",
-        "organization_id",
-        "employee_id",
-        "managed_by_employee_id",
-        "component",
-        "mode",
-        "total_amount",
-        "deducted_amount",
-        "remaining_amount",
-        "installment_amount",
-        "installments",
-        "installments_paid",
-        "start_month",
-        "next_deduction",
-        "remarks",
-        "status",
-        "loan_status",
-        "created_at",
-    ]
-    employee_columns = [
-        "id",
-        "organization_id",
-        "full_name",
-        "employee_code",
-    ]
+    schema, engine, connection = loan_query_setup()
 
     with patch(
         "backend.services.operation_registry.discover_schema",
-        return_value={
-            "loan_requests": {
-                "schema": "public",
-                "columns": [
-                    {"name": name, "type": "TEXT"}
-                    for name in loan_columns
-                ],
-                "foreign_keys": [],
-            },
-            "employees": {
-                "schema": "public",
-                "columns": [
-                    {"name": name, "type": "TEXT"}
-                    for name in employee_columns
-                ],
-                "foreign_keys": [],
-            },
-        },
+        return_value=schema,
     ):
         result = execute_query_plan(
             plan,
@@ -229,6 +235,71 @@ def test_loan_start_month_filter_expands_iso_month_to_valid_date_range():
     assert "CAST(lr.start_month AS DATE) <= :loan_start_month_lte" in sql
     assert parameters["loan_start_month_gte"].isoformat() == "2026-10-01"
     assert parameters["loan_start_month_lte"].isoformat() == "2026-10-31"
+
+
+def test_loan_date_filter_accepts_a_single_day():
+    plan = {
+        "operation_id": "loan_request.list",
+        "fields": ["component"],
+        "filters": {
+            "start_month": {
+                "gte": "2026-10-02",
+                "lte": "2026-10-02",
+            },
+        },
+    }
+    schema, engine, connection = loan_query_setup()
+
+    with patch(
+        "backend.services.operation_registry.discover_schema",
+        return_value=schema,
+    ):
+        execute_query_plan(
+            plan,
+            employee_id=1,
+            organization_id=1,
+            db_engine=engine,
+        )
+
+    generated_sql, parameters = connection.execute.call_args.args
+    assert "CAST(lr.start_month AS DATE) >= :loan_start_month_gte" in str(
+        generated_sql
+    )
+    assert "CAST(lr.start_month AS DATE) <= :loan_start_month_lte" in str(
+        generated_sql
+    )
+    assert parameters["loan_start_month_gte"] == parameters["loan_start_month_lte"]
+
+
+@pytest.mark.parametrize(
+    "operation_id",
+    ["loan_request.list", "loan_request.count"],
+)
+def test_loan_date_filter_rejects_inverted_range_with_bad_request(
+    operation_id,
+):
+    plan = {
+        "operation_id": operation_id,
+        "filters": {
+            "start_month": {
+                "gte": "2026-10-03",
+                "lte": "2026-10-02",
+            },
+        },
+    }
+    schema, engine, _ = loan_query_setup()
+
+    with patch(
+        "backend.services.operation_registry.discover_schema",
+        return_value=schema,
+    ):
+        with pytest.raises(BadRequestError):
+            execute_query_plan(
+                plan,
+                employee_id=1,
+                organization_id=1,
+                db_engine=engine,
+            )
 
 
 def test_timesheet_status_grouping_is_registered_from_entity_policy():
