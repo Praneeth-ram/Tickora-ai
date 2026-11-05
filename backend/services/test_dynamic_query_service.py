@@ -6,7 +6,19 @@ from backend.services.dynamic_query_service import (
     execute_query_plan,
 )
 from backend.services.operation_registry import build_operation_registry
+from backend.security.access_policy import Actor, EMPLOYEE, reset_actor, set_actor
 from unittest.mock import MagicMock, patch
+
+
+def execute_as_actor(plan, **kwargs):
+    employee_id = kwargs["employee_id"]
+    organization_id = kwargs.get("organization_id") or 1
+    token = set_actor(Actor(employee_id, organization_id, None, EMPLOYEE))
+    try:
+        return execute_query_plan(plan, **kwargs)
+    finally:
+        reset_actor(token)
+
 
 def execute_without_database(plan):
     attendance_columns = [
@@ -41,7 +53,7 @@ def execute_without_database(plan):
         "backend.services.operation_registry.discover_schema",
         return_value=mock_catalog,
     ):
-        return execute_query_plan(plan, employee_id=1)
+        return execute_as_actor(plan, employee_id=1)
 
 
 def loan_query_setup():
@@ -149,7 +161,7 @@ def test_sum_query_separates_alias_from_from_clause():
             }
         },
     ):
-        execute_query_plan(plan, employee_id=1, db_engine=engine)
+        execute_as_actor(plan, employee_id=1, db_engine=engine)
 
     generated_sql = str(connection.execute.call_args.args[0])
     assert "AS total FROM " in generated_sql
@@ -189,7 +201,7 @@ def test_organization_scoped_leave_type_list_is_registered_and_filtered():
             }
         },
     ):
-        result = execute_query_plan(
+        result = execute_as_actor(
             plan,
             employee_id=1,
             organization_id=7,
@@ -221,7 +233,7 @@ def test_loan_start_month_filter_expands_iso_month_to_valid_date_range():
         "backend.services.operation_registry.discover_schema",
         return_value=schema,
     ):
-        result = execute_query_plan(
+        result = execute_as_actor(
             plan,
             employee_id=1,
             organization_id=1,
@@ -254,7 +266,7 @@ def test_loan_date_filter_accepts_a_single_day():
         "backend.services.operation_registry.discover_schema",
         return_value=schema,
     ):
-        execute_query_plan(
+        execute_as_actor(
             plan,
             employee_id=1,
             organization_id=1,
@@ -294,7 +306,7 @@ def test_loan_date_filter_rejects_inverted_range_with_bad_request(
         return_value=schema,
     ):
         with pytest.raises(BadRequestError):
-            execute_query_plan(
+            execute_as_actor(
                 plan,
                 employee_id=1,
                 organization_id=1,
@@ -379,8 +391,8 @@ def test_employee_scope_changes_with_authenticated_employee():
         },
     }
 
-    employee_1_result = execute_query_plan(plan, employee_id=1)
-    employee_2_result = execute_query_plan(plan, employee_id=2)
+    employee_1_result = execute_as_actor(plan, employee_id=1)
+    employee_2_result = execute_as_actor(plan, employee_id=2)
 
     assert employee_1_result["operation_id"] == "attendance.count"
     assert employee_2_result["operation_id"] == "attendance.count"
@@ -398,7 +410,7 @@ def test_existing_list_operation_still_works():
         },
     }
 
-    result = execute_query_plan(plan, employee_id=1)
+    result = execute_as_actor(plan, employee_id=1)
 
     assert result["operation"] == "list"
     assert isinstance(result["data"], list)
@@ -418,7 +430,7 @@ def test_existing_count_operation_still_works():
         },
     }
 
-    result = execute_query_plan(plan, employee_id=1)
+    result = execute_as_actor(plan, employee_id=1)
 
     assert result["operation"] == "count"
     assert isinstance(result["data"]["count"], int)

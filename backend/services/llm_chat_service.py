@@ -9,7 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-from backend.security.access_policy import get_subject
+from backend.security.access_policy import AccessDenied, get_subject
 from backend.services.answer_builder import (
     range_clock_answer,
     range_list_answer,
@@ -2798,7 +2798,7 @@ def run_llm_chat(
         )
 
     if supervisor(question) == "third_party":
-        return _text_result(question, THIRD_PARTY_MESSAGE, intent="unsupported")
+        return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
 
     normalized_question = resolve_context(question)
     today = get_current_date()
@@ -2822,16 +2822,19 @@ def run_llm_chat(
         )
         return _text_result(question, answer, intent="attendance_records")
 
-    return execute_and_format(
-        question,
-        normalized_question,
-        plan,
-        period,
-        employee_id,
-        organization_id,
-        today,
-        yes_no_status(normalized_question),
-    )
+    try:
+        return execute_and_format(
+            question,
+            normalized_question,
+            plan,
+            period,
+            employee_id,
+            organization_id,
+            today,
+            yes_no_status(normalized_question),
+        )
+    except AccessDenied:
+        return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
 
 
 def execute_and_format(

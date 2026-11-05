@@ -4,7 +4,6 @@ from backend.agents.state import ChatState
 from backend.security.access_policy import get_subject
 from backend.services.date_resolver import InvalidDateError
 from backend.services.llm_chat_service import (
-    THIRD_PARTY_MESSAGE,
     UNSUPPORTED_MESSAGE,
     _combine_results,
     _text_result,
@@ -21,6 +20,7 @@ from backend.services.llm_chat_service import (
     validate_plan,
     yes_no_status,
 )
+from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE
 
 import logging
 logger = logging.getLogger(__name__)
@@ -87,14 +87,16 @@ def correction_node(state: ChatState) -> dict[str, Any]:
     status, reason = validate_plan(plan)
     return {"plan": plan, "period": period, "status": status, "clarification": reason}
 
-
 def execution_node(state: ChatState) -> dict[str, Any]:
-    return {"result": execute_and_format(
-        state["question"], state["normalized_question"], state["plan"], state["period"],
-        state["employee_id"], state["organization_id"], get_current_date(),
-        yes_no_status(state["normalized_question"]),
-    )}
-
+    try:
+        result = execute_and_format(
+            state["question"], state["normalized_question"], state["plan"], state["period"],
+            state["employee_id"], state["organization_id"], get_current_date(),
+            yes_no_status(state["normalized_question"]),
+        )
+    except AccessDenied:
+        result = _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")
+    return {"result": result}
 
 def clarification_node(state: ChatState) -> dict[str, Any]:
     return {"result": _text_result(state["question"], state["clarification"], "clarification")}
@@ -102,7 +104,7 @@ def clarification_node(state: ChatState) -> dict[str, Any]:
 
 def error_node(state: ChatState) -> dict[str, Any]:
     if state.get("request_type") == "third_party":
-        return {"result": _text_result(state["question"], THIRD_PARTY_MESSAGE, "unsupported")}
+        return {"result": _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")}
     if state.get("status") == "invalid" and state.get("clarification"):
         return {"result": _text_result(
             state["question"],

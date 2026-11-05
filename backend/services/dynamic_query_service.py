@@ -8,7 +8,6 @@ from backend.exceptions import BadRequestError
 from backend.services.operation_registry import build_operation_registry
 from backend.security.access_policy import (
     ADMIN,
-    EMPLOYEE,
     SUPER_ADMIN,
     AccessDenied,
     Actor,
@@ -129,7 +128,7 @@ def execute_query_plan(
 
     actor = get_actor()
     if actor is None:
-        actor = Actor(employee_id, organization_id, None, EMPLOYEE)
+        raise AccessDenied()
     authorize_entity(actor, definition["entity"])
     subject = get_subject()
     if subject is not None:
@@ -1509,7 +1508,7 @@ def execute_team_summary(
     """
     if actor.role not in {ADMIN, SUPER_ADMIN}:
         raise AccessDenied()
-    authorize_entity(actor, "attendance")
+    # authorize_entity(actor, "attendance")
 
     if db_engine is None:
         from backend.db import agent_engine as db_engine
