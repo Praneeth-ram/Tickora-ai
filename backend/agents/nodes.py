@@ -13,6 +13,7 @@ from backend.services.llm_chat_service import (
     execute_and_format,
     get_current_date,
     is_approved_operation,
+    is_team_question,
     is_third_party_request,
     plan_question,
     resolve_context,
@@ -36,10 +37,10 @@ def supervisor_node(state: ChatState) -> dict[str, Any]:
     question = state["question"]
     if GREETING_RE.fullmatch(question):
         return {"request_type": "greeting"}
+    if is_team_question(question):
+        return {"request_type": "query"}
     if len(split_compound_question(question)) > 1:
         return {"request_type": "compound"}
-    if is_third_party_request(question):
-        return {"request_type": "third_party"}
     if get_subject() is None and is_third_party_request(question):
         return {"request_type": "third_party"}
     return {"request_type": "query"}

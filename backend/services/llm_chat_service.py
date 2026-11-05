@@ -38,6 +38,11 @@ from backend.services.leave_balance_answer import (
     is_leave_balance_question,
     match_leave_type,
 )
+from backend.security.access_policy import ADMIN, SUPER_ADMIN, REFUSAL_MESSAGE, get_actor
+from backend.services.dynamic_query_service import (
+    TEAM_SUMMARY_LIMIT,
+    execute_team_summary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2344,6 +2349,69 @@ def is_third_party_request(question: str) -> bool:
             return True
     return bool(_THIRD_PARTY_WORDS_RE.search(q))
 
+TEAM_RE = re.compile(
+    r"\b(?:team|teams|department|departments|everyone|everybody|"
+    r"all\s+employees|organi[sz]ation)\b",
+    re.IGNORECASE,
+)
+
+
+def is_team_question(question: str) -> bool:
+    # Holiday questions can say "team holiday" or "company holiday"; they are not team views.
+    if _HOLIDAY_RE.search(question.lower()):
+        return False
+    return bool(TEAM_RE.search(question))
+
+def team_attendance_result(
+    question: str,
+    actor,
+    start: date,
+    end: date,
+) -> dict[str, Any]:
+    period = {"start_date": start.isoformat(), "end_date": end.isoformat()}
+    span = period_phrase(start, end)
+    result = execute_team_summary(actor=actor, start=start, end=end)
+    rows = result["rows"]
+
+    if not rows:
+        return _result(
+            question,
+            f"No team members have attendance records {span}.",
+            "team_attendance",
+            period,
+            False,
+            [],
+        )
+
+    shown = rows[:TEAM_SUMMARY_LIMIT]
+    is_org_view = actor.role == SUPER_ADMIN
+
+    table = []
+    for row in shown:
+        item = {
+            "full_name": row["full_name"],
+            "employee_code": row["employee_code"],
+            "present": row["present"],
+            "late": row["late"],
+            "absent": row["absent"],
+            "half_day": row["half_day"],
+        }
+        if is_org_view:
+            item = {"department": f"Department {row['department_id']}", **item}
+        table.append(item)
+
+    if is_org_view:
+        answer = f"Your organization has {len(rows)} employees with attendance {span}, grouped by department."
+    else:
+        answer = f"Your team has {len(rows)} members with attendance {span}."
+    if len(rows) > TEAM_SUMMARY_LIMIT:
+        answer += (
+            f" Showing the first {TEAM_SUMMARY_LIMIT} people. "
+            "Name a department or a person to narrow the list."
+        )
+
+    return _result(question, answer, "team_attendance", period, True, table, table)
+
 
 def _timesheet_overlaps(row: dict[str, Any], start: date, end: date) -> bool:
     period_start = as_date(row.get("period_start"))
@@ -2471,6 +2539,8 @@ def _approved_operations() -> frozenset[str]:
 
 
 def supervisor(question: str) -> str:
+    if is_team_question(question):
+        return "query"
     """Route the request: 'third_party' is refused, everything else continues."""
     if get_subject() is None and is_third_party_request(question):
         return "third_party"
@@ -2524,6 +2594,17 @@ def direct_answer(
             leave_types,
             type_result["data"],
         )
+
+    actor = get_actor()
+    if actor is not None and is_team_question(normalized_question):
+        if actor.role not in {ADMIN, SUPER_ADMIN}:
+            return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
+        if resolve_date_range_from_question(normalized_question, today) is not None:
+            start, end = resolve_date_range_from_question(normalized_question, today)
+        else:
+            start = today.replace(day=1)
+            end = _last_day_of_month(start)
+        return team_attendance_result(question, actor, start, end)
 
     if is_leave_balance_question(normalized_question):
         return _answer_leave_balance(

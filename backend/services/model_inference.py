@@ -25,6 +25,7 @@ ADAPTER_PATH = PROJECT_ROOT / "models"
 DATASET_PATH = PROJECT_ROOT / "data" / "tickora_sft_expanded.jsonl"
 CATALOG_PATH = PROJECT_ROOT / "data" / "model_catalog.json"
 MAX_NEW_TOKENS = 128
+PREFIX_CHUNK_SIZE = 128
 
 _generation_lock = threading.Lock()
 _state: dict[str, Any] = {
@@ -130,7 +131,7 @@ def _build_system_prompt(catalog: dict[str, dict[str, Any]]) -> str:
     return system_prompt
 
 def _build_prefix(tokenizer, model, system_prompt: str) -> dict[str, Any]:
-    """Run the fixed system prompt through the model once and keep its KV cache."""
+    """Run the fixed system prompt in chunks and keep its KV cache."""
     import torch
 
     device = model.get_input_embeddings().weight.device
@@ -140,7 +141,14 @@ def _build_prefix(tokenizer, model, system_prompt: str) -> dict[str, Any]:
     )
     prefix_ids = tokenizer(prefix_text, return_tensors="pt").input_ids.to(device)
     with torch.inference_mode():
-        cache = model(prefix_ids, use_cache=True).past_key_values
+        cache = None
+        for start in range(0, prefix_ids.shape[1], PREFIX_CHUNK_SIZE):
+            end = start + PREFIX_CHUNK_SIZE
+            cache = model(
+                prefix_ids[:, start:end],
+                past_key_values=cache,
+                use_cache=True,
+            ).past_key_values
     return {"ids": prefix_ids, "cache": cache, "date": date.today(), "system_prompt": system_prompt}
 
 def load_model() -> None:

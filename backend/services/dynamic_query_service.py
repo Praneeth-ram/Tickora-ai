@@ -7,7 +7,10 @@ from sqlalchemy.engine import Engine
 from backend.exceptions import BadRequestError
 from backend.services.operation_registry import build_operation_registry
 from backend.security.access_policy import (
+    ADMIN,
     EMPLOYEE,
+    SUPER_ADMIN,
+    AccessDenied,
     Actor,
     authorize_entity,
     check_fields,
@@ -1489,3 +1492,58 @@ def execute_query_plan(
             else None
         ),
     }
+
+TEAM_SUMMARY_LIMIT = 50
+
+
+def execute_team_summary(
+    *,
+    actor: Actor,
+    start: date,
+    end: date,
+    db_engine: Engine | None = None,
+) -> dict[str, Any]:
+    """Per-person attendance counts for every employee the actor may see.
+
+    A fixed query, not a model-generated plan. Scope comes from the policy clause.
+    """
+    if actor.role not in {ADMIN, SUPER_ADMIN}:
+        raise AccessDenied()
+    authorize_entity(actor, "attendance")
+
+    if db_engine is None:
+        from backend.db import agent_engine as db_engine
+
+    clause, clause_params = scope_clause(actor, "attendance", "emp.id")
+    sql = text(f"""
+        SELECT
+            emp.full_name,
+            emp.employee_code,
+            emp.department_id,
+            COUNT(*) FILTER (WHERE UPPER(a.status) = 'PRESENT')  AS present,
+            COUNT(*) FILTER (WHERE UPPER(a.status) = 'LATE')     AS late,
+            COUNT(*) FILTER (WHERE UPPER(a.status) = 'ABSENT')   AS absent,
+            COUNT(*) FILTER (WHERE UPPER(a.status) = 'HALF_DAY') AS half_day
+        FROM public.attendance_records a
+        JOIN public.employees emp ON emp.id = a.employee_id
+        WHERE emp.organization_id = :actor_org
+          AND emp.is_active = TRUE
+          AND a.attendance_date BETWEEN :start_date AND :end_date
+          AND {clause}
+        GROUP BY emp.id, emp.full_name, emp.employee_code, emp.department_id
+        ORDER BY emp.department_id, emp.employee_code
+        LIMIT :limit
+    """)
+    params = {
+        "actor_org": actor.organization_id,
+        "start_date": start,
+        "end_date": end,
+        # One extra row tells us whether the list was truncated.
+        "limit": TEAM_SUMMARY_LIMIT + 1,
+        **clause_params,
+    }
+
+    with db_engine.connect() as connection:
+        rows = connection.execute(sql, params).mappings().all()
+
+    return {"rows": [dict(row) for row in rows]}

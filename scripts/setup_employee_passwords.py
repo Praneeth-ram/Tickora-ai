@@ -5,12 +5,21 @@ from sqlalchemy import text
 from backend.db import engine
 from backend.services.auth_service import hash_password
 
-TARGET_CODES = ["EMP001", "EMP002"]
+TARGET_CODES = ["EMP001", "EMP002", "EMP011"]
 
 
 def main():
     with engine.begin() as connection:
+        codes = [
+            row["employee_code"]
+            for row in connection.execute(
+                text("SELECT employee_code FROM public.employees WHERE is_active = TRUE ORDER BY employee_code")
+            ).mappings().all()
+        ]
         for code in TARGET_CODES:
+            if code not in codes:
+                print(f"{code}: not found or inactive. Skipping.")
+                continue
             employee = connection.execute(
                 text("""
                     SELECT id, full_name
