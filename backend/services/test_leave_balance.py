@@ -2,7 +2,6 @@
 
 The database is replaced with fakes, so these run without PostgreSQL.
 """
-import os
 from datetime import date
 import pytest
 

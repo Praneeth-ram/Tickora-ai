@@ -1,6 +1,6 @@
 import pytest
 
-from backend.security.access_policy import ADMIN, EMPLOYEE, SUPER_ADMIN, Actor, AccessDenied
+from backend.security.access_policy import EMPLOYEE, Actor, AccessDenied
 from backend.services.dynamic_query_service import execute_team_summary
 from backend.services.llm_chat_service import is_team_question
 

@@ -2410,7 +2410,11 @@ def team_attendance_result(
             "Name a department or a person to narrow the list."
         )
 
-    return _result(question, answer, "team_attendance", period, True, table, table)
+    result = _result(question, answer, "team_attendance", period, True, table, table)
+    if len(rows) > TEAM_SUMMARY_LIMIT:
+        result["answer"] = answer
+        result["message"] = answer
+    return result
 
 
 def _timesheet_overlaps(row: dict[str, Any], start: date, end: date) -> bool:

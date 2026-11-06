@@ -19,7 +19,8 @@ from backend.repositories.calendar_repository import (
 )
 from pydantic import BaseModel, Field
 from backend.services import model_inference
-from backend.errors import ServiceUnavailableError, register_exception_handlers
+from backend.errors import register_exception_handlers
+from backend.exceptions import ServiceUnavailableError
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from backend.services.auth_service import (
@@ -84,19 +85,21 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     # Stable per-chat identifier so clarification replies retain context.
     session_id: str = Field(min_length=1, max_length=100)
+
+
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
-EMPLOYEE_CODE_RE = re.compile(r"\bEMP\d+\b", re.IGNORECASE)
+# EMPLOYEE_CODE_RE = re.compile(r"\bEMP\d+\b", re.IGNORECASE)
 
-def names_other_employee(question: str, own_code: str) -> bool:
-    """True when the question names an employee code other than the caller's."""
-    own = own_code.strip().upper()
-    return any(
-        match.group(0).upper() != own
-        for match in EMPLOYEE_CODE_RE.finditer(question)
-    )
+# def names_other_employee(question: str, own_code: str) -> bool:
+#     """True when the question names an employee code other than the caller's."""
+#     own = own_code.strip().upper()
+#     return any(
+#         match.group(0).upper() != own
+#         for match in EMPLOYEE_CODE_RE.finditer(question)
+#     )
 
 
 def require_matching_employee(
@@ -180,6 +183,23 @@ def health_check():
         "status": "ok",
         "model_loaded": model_inference.is_loaded(),
     }
+
+
+@app.get("/v1/models")
+def list_models():
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": "tickora-ai",
+                "object": "model",
+                "created": int(datetime.now().timestamp()),
+                "owned_by": "tickora",
+            }
+        ],
+    }
+
+
 @app.get("/api/attendance/{employee_code}")
 def attendance_records(
     employee_code: str,

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     # Required: the app refuses to start without these.
     database_url: str
+    agent_database_url: str | None = None
     jwt_secret_key: str = Field(min_length=32)
 
     # Authentication

@@ -28,3 +28,20 @@ def test_ambiguous_first_name_returns_none():
 
 def test_question_without_a_name_returns_none():
     assert match_subject(ROWS, "Show my attendance for October") is None
+
+import pytest
+from backend.security.subject_resolution import names_a_person
+
+class _Actor:
+    employee_id = 1
+
+@pytest.mark.parametrize("q", [
+    "Is October 31 a holiday?",
+    "Is October 31 a holiday and what was my clock-in time on October 5?",
+    "What are the upcoming holidays?",
+])
+def test_calendar_questions_are_not_names(q):
+    assert names_a_person(q, _Actor()) is False
+
+def test_real_name_is_still_detected():
+    assert names_a_person("Show Myra Krishnan's attendance for October", _Actor()) is True

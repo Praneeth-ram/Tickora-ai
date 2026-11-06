@@ -21,7 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.services.date_resolver import InvalidDateError
 from backend.services.dynamic_query_service import QueryPlanError
 from backend.services.llm_chat_service import ModelServiceError, PlanRejectedError
-from backend.exceptions import AppError, NotFoundError, ServiceUnavailableError  # noqa: F401
+from backend.exceptions import AppError, NotFoundError, ServiceUnavailableError
 
 
 logger = logging.getLogger(__name__)

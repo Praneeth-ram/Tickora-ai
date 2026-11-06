@@ -49,9 +49,20 @@ def resolve_subject(connection, actor: Actor, question: str) -> int | None:
     return match_subject(rows, question)
 
 NAME_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
+NOT_A_NAME = {
+    "is", "are", "was", "were", "what", "when", "where", "which", "who", "how", "show",
+    "list", "do", "does", "did", "can", "tell", "give", "the", "my", "your", "our",
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+}
 
-def names_a_person(question: str, actor: Actor) -> bool:
+def names_a_person(question: str, actor) -> bool:
     if CODE_RE.search(question):
-        own = actor.employee_id
-        return any(code.upper() != f"EMP{own:03d}" for code in CODE_RE.findall(question))
-    return bool(NAME_RE.search(question))
+        own = f"EMP{actor.employee_id:03d}"
+        return any(code.upper() != own for code in CODE_RE.findall(question))
+    for match in NAME_RE.finditer(question):
+        words = [w.lower() for w in match.group(0).split()]
+        if not all(w in NOT_A_NAME for w in words):
+            return True
+    return False

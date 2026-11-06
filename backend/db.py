@@ -2,7 +2,6 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from backend.config import get_settings
-import os
 
 settings = get_settings()
 
@@ -15,7 +14,7 @@ engine = create_engine(
 )
 
 agent_engine = create_engine(
-    os.getenv("AGENT_DATABASE_URL", settings.database_url),
+    settings.agent_database_url or settings.database_url,
     pool_pre_ping=True,
 )
 
