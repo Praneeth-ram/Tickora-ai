@@ -143,6 +143,17 @@ def test_count_answers_use_entity_names_and_singular_grammar():
     )
 
 
+def test_loan_count_answers_use_the_requested_loan_status():
+    for status in ("active", "approved", "pending"):
+        assert count_response(
+            "loan_request",
+            2,
+            status,
+            "",
+            {"loan_status": status},
+        ) == f"You have 2 {status} loan requests."
+
+
 def test_task_count_answers_describe_task_filters_and_periods():
     cases = [
         (
@@ -534,8 +545,8 @@ def test_approved_loan_request_list_does_not_add_status_as_component():
             organization_id=1,
         )
 
-    final_plan = execute.call_args.args[0]
-    assert execute.call_count == 1
+    final_plan = execute.call_args_list[-1].args[0]
+    assert execute.call_count == 2
     assert final_plan["filters"]["status"] == "approved"
     assert "component" not in final_plan["filters"]
     assert response["data"] == [approved_record]
@@ -597,6 +608,16 @@ def test_loan_amount_query_filters_component_and_returns_requested_metric():
         "loan_request.list": loan_definition,
         "loan_request.sum": loan_definition,
     }
+    catalog_result = {
+        "operation_id": "loan_request.list",
+        "entity": "loan_request",
+        "operation": "list",
+        "data": [{
+            "status": "Approved",
+            "loan_status": "Active",
+            "mode": "INSTALLMENT",
+        }],
+    }
     component_result = {
         "operation_id": "loan_request.list",
         "entity": "loan_request",
@@ -628,7 +649,7 @@ def test_loan_amount_query_filters_component_and_returns_requested_metric():
         ),
         patch(
             "backend.services.llm_chat_service._execute",
-            side_effect=[component_result, records_result],
+            side_effect=[catalog_result, component_result, records_result],
         ) as execute,
     ):
         response = run_llm_chat(

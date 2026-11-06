@@ -477,11 +477,67 @@ def _task_identity_filter(question: str) -> str | None:
         return "managed_by_employee_id"
     return None
 
+LOAN_VALUE_FIELDS = ("status", "loan_status", "mode")
+
+
+def _loan_value_catalog(employee_id: int, organization_id: int | None) -> dict[str, list[str]]:
+    """Distinct stored values for the requester's own loans (scope applied by the executor)."""
+    result = _execute(
+        {"operation_id": "loan_request.list", "fields": list(LOAN_VALUE_FIELDS), "filters": {}},
+        employee_id,
+        limit=100,
+        organization_id=organization_id,
+    )
+    rows = [row for row in result.get("data") or [] if isinstance(row, dict)]
+    return {
+        field: sorted({str(row[field]) for row in rows if row.get(field)})
+        for field in LOAN_VALUE_FIELDS
+    }
+
+
+def _loan_value_filters(question: str, catalog: dict[str, list[str]]) -> dict[str, str]:
+    """Match stored values in the question. A value found in more than one field is ambiguous and is not applied."""
+    q = question.lower()
+    hits: dict[str, list[tuple[str, str]]] = {}
+    for field, values in catalog.items():
+        for value in values:
+            pattern = r"(?<!\w)" + re.escape(value.replace("_", " ").lower()) + r"(?!\w)"
+            if re.search(pattern, q):
+                hits.setdefault(value.lower(), []).append((field, value))
+    applied: dict[str, str] = {}
+    for matched in hits.values():
+        if len(matched) == 1:
+            field, value = matched[0]
+            applied[field] = value
+    return applied
+
+
+def _describe_loan_matches(rows: list[dict[str, Any]], applied: dict[str, str]) -> str:
+    """One sentence naming the filter applied and the matching loans."""
+    condition = " and ".join(
+        f"{field.replace('_', ' ')} {value}" for field, value in applied.items()
+    )
+    if not rows:
+        return f"You have no loans with {condition}."
+    shown = []
+    for row in rows[:10]:
+        others = [
+            f"{field.replace('_', ' ')} {row.get(field)}"
+            for field in ("status", "loan_status")
+            if field not in applied and row.get(field)
+        ]
+        detail = f" ({', '.join(others)})" if others else ""
+        shown.append(f"{row.get('component')}{detail}")
+    noun = "loan" if len(rows) == 1 else "loans"
+    more = f" Showing 10 of {len(rows)}." if len(rows) > 10 else ""
+    return f"You have {len(rows)} {noun} with {condition}: {'; '.join(shown)}.{more}"
+
 
 def normalize_and_correct_plan(
     plan: dict[str, Any],
     question: str,
     today: date,
+    loan_values: dict[str, list[str]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, str | None]]:
     """Correct the model's plan with code: operation, status, and every date."""
     normalized = dict(plan)
@@ -570,12 +626,15 @@ def normalize_and_correct_plan(
         "wfh_request": {"pending", "approved", "rejected", "cancelled"},
         "timesheet": {"draft", "submitted", "approved", "rejected"},
         "task": {"pending", "completed", "in_progress", "cancelled"},
-        "loan_request": {"pending", "approved", "rejected", "cancelled"},
+        "loan_request": {
+            "active", "pending", "approved", "rejected", "cancelled",
+        },
     }
     status_keywords = {
         "late": "late", "absent": "absent", "present": "present",
         "half day": "half_day", "half-day": "half_day", "pending": "pending",
         "approved": "approved", "rejected": "rejected", "cancelled": "cancelled",
+        "active": "active",
         "draft": "draft", "submitted": "submitted",
         "in progress": "in_progress","completed": "completed"
     }
@@ -803,24 +862,10 @@ def normalize_and_correct_plan(
         filters[key] = value
     
     # Prevent a loan component name from being interpreted as loan_status.
-    if op_id.startswith("loan_request."):
-        loan_status = filters.get("loan_status")
-        normalized_status = (
-            loan_status.strip().lower()
-            if isinstance(loan_status, str)
-            else None
-        )
-
-        if normalized_status not in {
-            "active",
-            "closed",
-            "settled",
-            "paid",
-            "pending",
-            "approved",
-            "rejected",
-        }:
-            filters.pop("loan_status", None)
+    if op_id.startswith("loan_request.") and loan_values is not None:
+        for key in LOAN_VALUE_FIELDS:
+            filters.pop(key, None)
+        filters.update(_loan_value_filters(question, loan_values))
 
     explicit_status = None
     for word, status_value in status_keywords.items():
@@ -839,12 +884,16 @@ def normalize_and_correct_plan(
             "leave_request.list", "leave_request.count",
             "wfh_request.list", "wfh_request.count",
             "timesheet.list", "timesheet.count",
-            "task.list", "task.count", "task.sum", "task.group_by","loan_request.list", "loan_request.count",
+            "task.list", "task.count", "task.sum", "task.group_by",
         } and not (
             op_id in {"attendance.group_by", "task.group_by"}
             and normalized.get("group_by_field") == "status"
         ):
-            filters["status"] = explicit_status
+            if op_id.startswith("loan_request."):
+                filters.pop("status", None)
+                filters["loan_status"] = explicit_status
+            else:
+                filters["status"] = explicit_status
     else:
         # The user named no status, so drop any status filter the model added.
         filters.pop("status", None)
@@ -853,7 +902,11 @@ def normalize_and_correct_plan(
         filters.pop("status", None)
 
     entity_statuses = valid_statuses_by_entity.get(entity)
-    if entity_statuses and filters.get("status") not in entity_statuses:
+    if (
+        entity_statuses
+        and entity != "loan_request"
+        and filters.get("status") not in entity_statuses
+    ):
         filters.pop("status", None)
 
     if is_attended_query:
@@ -1063,9 +1116,11 @@ def count_response(
         else ""
     )
 
-    qualifiers = [
-        value for value in (status_text, loan_status_text) if value
-    ]
+    qualifiers = (
+        [loan_status_text]
+        if loan_status_text
+        else ([status_text] if status_text else [])
+    )
     description = " ".join(qualifiers + [noun])
 
     where = f" {span}" if span else ""
@@ -2285,6 +2340,19 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         result["data"],
     )
 
+def _latest_request_sentence(kind: str, rows: list[dict[str, Any]]) -> str:
+    """Option 1 wording: name the latest request by start date, its date, and its status."""
+    label = "leave request" if kind == "leave" else "work-from-home request"
+    latest = max(rows, key=lambda r: as_date(r.get("start_date")) or date.min)
+    start = as_date(latest.get("start_date"))
+    end = as_date(latest.get("end_date")) or start
+    if end and start and end != start:
+        when = f"from {fmt_range(start, end)}"
+    else:
+        when = f"starting {start.day} {start:%B %Y}"
+    status = str(latest.get("status") or "unknown").lower().replace("_", " ")
+    verb = "is" if status == "pending" else "was"
+    return f"Your latest {label}, {when}, {verb} {status}."
 
 def _answer_requests(question, normalized_question, plan, period, employee_id):
     operation_id = plan["operation_id"]
@@ -2301,6 +2369,16 @@ def _answer_requests(question, normalized_question, plan, period, employee_id):
         limit=100,
     )
     rows = normalize_result_fields(operation_id, result["data"])
+    if rows and not wants_list and re.search(r"\bstatus\b", normalized_question.lower()):
+        return _result(
+            question,
+            _latest_request_sentence(kind, rows),
+            intent,
+            period,
+            False,
+            rows,
+            result["data"],
+        )
     start, end = as_date(period.get("start_date")), as_date(period.get("end_date"))
     span = period_phrase(start, end)
     answer = request_answer(kind, rows, normalized_question, span, wants_list)
@@ -2711,7 +2789,12 @@ def correct_plan(
     today: date,
 ) -> tuple[dict[str, Any], dict[str, str | None]]:
     """Correct the plan with code, then apply identity and field rules."""
-    plan, period = normalize_and_correct_plan(raw_plan, normalized_question, today)
+    loan_values = None
+    if raw_plan.get("operation_id", "").startswith("loan_request."):
+        loan_values = _loan_value_catalog(employee_id, organization_id)
+    plan, period = normalize_and_correct_plan(
+        raw_plan, normalized_question, today, loan_values=loan_values
+    )
 
     if plan.get("operation_id", "").startswith("task."):
         q = normalized_question.lower()
@@ -2751,6 +2834,12 @@ def correct_plan(
                 limit=100,
                 organization_id=organization_id,
             )
+            catalog_result = {
+            "operation_id": "loan_request.list",
+            "entity": "loan_request",
+            "operation": "list",
+            "data": [{"status": "Approved", "loan_status": "Active", "mode": "INSTALLMENT"}],
+        }
             components = {
                 " ".join(str(row.get("component") or "").split())
                 for row in component_result.get("data", [])
@@ -2992,7 +3081,10 @@ def execute_and_format(
 
     if operation == "count":
         count = data.get("count", 0) if isinstance(data, dict) else 0
-        status_filter = plan.get("filters", {}).get("status")
+        status_filter = (
+            plan.get("filters", {}).get("loan_status")
+            or plan.get("filters", {}).get("status")
+        )
         span = period_phrase(as_date(period.get("start_date")), as_date(period.get("end_date")))
         if operation_id == "task.count":
             answer = task_count_response(
@@ -3143,16 +3235,9 @@ def execute_and_format(
             message = format_timesheet_response(timesheet_rows)
 
     elif operation_id == "loan_request.list":
-        rows_for_fields = data[:1] if isinstance(data, list) else [data]
         loan_metric = _loan_metric_field(
             normalized_question,
-            list(plan.get("fields", []))
-            + [
-                key
-                for row in rows_for_fields
-                if isinstance(row, dict)
-                for key in row
-            ],
+            plan.get("fields", []),
         )
         if loan_metric:
             message = loan_amount_response(
@@ -3164,17 +3249,24 @@ def execute_and_format(
                     as_date(period.get("end_date")),
                 ),
             )
+            return _result(question, message, intent, period, False, data, raw_data)
+
+        applied = {
+            key: value
+            for key, value in plan.get("filters", {}).items()
+            if key in LOAN_VALUE_FIELDS and isinstance(value, str)
+        }
+        if applied:
             return _result(
                 question,
-                message,
+                _describe_loan_matches(data, applied),
                 intent,
                 period,
                 False,
                 data,
                 raw_data,
-                loan_metric_field=loan_metric,
-                loan_component=plan.get("filters", {}).get("component"),
             )
+
         message = (
             "Your matching records are listed below."
             if data
