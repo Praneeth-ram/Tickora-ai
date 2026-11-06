@@ -438,12 +438,25 @@ def test_grouping_explicitly_named_entity_overrides_wrong_model_entity():
 
 
 def test_loan_component_and_metric_are_resolved_without_component_constants():
-    fields = ["total_amount", "deducted_amount", "remaining_amount"]
+    fields = [
+        "total_amount",
+        "deducted_amount",
+        "remaining_amount",
+        "installment_amount",
+    ]
     question = "What is the deducted amount for Penalty Deduction?"
     metric = _loan_metric_field(question, fields)
 
     assert metric == "deducted_amount"
     assert _loan_component_phrase(question, metric) == "Penalty Deduction"
+    assert _loan_metric_field(
+        "What amount has been deducted from my penalty deduction?",
+        fields,
+    ) == "deducted_amount"
+    assert _loan_metric_field(
+        "What is my installment for Emergency Loan?",
+        fields,
+    ) == "installment_amount"
     assert _loan_component_phrase(
         "Show my approved loan requests.",
         None,
@@ -541,6 +554,25 @@ def test_loan_amount_response_uses_database_value_and_missing_record_message():
     ) == "No loan records were found for Penalty Deduction."
 
 
+def test_result_formats_single_loan_amount_as_a_sentence_instead_of_a_table():
+    response = _result(
+        "What amount has been deducted from my penalty deduction?",
+        "Your matching records are listed below.",
+        "loan_lookup",
+        {"start_date": None, "end_date": None},
+        True,
+        [{
+            "component": "Penalty Deduction",
+            "deducted_amount": Decimal("250.00"),
+        }],
+    )
+
+    assert response["show_table"] is False
+    assert response["answer"] == (
+        "The deducted amount for Penalty Deduction is 250.00."
+    )
+
+
 def test_loan_amount_query_filters_component_and_returns_requested_metric():
     loan_definition = {
         "fields": [
@@ -548,6 +580,7 @@ def test_loan_amount_query_filters_component_and_returns_requested_metric():
             "total_amount",
             "deducted_amount",
             "remaining_amount",
+            "installment_amount",
         ],
         "filters": ["employee_id", "managed_by_employee_id", "component"],
         "identity_filters": {
@@ -599,7 +632,7 @@ def test_loan_amount_query_filters_component_and_returns_requested_metric():
         ) as execute,
     ):
         response = run_llm_chat(
-            "What is the deducted amount for Penalty Deduction loan?",
+            "What amount has been deducted from my penalty deduction?",
             employee_id=12,
             organization_id=7,
         )

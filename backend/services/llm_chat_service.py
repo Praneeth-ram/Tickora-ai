@@ -332,14 +332,31 @@ def _loan_metric_field(
     q = question.lower()
     matches: list[tuple[int, str]] = []
     for field in aggregate_fields:
+        if not field.endswith("_amount"):
+            continue
         words = field.removesuffix("_amount").replace("_", " ")
         variants = {words}
         if words.endswith("ted"):
             variants.add(f"{words[:-3]}tion")
 
         for variant in variants:
-            for phrase in (f"{variant} amount", f"amount {variant}"):
-                match = re.search(r"\b" + re.escape(phrase) + r"\b", q)
+            phrase = re.compile(
+                r"\b(?:"
+                + re.escape(variant)
+                + r"\s+(?:loan\s+)?amount|"
+                + r"amount\s+(?:(?:has\s+been|was|is)\s+)?"
+                + re.escape(variant)
+                + r"|how\s+much\s+(?:(?:has\s+been|was|is)\s+)?"
+                + re.escape(variant)
+                + r")\b"
+            )
+            match = phrase.search(q)
+            if match:
+                matches.append((match.start(), field))
+            elif variant == "installment" and re.search(
+                r"\binstallments?\b", q
+            ):
+                match = re.search(r"\binstallments?\b", q)
                 if match:
                     matches.append((match.start(), field))
     return min(matches)[1] if matches else None
@@ -713,7 +730,8 @@ def normalize_and_correct_plan(
         ).get("aggregate_fields", [])
         loan_metric_field = _loan_metric_field(
             question,
-            loan_aggregate_fields,
+            list(loan_definition.get("fields", []))
+            + loan_aggregate_fields,
         )
         is_loan_count_query = bool(
             re.search(r"\b(?:how\s+many|count|number\s+of)\b", q)
@@ -1638,8 +1656,32 @@ def _result(
     show_table: bool,
     data: Any,
     raw_data: Any = None,
+    loan_metric_field: str | None = None,
+    loan_component: str | None = None,
 ) -> dict[str, Any]:
     """Build a consistent response for every supported entity."""
+
+    if intent == "loan_lookup":
+        metric_field = loan_metric_field
+        if metric_field is None:
+            rows = data if isinstance(data, list) else [data]
+            available_fields = {
+                key
+                for row in rows
+                if isinstance(row, dict)
+                for key in row
+            }
+            metric_field = _loan_metric_field(
+                question,
+                sorted(available_fields),
+            )
+        if metric_field:
+            answer = loan_amount_response(
+                data,
+                metric_field,
+                loan_component or _loan_component_phrase(question, metric_field),
+            )
+            show_table = False
 
     # Listing responses should display the structured table without
     # repeating a natural-language introduction above it.
@@ -1802,6 +1844,8 @@ def _hours_sentence(rows, span, overtime):
     hours, minutes = divmod(total, 60)
     name = "overtime" if overtime else "worked time"
     where = f" {span}" if span else ""
+    if total == 0:
+        return f"Your total {name}{where} was 0 hours and 0 minutes."
     return f"Your total {name}{where} was {hours} hours and {minutes} minutes ({total:,} minutes)."
 
 
@@ -3099,9 +3143,16 @@ def execute_and_format(
             message = format_timesheet_response(timesheet_rows)
 
     elif operation_id == "loan_request.list":
+        rows_for_fields = data[:1] if isinstance(data, list) else [data]
         loan_metric = _loan_metric_field(
             normalized_question,
-            plan.get("fields", []),
+            list(plan.get("fields", []))
+            + [
+                key
+                for row in rows_for_fields
+                if isinstance(row, dict)
+                for key in row
+            ],
         )
         if loan_metric:
             message = loan_amount_response(
@@ -3113,7 +3164,17 @@ def execute_and_format(
                     as_date(period.get("end_date")),
                 ),
             )
-            return _result(question, message, intent, period, False, data, raw_data)
+            return _result(
+                question,
+                message,
+                intent,
+                period,
+                False,
+                data,
+                raw_data,
+                loan_metric_field=loan_metric,
+                loan_component=plan.get("filters", {}).get("component"),
+            )
         message = (
             "Your matching records are listed below."
             if data
