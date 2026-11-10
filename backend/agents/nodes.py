@@ -33,7 +33,7 @@ GREETING_RE = re.compile(
 
 
 def supervisor_node(state: ChatState) -> dict[str, Any]:
-    logger.info("GRAPH PATH: %s", state["question"])
+    logger.debug("GRAPH PATH: %s", state["question"])
     question = state["question"]
     if GREETING_RE.fullmatch(question):
         return {"request_type": "greeting"}

@@ -2782,7 +2782,7 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
         try:
             raw_plan = get_query_plan(normalized_question)
         except ModelServiceError as exc:
-            logger.warning("Model plan unavailable, using keyword plan: %s", exc)
+            logger.warning("Model plan unavailable, using keyword plan: %s", type(exc).__name__)
             model_error = exc
             raw_plan = rule_based_plan(normalized_question)
 

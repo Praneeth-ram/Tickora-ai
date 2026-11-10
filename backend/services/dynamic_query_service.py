@@ -250,15 +250,6 @@ def execute_query_plan(
             resolved_filters[field] = value
 
     filters = resolved_filters
-    print(
-    "[TASK FILTER DEBUG]",
-    {
-        "operation_id": operation_id,
-        "authenticated_employee_id": employee_id,
-        "organization_id": organization_id,
-        "resolved_filters": filters,
-    },
-)
     
     if db_engine is None:
         from backend.db import agent_engine as db_engine

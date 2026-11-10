@@ -243,7 +243,7 @@ def generate_plan(question: str) -> dict[str, Any]:
     generated_tokens = output[0, inputs["input_ids"].shape[1]:]
     answer = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
     elapsed = time.perf_counter() - started
-    logger.info(
+    logger.debug(
         "plan in %.2fs | prompt_tokens=%d | new_tokens=%d | answer=%r",
         elapsed,
         inputs["input_ids"].shape[1],
@@ -255,7 +255,7 @@ def generate_plan(question: str) -> dict[str, Any]:
     try:
         plan = json.loads(answer)
     except json.JSONDecodeError as exc:
-        logger.warning("Model returned invalid JSON: %r", answer)
+        logger.debug("Model returned invalid JSON: %r", answer)
         raise PlanRejectedError(rejected) from exc
 
     if not isinstance(plan, dict):
@@ -264,7 +264,7 @@ def generate_plan(question: str) -> dict[str, Any]:
     operation_id = plan.get("operation_id")
     filters = plan.get("filters")
     if operation_id not in catalog:
-        logger.warning("Model returned unknown operation %r", operation_id)
+        logger.debug("Model returned unknown operation %r", operation_id)
         raise PlanRejectedError(rejected)
     if not isinstance(filters, dict):
         raise PlanRejectedError(rejected)
