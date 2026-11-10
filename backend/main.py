@@ -39,7 +39,6 @@ import logging
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 from backend.security.access_policy import set_subject, reset_subject
 from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_person_phrases, resolve_subject, names_a_person
-from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 
 chat_limiter = LoginRateLimiter(max_attempts=30, window_seconds=60)
 

@@ -22,6 +22,7 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
+    "vulture>=2.16",
 ]
 # Model packages for the in-process Qwen model. Install on the single backend machine:
 #   uv sync --group llm
