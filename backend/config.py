@@ -25,7 +25,6 @@ class Settings(BaseSettings):
 
     # Chat pipeline
     llm_chat_enabled: bool = True
-    model_server_url: str = "http://127.0.0.1:8001/predict"
     model_timeout_seconds: float = 60.0
     model_checkpoint_path: str = "data/artifacts/tickora_intent_model.pt"
 
