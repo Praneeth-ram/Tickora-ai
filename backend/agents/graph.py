@@ -1,7 +1,6 @@
 from functools import lru_cache
 from langgraph.graph import END, StateGraph
 from backend.agents.nodes import (
-    clarification_node,
     compound_node,
     context_node,
     correction_node,
@@ -28,7 +27,6 @@ def get_chat_graph():
     graph.add_node("correction", correction_node)
     graph.add_node("execution", execution_node)
     graph.add_node("controlled_error", error_node)
-    graph.add_node("clarification", clarification_node)
     graph.add_node("compound", compound_node)
 
     graph.set_entry_point("supervisor")
@@ -56,14 +54,12 @@ def get_chat_graph():
         {
             "ok": "execution",
             "invalid": "controlled_error",
-            "missing_info": "clarification",
         },
     )
 
     graph.add_edge("greeting", END)
     graph.add_edge("execution", END)
     graph.add_edge("controlled_error", END)
-    graph.add_edge("clarification", END)
     graph.add_edge("compound", END)
 
     return graph.compile()

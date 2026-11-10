@@ -98,10 +98,6 @@ def execution_node(state: ChatState) -> dict[str, Any]:
         result = _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")
     return {"result": result}
 
-def clarification_node(state: ChatState) -> dict[str, Any]:
-    return {"result": _text_result(state["question"], state["clarification"], "clarification")}
-
-
 def error_node(state: ChatState) -> dict[str, Any]:
     if state.get("request_type") == "third_party":
         return {"result": _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")}
