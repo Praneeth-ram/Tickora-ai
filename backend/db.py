@@ -1,6 +1,6 @@
 # backend/db.py
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase
 from backend.config import get_settings
 
 settings = get_settings()
@@ -12,13 +12,6 @@ engine = create_engine(
     pool_recycle=settings.db_pool_recycle_seconds,
     pool_pre_ping=True,
 )
-
-agent_engine = create_engine(
-    settings.agent_database_url or settings.database_url,
-    pool_pre_ping=True,
-)
-
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 agent_url = settings.agent_database_url
 if not agent_url:
