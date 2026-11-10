@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # Business defaults
     app_timezone: str = "Asia/Kolkata"
 
-    agent_orchestration: bool = False
+    agent_orchestration: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:
