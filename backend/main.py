@@ -77,11 +77,7 @@ logging.basicConfig(
 # Add CORS middleware to allow frontend to call this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # React dev server
-        "http://localhost:5174",
-        # Add any other origins (e.g., deployed frontend URL)
-    ],
+    allow_origins=get_settings().cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, OPTIONS, etc.)
     allow_headers=["*"],  # Allow all headers
