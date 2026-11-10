@@ -40,6 +40,11 @@ class LoginRateLimiter:
                     "Too many failed login attempts. Try again later.",
                     details={"retry_after_seconds": retry_after},
                 )
+            
+    def hit(self, key: str) -> None:
+        """Count one request; raise RateLimitedError when the window is full."""
+        self.check(key)
+        self.record_failure(key)
 
     def record_failure(self, key: str) -> None:
         now = time.monotonic()

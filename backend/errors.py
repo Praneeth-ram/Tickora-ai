@@ -23,6 +23,12 @@ from backend.services.dynamic_query_service import QueryPlanError
 from backend.services.llm_chat_service import ModelServiceError, PlanRejectedError
 from backend.exceptions import AppError, NotFoundError, ServiceUnavailableError
 
+__all__ = [
+    "AppError",
+    "NotFoundError",
+    "ServiceUnavailableError",
+    "register_exception_handlers",
+]
 
 logger = logging.getLogger(__name__)
 
