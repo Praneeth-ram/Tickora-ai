@@ -1,7 +1,7 @@
 # backend/tests/test_enumeration_integration.py
-import pytest
+# import pytest
 
-from backend.tests.conftest import requires_db, requires_agent_role
+from backend.tests.conftest import requires_db
 from backend.db import engine
 from backend.security.access_policy import load_actor
 from backend.security.subject_resolution import resolve_subject, names_a_person

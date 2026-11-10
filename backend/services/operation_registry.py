@@ -139,6 +139,22 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
             "leave_type_id",
         ],
     },
+    "employee_work_schedules": {
+        "entity": "work_schedule",
+        "scope": "employee_id",
+        "list_fields": [
+            "schedule_name",
+            "shift_start",
+            "shift_end",
+            "expected_hours",
+            "workdays",
+            "effective_from",
+        ],
+        "filter_fields": [],
+        "date_field": None,
+        "date_fields": [],
+        "count_allowed": False,
+    },
     "leave_types": {
         "entity": "leave_type",
         "scope": "organization_read",

@@ -3074,6 +3074,7 @@ def execute_and_format(
         "timesheet.count": "timesheet_lookup",
         "timesheet.group_by": "timesheet_lookup",
         "holiday.count": "holiday_lookup",
+        "work_schedule.list": "schedule_lookup",
         "leave_request.count": "leave_status",
         "wfh_request.count": "wfh_status",
         "leave_balance.list": "leave_balance",
@@ -3092,6 +3093,8 @@ def execute_and_format(
         "loan_request.sum": "loan_lookup",
     }
     intent = operation_to_intent.get(operation_id, "attendance_records")
+    if intent is None:
+        return _text_result(question, UNSUPPORTED_MESSAGE, intent="unsupported")
 
     if operation == "count":
         count = data.get("count", 0) if isinstance(data, dict) else 0

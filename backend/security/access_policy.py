@@ -42,6 +42,7 @@ ENTITY_RULES = {
     "loan_request": {"owned": True, "scopes": _SENSITIVE},
     "holiday": {"owned": False, "scopes": _ORG_WIDE},
     "leave_type": {"owned": False, "scopes": _ORG_WIDE},
+    "work_schedule": {"owned": True, "scopes": _OPERATIONAL},
 }
 
 # Column that names the employee a row belongs to, when not employee_id.

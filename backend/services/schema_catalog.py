@@ -34,6 +34,7 @@ def discover_schema(
 
     for table_name in sorted(
         inspector.get_table_names(schema=schema_name)
+        + inspector.get_view_names(schema=schema_name)
     ):
         if _is_sensitive_table(table_name):
             continue
