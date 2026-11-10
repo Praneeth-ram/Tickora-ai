@@ -20,6 +20,14 @@ agent_engine = create_engine(
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
+agent_url = settings.agent_database_url
+if not agent_url:
+    raise RuntimeError(
+        "AGENT_DATABASE_URL is not set. The chatbot must not run on the owner account."
+    )
+
+agent_engine = create_engine(agent_url, pool_pre_ping=True)
+
 class Base(DeclarativeBase):
     pass
 

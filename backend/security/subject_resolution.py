@@ -50,19 +50,47 @@ def resolve_subject(connection, actor: Actor, question: str) -> int | None:
 
 NAME_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
 NOT_A_NAME = {
-    "is", "are", "was", "were", "what", "when", "where", "which", "who", "how", "show",
-    "list", "do", "does", "did", "can", "tell", "give", "the", "my", "your", "our",
+    "is", "are", "was", "were", "what", "when", "where", "which", "who", "how",
+    "show", "list", "do", "does", "did", "can", "tell", "give", "the", "my", "your", "our",
     "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december",
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
 }
 
-def names_a_person(question: str, actor) -> bool:
+def _normalize_apostrophes(text: str) -> str:
+    """Phones type curly apostrophes; the database stores straight ones."""
+    return text.replace("\u2019", "'")
+
+def load_non_person_phrases(connection, organization_id: int) -> frozenset[str]:
+    """Known category names (leave types, holidays, loan components) that are not people."""
+    rows = connection.execute(
+        text("""
+            SELECT name FROM public.leave_types WHERE organization_id = :org
+            UNION
+            SELECT name FROM public.holidays
+            UNION
+            SELECT component FROM public.loan_requests WHERE organization_id = :org
+        """),
+        {"org": organization_id},
+    ).scalars().all()
+    return frozenset(_normalize_apostrophes(name).strip() for name in rows if name)
+
+def _strip_known_terms(question: str, known: frozenset[str]) -> str:
+    """Remove known category names (case-insensitive) before looking for people."""
+    remainder = _normalize_apostrophes(question)
+    for term in sorted(known, key=len, reverse=True):  # longest first
+        remainder = re.sub(
+            rf"(?<!\w){re.escape(term)}(?!\w)", " ", remainder, flags=re.IGNORECASE
+        )
+    return remainder
+
+def names_a_person(question: str, actor, non_person_phrases: frozenset[str] = frozenset()) -> bool:
     if CODE_RE.search(question):
         own = f"EMP{actor.employee_id:03d}"
         return any(code.upper() != own for code in CODE_RE.findall(question))
-    for match in NAME_RE.finditer(question):
-        words = [w.lower() for w in match.group(0).split()]
-        if not all(w in NOT_A_NAME for w in words):
+    remainder = _strip_known_terms(question, non_person_phrases)
+    for match in NAME_RE.finditer(remainder):
+        words = [word.lower() for word in match.group(0).split()]
+        if not all(word in NOT_A_NAME for word in words):
             return True
     return False

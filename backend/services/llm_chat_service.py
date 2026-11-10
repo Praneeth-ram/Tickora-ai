@@ -249,6 +249,30 @@ def _primary_topic(part: str) -> str | None:
         return "loan"
     return None
 
+DATE_PHRASE_RE = re.compile(
+    r"(?:january|february|march|april|may|june|july|august|september|october|november|december)"
+    r"\s+\d{1,2}(?:st|nd|rd|th)?\b",
+    re.IGNORECASE,
+)
+
+def _date_phrase(part: str) -> str | None:
+    match = DATE_PHRASE_RE.search(part)
+    return match.group(0) if match else None
+
+def _inherit_dates(parts: list[str]) -> list[str]:
+    topics = [_primary_topic(part) for part in parts]
+    topic_date: dict[str, str] = {}
+    for part, topic in zip(parts, topics):
+        phrase = _date_phrase(part)
+        if phrase and topic and topic not in topic_date:
+            topic_date[topic] = phrase
+    result = []
+    for part, topic in zip(parts, topics):
+        if _date_phrase(part) is None and topic in topic_date:
+            part = f"{part} on {topic_date[topic]}"
+        result.append(part)
+    return result
+
 
 def split_compound_question(question: str) -> list[str]:
     """Split only when the parts are about different topics, e.g. leave and holidays.
@@ -263,7 +287,7 @@ def split_compound_question(question: str) -> list[str]:
     if len(parts) > 1:
         topics = [_primary_topic(part) for part in parts]
         if all(topics) and len(set(topics)) > 1:
-            return parts
+            return _inherit_dates(parts)
     return [question]
 
 
@@ -2834,12 +2858,6 @@ def correct_plan(
                 limit=100,
                 organization_id=organization_id,
             )
-            catalog_result = {
-            "operation_id": "loan_request.list",
-            "entity": "loan_request",
-            "operation": "list",
-            "data": [{"status": "Approved", "loan_status": "Active", "mode": "INSTALLMENT"}],
-        }
             components = {
                 " ".join(str(row.get("component") or "").split())
                 for row in component_result.get("data", [])

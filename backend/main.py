@@ -38,7 +38,7 @@ from backend.services.date_resolver import validate_date_range
 import logging
 from backend.services.login_rate_limiter import login_limiter
 from backend.security.access_policy import set_subject, reset_subject
-from backend.security.subject_resolution import NOT_FOUND_MESSAGE, resolve_subject, names_a_person
+from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_person_phrases, resolve_subject, names_a_person
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -434,7 +434,8 @@ def chat_with_tickora(
     with engine.connect() as connection:
         actor = load_actor(connection, employee_id, current_employee["employee_code"])
         subject_id = resolve_subject(connection, actor, body.question)
-        if subject_id is None and names_a_person(body.question, actor):
+        non_person = load_non_person_phrases(connection, actor.organization_id)
+        if subject_id is None and names_a_person(body.question, actor, non_person):
             return jsonable_encoder(
                 _text_result(body.question, NOT_FOUND_MESSAGE, intent="unsupported")
             )

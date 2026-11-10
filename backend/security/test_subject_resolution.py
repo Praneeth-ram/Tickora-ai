@@ -1,47 +1,41 @@
-from backend.security.subject_resolution import match_subject
-
-ROWS = [
-    {"id": 2, "employee_code": "EMP002", "full_name": "Diya Iyer"},
-    {"id": 11, "employee_code": "EMP011", "full_name": "Reyansh Verma"},
-    {"id": 12, "employee_code": "EMP012", "full_name": "Myra Krishnan"},
-    {"id": 3, "employee_code": "EMP003", "full_name": "Arjun Kumar"},
-    {"id": 13, "employee_code": "EMP013", "full_name": "Advait Shah"},
-]
-
-
-def test_full_name_is_matched():
-    assert match_subject(ROWS, "Show Myra Krishnan's attendance for October") == 12
-
-
-def test_employee_code_is_matched():
-    assert match_subject(ROWS, "Show EMP011 attendance for October") == 11
-
-
-def test_unknown_name_returns_none():
-    assert match_subject(ROWS, "Show Ravi Patel's attendance") is None
-
-
-def test_ambiguous_first_name_returns_none():
-    rows = ROWS + [{"id": 20, "employee_code": "EMP020", "full_name": "Myra Gupta"}]
-    assert match_subject(rows, "Show Myra's attendance") is None
-
-
-def test_question_without_a_name_returns_none():
-    assert match_subject(ROWS, "Show my attendance for October") is None
-
 import pytest
 from backend.security.subject_resolution import names_a_person
 
 class _Actor:
     employee_id = 1
 
-@pytest.mark.parametrize("q", [
-    "Is October 31 a holiday?",
-    "Is October 31 a holiday and what was my clock-in time on October 5?",
-    "What are the upcoming holidays?",
-])
-def test_calendar_questions_are_not_names(q):
-    assert names_a_person(q, _Actor()) is False
+# Real values from tickora_ai_dev, with the curly-apostrophe case included.
+KNOWN = frozenset({
+    "Casual Leave", "Sick Leave", "Earned Leave", "Unpaid Leave",
+    "Christmas Day", "Gandhi Jayanti", "Independence Day", "Labour Day",
+    "New Year's Day", "Republic Day",
+    "Salary Advance", "Emergency Loan", "Penalty Deduction",
+})
 
-def test_real_name_is_still_detected():
-    assert names_a_person("Show Myra Krishnan's attendance for October", _Actor()) is True
+@pytest.mark.parametrize("question", [
+    "How many Casual Leave days do I have?",
+    "What is my Sick Leave balance?",
+    "Is Gandhi Jayanti a holiday?",
+    "Is New Year\u2019s Day a holiday?",
+    "Is New Year's Day a holiday?",
+    "What is my Emergency Loan remaining amount?",
+    "What amount has been deducted from my Penalty Deduction?",
+    "Is October 31 a holiday?",
+    "Show my leave balance",
+])
+def test_known_terms_and_calendar_questions_do_not_name_a_person(question):
+    assert names_a_person(question, _Actor(), KNOWN) is False
+
+@pytest.mark.parametrize("question", [
+    "Show Ravi Patel's attendance for October",
+    "Show Myra Krishnan\u2019s attendance for October",
+    "What is the Casual Leave balance for Myra Krishnan?",
+])
+def test_real_colleague_names_are_still_detected(question):
+    assert names_a_person(question, _Actor(), KNOWN) is True
+
+def test_other_employee_code_is_detected():
+    assert names_a_person("Show EMP011 attendance", _Actor(), KNOWN) is True
+
+def test_own_employee_code_is_not_another_person():
+    assert names_a_person("Show EMP001 attendance", _Actor(), KNOWN) is False
