@@ -1,7 +1,12 @@
 # backend/tests/test_enumeration_integration.py
+import pytest
+
+from backend.tests.conftest import requires_db, requires_agent_role
 from backend.db import engine
 from backend.security.access_policy import load_actor
 from backend.security.subject_resolution import resolve_subject, names_a_person
+
+pytestmark = requires_db
 
 
 def test_unknown_and_out_of_scope_named_subjects_resolve_identically(as_actor):

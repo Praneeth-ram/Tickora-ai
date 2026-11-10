@@ -1,6 +1,7 @@
 # backend/tests/test_access_matrix.py
 import pytest
 
+from backend.tests.conftest import requires_agent_role
 from backend.security.access_policy import (
     AccessDenied,
     check_fields,
@@ -63,6 +64,7 @@ def test_employee_cannot_see_colleague_same_department(as_actor):
 
 
 # --- Cross-department: admin cannot see other department ---
+@requires_agent_role
 def test_admin_cannot_see_other_department(as_actor):
     as_actor(*EMP002)  # dept 2
     clause, params = scope_clause(get_actor(), "attendance", "candidate.id")
@@ -82,6 +84,7 @@ def test_admin_cannot_see_other_department(as_actor):
 
 
 # --- Organization-wide: super admin sees everyone, others don't ---
+@requires_agent_role
 def test_super_admin_sees_other_department(as_actor):
     as_actor(*EMP001)
     clause, params = scope_clause(get_actor(), "attendance", "candidate.id")

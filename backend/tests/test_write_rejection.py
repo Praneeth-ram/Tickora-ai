@@ -3,7 +3,10 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
+from backend.tests.conftest import requires_db, requires_agent_role
 from backend.db import agent_engine
+
+pytestmark = requires_agent_role
 
 
 @pytest.mark.parametrize("sql", [
