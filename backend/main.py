@@ -58,6 +58,9 @@ app = FastAPI(
     version="0.1.0",
 )
 
+from backend.security.audit_log import configure_audit_logger
+configure_audit_logger()
+
 register_exception_handlers(app)
 logger = logging.getLogger(__name__)
 
