@@ -92,17 +92,6 @@ class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
-# EMPLOYEE_CODE_RE = re.compile(r"\bEMP\d+\b", re.IGNORECASE)
-
-# def names_other_employee(question: str, own_code: str) -> bool:
-#     """True when the question names an employee code other than the caller's."""
-#     own = own_code.strip().upper()
-#     return any(
-#         match.group(0).upper() != own
-#         for match in EMPLOYEE_CODE_RE.finditer(question)
-#     )
-
-
 def require_matching_employee(
     requested_employee_code: str,
     current_employee: dict,
@@ -469,15 +458,6 @@ def _chat(
     employee_id: int,
     current_employee: dict,
 ):
-    # if names_other_employee(body.question, current_employee["employee_code"]):
-    #     return jsonable_encoder(
-    #         _text_result(body.question, THIRD_PARTY_MESSAGE, intent="unsupported")
-    #     )
-    
-    # employee_id = require_matching_employee(
-    #     employee_code,
-    #     current_employee,
-    # )
     greeting_result = get_greeting_response(
         body.question.strip(),
         current_employee,

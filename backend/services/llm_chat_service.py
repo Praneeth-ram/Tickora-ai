@@ -97,10 +97,6 @@ SUM_QUESTION_RE = re.compile(
     r"how\s+many\s+(?:hours|minutes)|hours\s+(?:did\s+i\s+|i\s+)?(?:have\s+)?work(?:ed)?|"
     r"worked\s+hours|working\s+hours)\b"
 )
-THIRD_PARTY_MESSAGE = (
-    "I can only show your own records. I can't access another employee's attendance, "
-    "leave, or other details."
-)
 ATTENDED_STATUSES = {"PRESENT": "present", "LATE": "late", "HALF_DAY": "half day"}
 ATTENDED_RE = re.compile(
     r"\b(?:attended|attend|attending|present\s+days?|days?\s+(?:i\s+)?(?:attend|attended|was\s+present)|"
