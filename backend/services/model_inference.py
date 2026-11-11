@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 import time
 
+import re as regex
+
 from backend.services.llm_chat_service import ModelUnavailableError, PlanRejectedError
 from backend.services.operation_registry import build_operation_registry
 
@@ -26,6 +28,8 @@ DATASET_PATH = PROJECT_ROOT / "data" / "tickora_sft_expanded.jsonl"
 CATALOG_PATH = PROJECT_ROOT / "data" / "model_catalog.json"
 MAX_NEW_TOKENS = 128
 PREFIX_CHUNK_SIZE = 128
+
+DATE_VALUE_RE = regex.compile(r"^\d{4}-\d{2}(-\d{2})?$")
 
 _generation_lock = threading.Lock()
 _state: dict[str, Any] = {
@@ -271,7 +275,22 @@ def generate_plan(question: str) -> dict[str, Any]:
 
     allowed_filters = set(catalog[operation_id].get("filters", []))
     if not set(filters).issubset(allowed_filters):
-        logger.warning("Model returned unsupported filters for %s", operation_id)
+        rejected_filters = sorted(set(filters) - allowed_filters)
+        logger.warning(
+            "Model returned unsupported filters for %s: %s",
+            operation_id, rejected_filters,
+        )
         raise PlanRejectedError(rejected)
+
+    for name, value in filters.items():
+        if not any(token in name for token in ("date", "month", "period")):
+            continue
+        values = value.values() if isinstance(value, dict) else [value]
+        for item in values:
+            if item is None:
+                continue
+            if not isinstance(item, str) or not DATE_VALUE_RE.match(item):
+                logger.warning("Model returned invalid date value for %s.%s", operation_id, name)
+                raise PlanRejectedError(rejected)
 
     return plan

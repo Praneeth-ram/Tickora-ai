@@ -21,6 +21,7 @@ from backend.services.llm_chat_service import (
     yes_no_status,
 )
 from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE
+from sqlalchemy.exc import SQLAlchemyError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -108,6 +109,13 @@ def execution_node(state: ChatState) -> dict[str, Any]:
         )
     except AccessDenied:
         result = _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")
+    except SQLAlchemyError:
+        logger.exception("Query failed for plan operation")
+        result = _text_result(
+            state["question"],
+            "I couldn't read that information right now. Please try again or rephrase the question.",
+            "unsupported",
+        )
     return {"result": result}
 
 def error_node(state: ChatState) -> dict[str, Any]:
