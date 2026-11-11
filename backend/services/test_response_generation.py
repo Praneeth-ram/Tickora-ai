@@ -19,26 +19,25 @@ from backend.services.llm_chat_service import (
     sum_response,
     task_count_response,
     _result,
+    _capture_combined_answers,
+    _combine_results,
 )
 from backend.services.request_answer_builder import request_answer
 
 
-def test_payroll_response_detects_net_salary_without_regex_type_error():
+def test_payroll_net_pay_response_uses_plain_sentence():
     response = _payroll_response(
         [{
             "period_start": date(2026, 10, 1),
             "period_end": date(2026, 10, 31),
             "net_amount": Decimal("4250.00"),
-            "currency": "USD",
+            "currency": "INR",
         }],
         {},
         "What is my net salary?",
     )
 
-    assert response == (
-        "Your net salary:\n"
-        "- Net salary for October 2026: USD 4,250.00."
-    )
+    assert response == "Your net pay for October 2026 was INR 4,250.00."
 
 
 def test_result_keeps_structured_and_raw_data_when_table_is_hidden():
@@ -58,6 +57,57 @@ def test_result_keeps_structured_and_raw_data_when_table_is_hidden():
     assert response["show_table"] is False
     assert response["data"] == structured
     assert response["raw_data"] == raw
+
+
+def test_combine_results_keeps_table_answer_and_separates_parts():
+    period = {"start_date": None, "end_date": None}
+    with _capture_combined_answers():
+        table_result = _result(
+            "Show my attendance",
+            "Here are your attendance records.",
+            "attendance_records",
+            period,
+            True,
+            [{"status": "present"}],
+        )
+    text_result = _result(
+        "What is my leave balance?",
+        "You have 5 days remaining.",
+        "leave_balance",
+        period,
+        False,
+        [],
+    )
+
+    combined = _combine_results(
+        "Show my attendance and what is my leave balance?",
+        [table_result, text_result],
+    )
+
+    assert combined["answer"] == (
+        "Here is your 1 attendance record.\n\n"
+        "Here are your attendance records.\n\n"
+        "You have 5 days remaining."
+    )
+    assert combined["show_table"] is False
+    assert "_combined_answer" not in combined
+
+
+def test_table_result_includes_count_and_period_before_existing_answer():
+    response = _result(
+        "Show my attendance",
+        "Here are your attendance records.",
+        "attendance_records",
+        {"start_date": "2026-10-01", "end_date": "2026-10-31"},
+        True,
+        [{"status": "present"} for _ in range(16)],
+    )
+
+    assert response["answer"] == (
+        "Here are your 16 attendance records for October 2026.\n\n"
+        "Here are your attendance records."
+    )
+    assert "_combined_answer" not in response
 
 
 def test_status_check_returns_the_matching_structured_and_raw_rows():

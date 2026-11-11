@@ -175,6 +175,18 @@ def test_remaining_sick_leave_balance(db):
     assert "6" in result["answer"]
 
 
+@pytest.mark.parametrize("question", [
+    "how much leave can I take",
+    "how much leave can i take",
+])
+def test_how_much_leave_can_i_take_returns_remaining_balance(db, question):
+    result = svc.run_llm_chat(question, employee_id=7)
+    assert result["intent"] == "leave_balance"
+    assert lba.detect_metric(question) == "remaining"
+    assert lba.detect_requested_metrics(question) == ["remaining"]
+    assert "Total remaining: 26 days." in result["answer"]
+
+
 def test_leave_entitlement_synonym(db):
     result = svc.run_llm_chat("what is my leave entitlement for this year", employee_id=7)
     assert result["intent"] == "leave_balance"

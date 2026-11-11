@@ -2,6 +2,8 @@ import logging
 import os
 import re
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
@@ -1673,6 +1675,18 @@ def _payroll_response(
     # For a specific metric without a total/highest/lowest request,
     # show only that metric for each matching payroll period.
     if metric:
+        if metric == "net_amount":
+            lines = []
+            for row in rows[:20]:
+                value = money(row.get(metric))
+                currency = str(row.get("currency") or "").strip()
+                prefix = f"{currency} " if currency else ""
+                lines.append(
+                    f"Your net pay for {period_label(row)} was "
+                    f"{prefix}{value}."
+                )
+            return "\n".join(lines)
+
         lines = []
         for row in rows[:20]:
             value = money(row.get(metric))
@@ -1686,7 +1700,6 @@ def _payroll_response(
         heading = {
             "gross_amount": "Your gross salary:",
             "deduction_amount": "Your payroll deductions:",
-            "net_amount": "Your net salary:",
         }[metric]
 
         return heading + "\n" + "\n".join(lines)
@@ -1723,6 +1736,54 @@ def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
         "data": [],
     }
 
+
+_CAPTURE_COMBINED_ANSWERS: ContextVar[bool] = ContextVar(
+    "capture_combined_answers", default=False
+)
+
+
+@contextmanager
+def _capture_combined_answers():
+    token = _CAPTURE_COMBINED_ANSWERS.set(True)
+    try:
+        yield
+    finally:
+        _CAPTURE_COMBINED_ANSWERS.reset(token)
+
+
+_TABLE_RECORD_NAMES = {
+    "attendance_records": ("attendance record", "attendance records"),
+    "holiday_lookup": ("holiday", "holidays"),
+    "leave_balance": ("leave balance", "leave balances"),
+    "leave_status": ("leave request", "leave requests"),
+    "leave_type_lookup": ("leave type", "leave types"),
+    "payroll_lookup": ("payroll record", "payroll records"),
+    "team_attendance": ("team member", "team members"),
+    "timesheet_lookup": ("timesheet", "timesheets"),
+    "wfh_status": ("work-from-home request", "work-from-home requests"),
+}
+
+
+def _table_intro(
+    intent: str,
+    data: Any,
+    period: dict[str, Any],
+) -> str:
+    count = len(data) if isinstance(data, list) else int(data is not None)
+    singular, plural = _TABLE_RECORD_NAMES.get(intent, ("record", "records"))
+    noun = singular if count == 1 else plural
+    verb = "is" if count == 1 else "are"
+    intro = f"Here {verb} your {count} {noun}"
+
+    start = as_date(period.get("start_date"))
+    end = as_date(period.get("end_date"))
+    span = period_phrase(start, end)
+    if span:
+        span = re.sub(r"^(?:in|on|from)\s+", "", span)
+        intro += f" for {span}"
+    return intro + "."
+
+
 def _result(
     question: str,
     answer: str,
@@ -1758,13 +1819,15 @@ def _result(
             )
             show_table = False
 
-    # Listing responses should display the structured table without
-    # repeating a natural-language introduction above it.
-    response_text = "" if show_table else answer
+    response_text = answer
+    if show_table:
+        response_text = _table_intro(intent, data, period)
+        if answer:
+            response_text += f"\n\n{answer}"
     if raw_data is None:
         raw_data = data
 
-    return {
+    result = {
         "success": True,
         "question": question,
         "answer": response_text,
@@ -1776,6 +1839,9 @@ def _result(
         "raw_data": raw_data,
         "data": data,
     }
+    if show_table and _CAPTURE_COMBINED_ANSWERS.get():
+        result["_combined_answer"] = response_text
+    return result
 
 def _third_person(answer: str, subject_name: str | None) -> str:
     """When an admin asks about a colleague, speak about that person rather than the requester."""
@@ -2423,7 +2489,10 @@ def _answer_holidays(question, normalized_question, plan, period, employee_id, o
 
 
 def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, Any]:
-    answer = "\n\n".join(result["answer"] for result in results)
+    answer = "\n\n".join(
+        result.get("_combined_answer", result["answer"])
+        for result in results
+    )
     show_table = len(results) == 1 and results[0].get("show_table", False)
     return {
         "success": True,
@@ -2555,11 +2624,7 @@ def team_attendance_result(
             "Name a department or a person to narrow the list."
         )
 
-    result = _result(question, answer, "team_attendance", period, True, table, table)
-    if len(rows) > TEAM_SUMMARY_LIMIT:
-        result["answer"] = answer
-        result["message"] = answer
-    return result
+    return _result(question, answer, "team_attendance", period, True, table, table)
 
 
 def _timesheet_overlaps(row: dict[str, Any], start: date, end: date) -> bool:
@@ -2946,10 +3011,12 @@ def run_llm_chat(
     """Orchestrate the stages in the same order as before the split."""
     parts = split_compound_question(question)
     if len(parts) > 1:
-        return _combine_results(
-            question,
-            [run_llm_chat(part, employee_id, organization_id) for part in parts],
-        )
+        with _capture_combined_answers():
+            results = [
+                run_llm_chat(part, employee_id, organization_id)
+                for part in parts
+            ]
+        return _combine_results(question, results)
 
     if supervisor(question) == "third_party":
         return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")

@@ -13,6 +13,9 @@ METRIC_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("allocated", re.compile(r"\b(?:allocated|entitled|entitlement|granted|quota|accrued|credited)\b")),
     ("remaining", re.compile(r"\b(?:balance|left|remaining|available|carri(?:ed)?\s*over|carry\s*over)\b")),
 ]
+_HOW_MUCH_LEAVE_CAN_I_TAKE_RE = re.compile(
+    r"\bhow\s+much\s+leave\s+can\s+i\s+take(?:n)?\b"
+)
 YEAR_RE = re.compile(r"\b(20\d{2})\b")
 LEAVE_WORD_RE = re.compile(r"\bleaves?\b")
 METRIC_PHRASE = {
@@ -57,6 +60,8 @@ REQUEST_WORDS_RE = re.compile(
 def detect_metric(question: str) -> str | None:
     """The first balance metric the question names, in priority order."""
     q = question.lower()
+    if _HOW_MUCH_LEAVE_CAN_I_TAKE_RE.search(q):
+        return "remaining"
     for name, pattern in METRIC_PATTERNS:
         if pattern.search(q):
             return name
@@ -65,6 +70,8 @@ def detect_metric(question: str) -> str | None:
 def detect_requested_metrics(question: str) -> list[str]:
     """Return all leave-balance metrics explicitly requested, in display order."""
     q = question.lower()
+    availability_question = bool(_HOW_MUCH_LEAVE_CAN_I_TAKE_RE.search(q))
+    used_question = _HOW_MUCH_LEAVE_CAN_I_TAKE_RE.sub("", q)
 
     patterns = {
         "allocated": re.compile(
@@ -79,11 +86,14 @@ def detect_requested_metrics(question: str) -> list[str]:
         ),
     }
 
-    return [
+    requested = [
         metric
         for metric, pattern in patterns.items()
-        if pattern.search(q)
+        if pattern.search(used_question if metric == "used" else q)
     ]
+    if availability_question and "remaining" not in requested:
+        requested.append("remaining")
+    return requested
 
 
 def detect_year(question: str, default_year: int) -> int:

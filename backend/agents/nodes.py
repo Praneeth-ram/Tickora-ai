@@ -5,6 +5,7 @@ from backend.security.access_policy import get_subject
 from backend.services.date_resolver import InvalidDateError
 from backend.services.llm_chat_service import (
     UNSUPPORTED_MESSAGE,
+    _capture_combined_answers,
     _combine_results,
     _text_result,
     correct_plan,
@@ -153,7 +154,8 @@ def compound_node(state: ChatState) -> dict[str, Any]:
     graph = get_chat_graph()
     base = {k: state[k] for k in ("session_id", "employee_id", "employee_code", "organization_id")}
     results = []
-    for part in split_compound_question(state["question"]):
-        out = graph.invoke({**base, "question": part})
-        results.append(out["result"])
+    with _capture_combined_answers():
+        for part in split_compound_question(state["question"]):
+            out = graph.invoke({**base, "question": part})
+            results.append(out["result"])
     return {"result": _combine_results(state["question"], results)}
