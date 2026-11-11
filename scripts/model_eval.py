@@ -117,7 +117,7 @@ def main():
     with out.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["id", "employee", "question", "http", "intent",
-                    "verdict", "note", "seconds", "answer"])
+                    "verdict", "note", "seconds", "rows", "answer"])
         w.writerows(rows)
 
     counts = {v: sum(1 for r in rows if r[5] == v) for v in ("PASS", "FAIL", "REVIEW")}

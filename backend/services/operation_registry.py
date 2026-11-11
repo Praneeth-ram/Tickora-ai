@@ -147,7 +147,7 @@ ENTITY_POLICIES: dict[str, dict[str, Any]] = {
             "shift_start",
             "shift_end",
             "expected_hours",
-            "workdays",
+            "workdays_label",
             "effective_from",
         ],
         "filter_fields": [],

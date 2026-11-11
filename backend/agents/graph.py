@@ -40,6 +40,7 @@ def get_chat_graph():
             "query": "context",
             "third_party": "controlled_error",
             "unsupported": "controlled_error",
+            "write_request": "controlled_error",
         },
     )
     graph.add_conditional_edges(

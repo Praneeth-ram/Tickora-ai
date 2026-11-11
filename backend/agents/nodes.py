@@ -31,12 +31,24 @@ GREETING_RE = re.compile(
     re.IGNORECASE,
 )
 
+WRITE_RE = re.compile(
+    r"^\s*(?:(?:please|can you|could you|would you|i want to|i need to)\s+)*"
+    r"(?:delete|remove|cancel|update|change|edit|modify|approve|reject|submit|apply|create|add)\b",
+    re.IGNORECASE,
+)
+
+WRITE_MESSAGE = (
+    "I can only show information from your records. I can't change, add, "
+    "cancel, or approve anything. Please use the HR system to make changes."
+)
 
 def supervisor_node(state: ChatState) -> dict[str, Any]:
     logger.debug("GRAPH PATH: %s", state["question"])
     question = state["question"]
     if GREETING_RE.fullmatch(question):
         return {"request_type": "greeting"}
+    if WRITE_RE.search(question):
+        return {"request_type": "write_request"}
     if is_team_question(question):
         return {"request_type": "query"}
     if len(split_compound_question(question)) > 1:
@@ -99,6 +111,8 @@ def execution_node(state: ChatState) -> dict[str, Any]:
     return {"result": result}
 
 def error_node(state: ChatState) -> dict[str, Any]:
+    if state.get("request_type") == "write_request":
+        return {"result": _text_result(state["question"], WRITE_MESSAGE, "unsupported")}
     if state.get("request_type") == "third_party":
         return {"result": _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")}
     if state.get("status") == "invalid" and state.get("clarification"):
