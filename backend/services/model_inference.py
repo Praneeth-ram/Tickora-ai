@@ -259,7 +259,7 @@ def generate_plan(question: str) -> dict[str, Any]:
     try:
         plan = json.loads(answer)
     except json.JSONDecodeError as exc:
-        logger.debug("Model returned invalid JSON: %r", answer)
+        logger.warning("Model returned invalid JSON: %r", answer)
         raise PlanRejectedError(rejected) from exc
 
     if not isinstance(plan, dict):
@@ -268,7 +268,7 @@ def generate_plan(question: str) -> dict[str, Any]:
     operation_id = plan.get("operation_id")
     filters = plan.get("filters")
     if operation_id not in catalog:
-        logger.debug("Model returned unknown operation %r", operation_id)
+        logger.warning("Model returned unknown operation %r", operation_id)
         raise PlanRejectedError(rejected)
     if not isinstance(filters, dict):
         raise PlanRejectedError(rejected)

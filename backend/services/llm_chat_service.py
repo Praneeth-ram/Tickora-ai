@@ -2502,6 +2502,9 @@ def is_team_question(question: str) -> bool:
     # Holiday questions can say "team holiday" or "company holiday"; they are not team views.
     if _HOLIDAY_RE.search(question.lower()):
         return False
+    # Salary and payroll questions are never team attendance views.
+    if _PAYROLL_RE.search(question):
+        return False
     return bool(TEAM_RE.search(question))
 
 def team_attendance_result(

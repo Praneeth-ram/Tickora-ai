@@ -129,8 +129,10 @@ def execute_query_plan(
     actor = get_actor()
     if actor is None:
         raise AccessDenied()
-    authorize_entity(actor, definition["entity"])
+    scope = authorize_entity(actor, definition["entity"])
     subject = get_subject()
+    if subject is not None and subject != actor.employee_id and scope == "self":
+        raise AccessDenied()
     if subject is not None:
         employee_id = subject
     if "fields" in plan:

@@ -54,13 +54,13 @@ def test_employee_cannot_see_colleague_same_department(as_actor):
     as_actor(*EMP011)
     token = set_subject(12)
     try:
-        result = execute_query_plan(
-            {"operation_id": "attendance.list", "filters": {}},
-            employee_id=11, organization_id=1, limit=50,
-        )
+        with pytest.raises(AccessDenied):
+            execute_query_plan(
+                {"operation_id": "attendance.list", "filters": {}},
+                employee_id=11, organization_id=1, limit=50,
+            )
     finally:
         reset_subject(token)
-    assert result["data"] == []
 
 
 # --- Cross-department: admin cannot see other department ---
@@ -101,24 +101,17 @@ def test_super_admin_sees_other_department(as_actor):
     assert in_scope is not None
 
 
-# --- Payroll and loans: admin is self-only, even for their own department ---
 def test_admin_cannot_list_colleague_payroll(as_actor):
     as_actor(*EMP002)
-    from backend.security.access_policy import set_subject, reset_subject
     token = set_subject(12)  # try to view a same-department colleague's payroll
     try:
-        result = execute_query_plan(
-            {"operation_id": "payroll_summary.list", "filters": {}},
-            employee_id=2, organization_id=1, limit=50,
-        )
+        with pytest.raises(AccessDenied):
+            execute_query_plan(
+                {"operation_id": "payroll_summary.list", "filters": {}},
+                employee_id=2, organization_id=1, limit=50,
+            )
     finally:
         reset_subject(token)
-    rows = result["data"] if isinstance(result["data"], list) else []
-    # payroll_summary's scope_clause pins to actor_employee_id regardless of
-    # subject override at this layer; main.py's resolve_subject already
-    # refuses payroll-about-others before reaching here for admins, but this
-    # confirms the DB-level backstop independently.
-    assert rows == [] or all(True for _ in rows)  # see note below
 
 
 def test_super_admin_can_list_colleague_payroll(as_actor):

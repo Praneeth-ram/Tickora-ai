@@ -19,6 +19,7 @@ from backend.services.llm_chat_service import (
     split_compound_question,
     validate_plan,
     yes_no_status,
+    ModelServiceError
 )
 from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE
 from sqlalchemy.exc import SQLAlchemyError
@@ -109,6 +110,8 @@ def execution_node(state: ChatState) -> dict[str, Any]:
         )
     except AccessDenied:
         result = _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")
+    except ModelServiceError:
+        result = _text_result(state["question"], UNSUPPORTED_MESSAGE, "unsupported")
     except SQLAlchemyError:
         logger.exception("Query failed for plan operation")
         result = _text_result(
