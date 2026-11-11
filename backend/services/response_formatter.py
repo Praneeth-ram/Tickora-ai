@@ -2,13 +2,11 @@ import re
 from datetime import date, datetime, time
 from typing import Any
 
-
 def format_date(value: Any) -> str:
     """Format dates for user-facing responses."""
     if isinstance(value, (date, datetime)):
         return value.strftime("%d %b %Y")
     return str(value) if value is not None else "N/A"
-
 
 def format_date_range(start: Any, end: Any) -> str:
     """Format single-day or start-to-end date ranges cleanly."""
@@ -18,13 +16,11 @@ def format_date_range(start: Any, end: Any) -> str:
         return start_str
     return f"{start_str} to {end_str}"
 
-
 def format_time(value: Any) -> str:
     """Format timestamps and times for user-facing responses."""
     if isinstance(value, (datetime, time)):
         return value.strftime("%I:%M %p")
     return str(value) if value is not None else "Not recorded"
-
 
 def format_workdays(days: Any) -> str:
     """Convert numeric weekday lists into human-readable strings."""
@@ -43,7 +39,6 @@ def format_workdays(days: Any) -> str:
 
     formatted = [day_names[d - 1] for d in sorted_days if 1 <= d <= 7]
     return ", ".join(formatted)
-
 
 def format_status_badge(status: str | None) -> str:
     """Format a status with a clean readable label and emoji."""
@@ -64,7 +59,6 @@ def format_status_badge(status: str | None) -> str:
         "DRAFT": "Draft",
     }
     return badges.get(normalized, normalized.capitalize())
-
 
 def format_attendance(records: list[dict], status: str | None = None, question: str = "") -> str:
     """Format attendance records cleanly."""
@@ -89,7 +83,6 @@ def format_attendance(records: list[dict], status: str | None = None, question: 
         )
 
     return "\n".join(lines)
-
 
 def format_attendance_summary(data: dict, requested_metric: str | None = None, question: str = "") -> str:
     """Format attendance summary or specific metrics cleanly."""
@@ -147,7 +140,6 @@ def format_attendance_summary(data: dict, requested_metric: str | None = None, q
         f"- Total recorded days: {data.get('recorded_days', 0)}"
     )
 
-
 def format_leave_requests(data: list[dict], status: str | None = None, question: str = "") -> str:
     """Format leave requests in a clean, human-readable structure."""
     if not data:
@@ -183,7 +175,6 @@ def format_leave_requests(data: list[dict], status: str | None = None, question:
         )
 
     return "\n".join(lines)
-
 
 def format_wfh_requests(data: list[dict], status: str | None = None, question: str = "") -> str:
     """Format work-from-home requests cleanly."""
@@ -227,7 +218,6 @@ def format_wfh_requests(data: list[dict], status: str | None = None, question: s
 
     return "\n".join(lines)
 
-
 def format_work_schedules(data: list[dict]) -> str:
     """Format work schedules clearly with shift timings and readable workdays."""
     if not data:
@@ -249,7 +239,6 @@ def format_work_schedules(data: list[dict]) -> str:
 
     return "\n".join(lines)
 
-
 def format_timesheets(data: list[dict]) -> str:
     """Format timesheet entries cleanly with totals."""
     if not data:
@@ -270,7 +259,6 @@ def format_timesheets(data: list[dict]) -> str:
 
     return "\n".join(lines)
 
-
 def format_holidays(data: list[dict], region: str | None = None, question: str = "") -> str:
     """Format holidays cleanly with natural answers for date checks."""
     q_lower = question.lower()
@@ -284,6 +272,11 @@ def format_holidays(data: list[dict], region: str | None = None, question: str =
         )
         if date_match:
             return f"No, {date_match.group(1)} is not a company holiday."
+        if re.search(r"\bupcoming\b", q_lower):
+            year_match = re.search(r"\b(20\d\d)\b", q_lower)
+            if year_match:
+                return f"There are no upcoming holidays in {year_match.group(1)}."
+            return "There are no upcoming holidays for the requested period."
         if re.search(r"\b(?:is there|is|any holiday)\b", q_lower):
             return "No company holidays were found for that date."
         return "No holidays were found for the requested period."
@@ -297,7 +290,8 @@ def format_holidays(data: list[dict], region: str | None = None, question: str =
         return f"Yes! {h_date} is a holiday: {name}{reg_info}."
 
     region_str = f" in {region}" if region else ""
-    lines = [f"Found {len(data)} holiday(s){region_str}:"]
+    noun = "upcoming holiday(s)" if re.search(r"\bupcoming\b", q_lower) else "holiday(s)"
+    lines = [f"Found {len(data)} {noun}{region_str}:"]
 
     for record in data:
         h_date = format_date(record.get("holiday_date"))
@@ -308,7 +302,6 @@ def format_holidays(data: list[dict], region: str | None = None, question: str =
         lines.append(f"- {h_date}: {name}{reg_info}")
 
     return "\n".join(lines)
-
 
 def format_requested_field(
     field: str | None,
@@ -358,50 +351,3 @@ def format_requested_field(
         answers.append(f"{prefix}{label}: {formatted_value}")
 
     return "\n".join(answers)
-
-def format_chat_response(result: dict) -> dict:
-    """Add a polished, human-readable answer while preserving structured data for the frontend."""
-    if not result.get("success"):
-        result["answer"] = result.get(
-            "message", "Sorry, I couldn't process that request."
-        )
-        return result
-
-    intent = result.get("intent")
-    data = result.get("data", [])
-    requested_metric = result.get("requested_metric")
-    requested_field = result.get("requested_field")
-    question = result.get("question", "")
-    status = result.get("status")
-
-    field_answer = format_requested_field(requested_field, data)
-    if field_answer is not None:
-        result["answer"] = field_answer
-        return result
-
-    if intent == "attendance_summary":
-        answer = format_attendance_summary(data, requested_metric, question)
-
-    elif intent == "attendance_records":
-        answer = format_attendance(data, status, question)
-
-    elif intent == "timesheet_lookup":
-        answer = format_timesheets(data)
-
-    elif intent == "leave_status":
-        answer = format_leave_requests(data, status, question)
-
-    elif intent == "wfh_status":
-        answer = format_wfh_requests(data, status, question)
-
-    elif intent == "holiday_lookup":
-        answer = format_holidays(data, result.get("region"), question)
-
-    elif intent == "schedule_lookup":
-        answer = format_work_schedules(data)
-
-    else:
-        answer = result.get("message", "Your request was processed.")
-
-    result["answer"] = answer
-    return result

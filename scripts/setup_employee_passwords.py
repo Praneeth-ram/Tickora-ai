@@ -1,63 +1,75 @@
 import getpass
+
 from sqlalchemy import text
+
 from backend.db import engine
 from backend.services.auth_service import hash_password
 
+TARGET_CODES = ["EMP001", "EMP002", "EMP011"]
+
+
 def main():
     with engine.begin() as connection:
-        employees = connection.execute(
-            text("""
-                SELECT employee_id, employee_code, full_name
-                FROM public.employees
-                WHERE is_active = TRUE
-                ORDER BY employee_code
-            """)
-        ).mappings().all()
+        codes = [
+            row["employee_code"]
+            for row in connection.execute(
+                text("SELECT employee_code FROM public.employees WHERE is_active = TRUE ORDER BY employee_code")
+            ).mappings().all()
+        ]
+        for code in TARGET_CODES:
+            if code not in codes:
+                print(f"{code}: not found or inactive. Skipping.")
+                continue
+            employee = connection.execute(
+                text("""
+                    SELECT id, full_name
+                    FROM public.employees
+                    WHERE employee_code = :code AND is_active = TRUE
+                """),
+                {"code": code},
+            ).mappings().one_or_none()
 
-        if not employees:
-            print("No active employees found.")
-            return
+            if employee is None:
+                print(f"{code}: not found or inactive. Skipping.")
+                continue
 
-        for employee in employees:
-            code = employee["employee_code"]
-            name = employee["full_name"]
-
-            print(f"\nEmployee: {name} ({code})")
-
+            print(f"\nEmployee: {employee['full_name']} ({code})")
             password = getpass.getpass("Set password: ")
             confirmation = getpass.getpass("Confirm password: ")
 
             if password != confirmation:
-                print("Passwords do not match. Skipping this employee.")
+                print("Passwords do not match. Skipping.")
                 continue
-
             if len(password) < 12:
-                print("Use at least 12 characters. Skipping this employee.")
+                print("Use at least 12 characters. Skipping.")
                 continue
 
-            password_digest = hash_password(password)
+            digest = hash_password(password)
+            params = {"employee_id": employee["id"], "password_hash": digest}
 
-            connection.execute(
+            updated = connection.execute(
                 text("""
-                    INSERT INTO public.employee_credentials
-                        (employee_id, password_hash, is_enabled)
-                    VALUES
-                        (:employee_id, :password_hash, TRUE)
-                    ON CONFLICT (employee_id)
-                    DO UPDATE SET
-                        password_hash = EXCLUDED.password_hash,
-                        is_enabled = TRUE,
-                        updated_at = NOW()
+                    UPDATE public.employee_credentials
+                    SET password_hash = :password_hash, is_enabled = TRUE
+                    WHERE employee_id = :employee_id
                 """),
-                {
-                    "employee_id": employee["employee_id"],
-                    "password_hash": password_digest,
-                },
-            )
+                params,
+            ).rowcount
+
+            if updated == 0:
+                connection.execute(
+                    text("""
+                        INSERT INTO public.employee_credentials
+                            (employee_id, password_hash, is_enabled)
+                        VALUES (:employee_id, :password_hash, TRUE)
+                    """),
+                    params,
+                )
 
             print(f"Password configured for {code}.")
 
-    print("\nPassword setup finished.")
+    print("\nDone.")
+
 
 if __name__ == "__main__":
     main()
