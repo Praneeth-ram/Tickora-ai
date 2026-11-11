@@ -86,7 +86,6 @@ def test_combine_results_keeps_table_answer_and_separates_parts():
 
     assert combined["answer"] == (
         "Here is your 1 attendance record.\n\n"
-        "Here are your attendance records.\n\n"
         "You have 5 days remaining."
     )
     assert combined["show_table"] is False
@@ -103,10 +102,7 @@ def test_table_result_includes_count_and_period_before_existing_answer():
         [{"status": "present"} for _ in range(16)],
     )
 
-    assert response["answer"] == (
-        "Here are your 16 attendance records for October 2026.\n\n"
-        "Here are your attendance records."
-    )
+    assert response["answer"] == "Here are your 16 attendance records for October 2026."
     assert "_combined_answer" not in response
 
 

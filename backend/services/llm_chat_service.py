@@ -1704,23 +1704,8 @@ def _payroll_response(
 
         return heading + "\n" + "\n".join(lines)
 
-    # General salary/payroll questions retain the full breakdown.
-    lines = []
-    for row in rows[:20]:
-        currency = str(row.get("currency") or "").strip()
-        prefix = f"{currency} " if currency else ""
-
-        lines.append(
-            f"- {period_label(row)}: "
-            f"Gross {prefix}{money(row.get('gross_amount'))}; "
-            f"deductions {prefix}{money(row.get('deduction_amount'))}; "
-            f"net {prefix}{money(row.get('net_amount'))}."
-        )
-
-    if len(rows) > 20:
-        lines.append(f"Showing 20 of {len(rows)} payroll records.")
-
-    return "Your payroll records:\n" + "\n".join(lines)
+    # Table carries the detail; _result adds the lead-in line.
+    return ""
 
 def _text_result(question: str, answer: str, intent: str) -> dict[str, Any]:
     return {
@@ -1822,8 +1807,6 @@ def _result(
     response_text = answer
     if show_table:
         response_text = _table_intro(intent, data, period)
-        if answer:
-            response_text += f"\n\n{answer}"
     if raw_data is None:
         raw_data = data
 
@@ -2618,14 +2601,16 @@ def team_attendance_result(
         answer = f"Your organization has {len(rows)} employees with attendance {span}, grouped by department."
     else:
         answer = f"Your team has {len(rows)} members with attendance {span}."
+
+    result = _result(question, answer, "team_attendance", period, True, table, table)
     if len(rows) > TEAM_SUMMARY_LIMIT:
-        answer += (
+        note = (
             f" Showing the first {TEAM_SUMMARY_LIMIT} people. "
             "Name a department or a person to narrow the list."
         )
-
-    return _result(question, answer, "team_attendance", period, True, table, table)
-
+        result["answer"] += note
+        result["message"] = result["answer"]
+    return result
 
 def _timesheet_overlaps(row: dict[str, Any], start: date, end: date) -> bool:
     period_start = as_date(row.get("period_start"))
