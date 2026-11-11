@@ -39,3 +39,9 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Evaluation output and runtime logs (contain employee data)
+eval_results/
+logs/
+*.csv
+!tests/fixtures/*.csv
