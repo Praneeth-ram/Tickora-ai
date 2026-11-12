@@ -1,7 +1,5 @@
 from datetime import date
 
-import pytest
-
 from backend.services.llm_chat_service import (
     _latest_request_sentence,
     request_entity,
@@ -25,9 +23,9 @@ def test_decided_request_uses_was():
         "Your latest work-from-home request, starting 8 May 2025, was approved."
     )
 
-@pytest.mark.parametrize("status", ["pending", "approved", "rejected"])
-def test_whether_question_is_recognized_as_a_leave_status_check(status):
-    question = f"whether my leave request is {status}?"
+def test_whether_question_is_recognized_as_a_leave_status_check():
+    for status in ["pending", "approved", "rejected"]:
+        question = f"whether my leave request is {status}?"
 
-    assert yes_no_status(question) == status
-    assert request_entity(question) == "leave_request"
+        assert yes_no_status(question) == status
+        assert request_entity(question) == "leave_request"

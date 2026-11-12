@@ -1,5 +1,5 @@
 from functools import lru_cache
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, StateGraph  # pyright: ignore[reportMissingImports]
 from backend.agents.nodes import (
     compound_node,
     context_node,

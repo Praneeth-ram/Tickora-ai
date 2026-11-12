@@ -2740,7 +2740,7 @@ def _approved_operations() -> frozenset[str]:
 
 
 def supervisor(question: str) -> str:
-    if is_team_question(question):
+    if is_team_question(question) or is_directory_question(question):
         return "query"
     """Route the request: 'third_party' is refused, everything else continues."""
     if get_subject() is None and is_third_party_request(question):
@@ -2756,6 +2756,56 @@ def resolve_context(question: str) -> str:
 def is_approved_operation(operation_id: Any) -> bool:
     return operation_id in _approved_operations()
 
+DIRECTORY_RE = re.compile(
+    r"\b(?:list|show|display|give|get|who\s+are|all)\b[^.?!]{0,40}\bemployees?\b"
+    r"|\bemployee\s+(?:list|directory)\b|\bdirectory\b",
+    re.IGNORECASE,
+)
+DIRECTORY_EXCLUDE_RE = re.compile(
+    r"\b(?:attendance|leave|wfh|timesheets?|tasks?|loans?|payroll|salary|"
+    r"status|clock|holidays?)\b",
+    re.IGNORECASE,
+)
+
+
+def is_directory_question(question: str) -> bool:
+    return bool(DIRECTORY_RE.search(question)) and not DIRECTORY_EXCLUDE_RE.search(question)
+
+
+def directory_result(question: str, actor) -> dict[str, Any]:
+    from sqlalchemy import text
+    from backend.db import agent_engine
+    from backend.security.access_policy import scope_clause, scoped_connection
+
+    clause, params = scope_clause(actor, "employee_directory", "e.id")
+    sql = text(f"""
+        SELECT e.employee_code, e.full_name, e.department_id
+        FROM public.employees e
+        WHERE e.is_active = TRUE AND ({clause})
+        ORDER BY e.department_id, e.employee_code
+        LIMIT :limit
+    """)
+    with scoped_connection(agent_engine, actor) as connection:
+        rows = [dict(row) for row in connection.execute(
+            sql, {**params, "limit": 101}
+        ).mappings().all()]
+
+    truncated = len(rows) > 100
+    rows = rows[:100]
+    table = [
+        {
+            "employee_code": row["employee_code"],
+            "full_name": row["full_name"],
+            "department": f"Department {row['department_id']}",
+        }
+        for row in rows
+    ]
+    scope_text = "in your organization" if actor.role == SUPER_ADMIN else "in your department"
+    answer = f"There are {len(rows)} employees {scope_text}."
+    if truncated:
+        answer += " Showing the first 100."
+    period = {"start_date": None, "end_date": None}
+    return _result(question, answer, "employee_directory", period, True, table, table)
 
 def direct_answer(
     question: str,
@@ -2797,6 +2847,11 @@ def direct_answer(
         )
 
     actor = get_actor()
+    if actor is not None and is_directory_question(normalized_question):
+        if actor.role not in {ADMIN, SUPER_ADMIN}:
+            return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
+        return directory_result(question, actor)
+    
     if actor is not None and is_team_question(normalized_question):
         if actor.role not in {ADMIN, SUPER_ADMIN}:
             return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")

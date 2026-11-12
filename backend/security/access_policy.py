@@ -43,6 +43,10 @@ ENTITY_RULES = {
     "holiday": {"owned": False, "scopes": _ORG_WIDE},
     "leave_type": {"owned": False, "scopes": _ORG_WIDE},
     "work_schedule": {"owned": True, "scopes": _OPERATIONAL},
+    "employee_directory": {
+        "owned": True,
+        "scopes": {ADMIN: "department", SUPER_ADMIN: "org"},
+    },
 }
 
 # Column that names the employee a row belongs to, when not employee_id.
