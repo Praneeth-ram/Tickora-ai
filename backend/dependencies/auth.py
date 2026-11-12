@@ -37,10 +37,15 @@ def get_current_employee(
         )
 
     query = text("""
-        SELECT employee_id, employee_code, full_name, email
-        FROM public.employees
-        WHERE employee_id = :employee_id
-          AND is_active = TRUE
+    SELECT
+        id AS employee_id,
+        organization_id,
+        employee_code,
+        full_name,
+        email
+    FROM public.employees
+    WHERE id = :employee_id
+      AND is_active = TRUE
     """)
 
     with engine.connect() as connection:
