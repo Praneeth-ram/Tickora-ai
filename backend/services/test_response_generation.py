@@ -9,6 +9,7 @@ from backend.services.llm_chat_service import (
     _answer_status_check,
     _answer_timesheet,
     count_response,
+    correct_plan,
     format_timesheet_response,
     grouped_response,
     leave_type_response,
@@ -417,6 +418,44 @@ def test_task_list_execution_uses_authenticated_assignment_or_manager_filter():
         assert execute.call_args.args[0]["filters"] == {
             identity_field: 12
         }
+
+
+def test_task_assignee_name_uses_resolved_subject_id():
+    task_definition = {
+        "entity": "task",
+        "table": "tasks",
+        "fields": ["title", "task_date", "status", "assigned_to_employee_id"],
+        "filters": ["task_date", "status", "assigned_to_employee_id"],
+        "identity_filters": {"assigned_to_employee_id": "employee_id"},
+        "date_field": "task_date",
+        "date_fields": ["task_date"],
+        "aggregate_fields": ["performance_score"],
+        "group_by_fields": ["status"],
+    }
+
+    with (
+        patch(
+            "backend.services.llm_chat_service.build_operation_registry",
+            return_value={"task.list": task_definition},
+        ),
+        patch(
+            "backend.services.llm_chat_service.get_subject",
+            return_value=12,
+        ),
+    ):
+        plan, _ = correct_plan(
+            {
+                "operation_id": "task.list",
+                "filters": {"assigned_to_employee_id": "meera"},
+            },
+            "Show the meera's assigned task",
+            "Show the meera's assigned task",
+            employee_id=4,
+            organization_id=1,
+            today=date(2026, 11, 12),
+        )
+
+    assert plan["filters"]["assigned_to_employee_id"] == 12
 
 
 def test_multi_status_task_count_groups_by_status_without_status_filter():

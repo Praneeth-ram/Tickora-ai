@@ -2874,12 +2874,19 @@ def correct_plan(
     if plan.get("operation_id", "").startswith("task."):
         q = normalized_question.lower()
         task_filters = dict(plan.get("filters", {}))
+        subject_id = get_subject()
         for field in ("assigned_to_employee_id", "managed_by_employee_id"):
             value = task_filters.get(field)
             if isinstance(value, str) and value.strip().lower() in {
                 "me", "myself", "my", "current user",
             }:
                 task_filters.pop(field, None)
+            elif (
+                subject_id is not None
+                and isinstance(value, str)
+                and not value.strip().isdigit()
+            ):
+                task_filters[field] = subject_id
         identity_field = _task_identity_filter(q)
         if identity_field:
             task_filters[identity_field] = employee_id

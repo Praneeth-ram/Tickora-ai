@@ -39,3 +39,17 @@ def test_other_employee_code_is_detected():
 
 def test_own_employee_code_is_not_another_person():
     assert names_a_person("Show EMP001 attendance", _Actor(), KNOWN) is False
+
+@pytest.mark.parametrize("question", [
+    "Show the meera's assigned task",
+    "Show Meera's assigned task",
+])
+def test_single_name_possessives_are_detected(question):
+    assert names_a_person(question, _Actor(), KNOWN) is True
+
+@pytest.mark.parametrize("question", [
+    "What is today's attendance?",
+    "Show my employee's assigned task",
+])
+def test_common_possessives_are_not_mistaken_for_people(question):
+    assert names_a_person(question, _Actor(), KNOWN) is False

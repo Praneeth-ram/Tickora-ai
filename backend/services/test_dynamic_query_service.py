@@ -6,7 +6,14 @@ from backend.services.dynamic_query_service import (
     execute_query_plan,
 )
 from backend.services.operation_registry import build_operation_registry
-from backend.security.access_policy import Actor, EMPLOYEE, reset_actor, set_actor
+from backend.security.access_policy import (
+    Actor,
+    ADMIN,
+    EMPLOYEE,
+    SUPER_ADMIN,
+    reset_actor,
+    set_actor,
+)
 from unittest.mock import MagicMock, patch
 
 
@@ -435,3 +442,79 @@ def test_existing_count_operation_still_works():
     assert result["operation"] == "count"
     assert isinstance(result["data"]["count"], int)
     assert result["data"]["count"] >= 0
+
+
+@pytest.mark.parametrize(
+    ("actor", "expected_scope_params"),
+    [
+        (Actor(4, 1, None, SUPER_ADMIN), {"actor_organization_id": 1}),
+        (
+            Actor(2, 1, 2, ADMIN),
+            {"actor_department_id": 2, "actor_organization_id": 1},
+        ),
+    ],
+)
+def test_task_name_filter_uses_role_scope_not_authenticated_employee(
+    actor, expected_scope_params
+):
+    task_columns = [
+        "id",
+        "organization_id",
+        "title",
+        "project_id",
+        "task_date",
+        "description",
+        "start_time",
+        "end_time",
+        "status",
+        "assigned_to_employee_id",
+        "managed_by_employee_id",
+        "performance_score",
+    ]
+    mock_catalog = {
+        "tasks": {
+            "schema": "public",
+            "columns": [
+                {"name": name, "type": "BIGINT"} for name in task_columns
+            ],
+            "foreign_keys": [],
+        },
+        "employees": {
+            "schema": "public",
+            "columns": [
+                {"name": name, "type": "BIGINT"}
+                for name in ("id", "organization_id", "full_name")
+            ],
+            "foreign_keys": [],
+        },
+    }
+    engine = create_engine("sqlite://")
+    connection = MagicMock()
+    connection.execute.return_value.mappings.return_value.all.return_value = []
+    engine.begin = MagicMock()
+    engine.begin.return_value.__enter__.return_value = connection
+    token = set_actor(actor)
+
+    try:
+        with patch(
+            "backend.services.operation_registry.discover_schema",
+            return_value=mock_catalog,
+        ):
+            execute_query_plan(
+                {
+                    "operation_id": "task.list",
+                    "fields": ["title"],
+                    "filters": {"assigned_to_employee_id": 12},
+                },
+                employee_id=actor.employee_id,
+                organization_id=actor.organization_id,
+                db_engine=engine,
+            )
+    finally:
+        reset_actor(token)
+
+    generated_sql, parameters = connection.execute.call_args.args
+    assert "authenticated_employee_id" not in str(generated_sql)
+    assert parameters["assigned_to_employee_id"] == 12
+    for key, value in expected_scope_params.items():
+        assert parameters[key] == value

@@ -49,9 +49,12 @@ def resolve_subject(connection, actor: Actor, question: str) -> int | None:
     return match_subject(rows, question)
 
 NAME_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
+POSSESSIVE_NAME_RE = re.compile(r"\b([A-Za-z][A-Za-z'-]*)'s\b", re.IGNORECASE)
 NOT_A_NAME = {
     "is", "are", "was", "were", "what", "when", "where", "which", "who", "how",
     "show", "list", "do", "does", "did", "can", "tell", "give", "the", "my", "your", "our",
+    "it", "that", "there", "here", "today", "week", "month", "year",
+    "employee", "manager", "task", "project", "team", "company", "organization",
     "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december",
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
@@ -92,5 +95,8 @@ def names_a_person(question: str, actor, non_person_phrases: frozenset[str] = fr
     for match in NAME_RE.finditer(remainder):
         words = [word.lower() for word in match.group(0).split()]
         if not all(word in NOT_A_NAME for word in words):
+            return True
+    for match in POSSESSIVE_NAME_RE.finditer(remainder):
+        if match.group(1).lower() not in NOT_A_NAME:
             return True
     return False

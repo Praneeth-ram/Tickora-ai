@@ -609,18 +609,9 @@ def execute_query_plan(
                 f"{task_alias}.{preparer.quote('organization_id')} "
                 "= :authenticated_organization_id"
             ),
-            (
-                f"("
-                f"{task_alias}.{preparer.quote('assigned_to_employee_id')} "
-                "= :authenticated_employee_id OR "
-                f"{task_alias}.{preparer.quote('managed_by_employee_id')} "
-                "= :authenticated_employee_id"
-                f")"
-            ),
         ]
         task_params: dict[str, Any] = {
             "authenticated_organization_id": organization_id,
-            "authenticated_employee_id": employee_id,
             "query_limit": limit,
         }
 
