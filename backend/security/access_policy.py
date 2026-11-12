@@ -178,3 +178,25 @@ def subject_name(connection, employee_id: int) -> str | None:
         {"id": employee_id},
     ).scalar_one_or_none()
     return row
+
+from contextlib import contextmanager
+
+@contextmanager
+def scoped_connection(engine, actor: Actor):
+    """Open one transaction with the actor set. RLS reads these settings for every query in it."""
+    with engine.begin() as connection:
+        connection.execute(
+            text("""
+                SELECT set_config('app.employee_id', :emp, true),
+                       set_config('app.role', :role, true),
+                       set_config('app.department_id', :dept, true),
+                       set_config('app.organization_id', :org, true)
+            """),
+            {
+                "emp": str(actor.employee_id),
+                "role": actor.role,
+                "dept": "" if actor.department_id is None else str(actor.department_id),
+                "org": str(actor.organization_id),
+            },
+        )
+        yield connection

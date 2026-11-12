@@ -16,6 +16,7 @@ from backend.security.access_policy import (
     get_actor,
     owner_column,
     scope_clause,
+    scoped_connection,
     visible_fields,
     get_subject,
 )
@@ -425,7 +426,7 @@ def execute_query_plan(
             "LIMIT :query_limit"
         )
 
-        with engine.connect() as connection:
+        with scoped_connection(engine, actor) as connection:
             payroll_rows = connection.execute(
                 text(payroll_sql),
                 payroll_params,
@@ -541,7 +542,7 @@ def execute_query_plan(
                 "DESC NULLS LAST LIMIT :query_limit"
             )
 
-        with engine.connect() as connection:
+        with scoped_connection(engine, actor) as connection:
             holiday_rows = connection.execute(
                 text(holiday_sql), holiday_params
             ).mappings().all()
@@ -737,7 +738,7 @@ def execute_query_plan(
             "LIMIT :query_limit"
         )
 
-        with engine.connect() as connection:
+        with scoped_connection(engine, actor) as connection:
             task_rows = connection.execute(
                 text(task_sql),
                 task_params,
@@ -991,7 +992,7 @@ def execute_query_plan(
             "LIMIT :query_limit"
         )
 
-        with engine.connect() as connection:
+        with scoped_connection(engine, actor) as connection:
             loan_rows = connection.execute(
                 text(loan_sql),
                 loan_params,
@@ -1203,7 +1204,7 @@ def execute_query_plan(
 
             child_sql += " LIMIT :query_limit"
 
-        with engine.connect() as connection:
+        with scoped_connection(engine, actor) as connection:
             child_rows = connection.execute(
                 text(child_sql),
                 child_params,
@@ -1457,7 +1458,7 @@ def execute_query_plan(
         sql += " LIMIT :query_limit"
         params["query_limit"] = limit
 
-    with engine.connect() as connection:
+    with scoped_connection(engine, actor) as connection:
         rows = connection.execute(
             text(sql),
             params,
@@ -1544,7 +1545,7 @@ def execute_team_summary(
         **clause_params,
     }
 
-    with db_engine.connect() as connection:
+    with scoped_connection(db_engine, actor) as connection:
         rows = connection.execute(sql, params).mappings().all()
 
     return {"rows": [dict(row) for row in rows]}

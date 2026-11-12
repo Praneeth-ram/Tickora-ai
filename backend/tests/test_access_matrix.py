@@ -89,8 +89,9 @@ def test_super_admin_sees_other_department(as_actor):
     as_actor(*EMP001)
     clause, params = scope_clause(get_actor(), "attendance", "candidate.id")
     from backend.db import agent_engine
+    from backend.security.access_policy import scoped_connection
     from sqlalchemy import text
-    with agent_engine.connect() as conn:
+    with scoped_connection(agent_engine, get_actor()) as conn:
         in_scope = conn.execute(
             text(
                 f"SELECT 1 FROM public.employees candidate "
