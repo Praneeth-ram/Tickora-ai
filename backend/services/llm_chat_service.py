@@ -2497,7 +2497,9 @@ def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, 
     }
 
 
-YES_NO_START_RE = re.compile(r"^\s*(?:is|was|were|are|am|did|do|does|has|have|had)\b")
+YES_NO_START_RE = re.compile(
+    r"^\s*(?:is|was|were|are|am|did|do|does|has|have|had|whether)\b"
+)
 STATUS_TARGET_RE = re.compile(r"\b(approved|rejected|pending|submitted|draft|cancell?ed)\b")
 
 
