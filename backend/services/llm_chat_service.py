@@ -937,34 +937,10 @@ def normalize_and_correct_plan(
     # Resolve Loan Request identity from the authenticated employee.
     # Default loan queries refer to the employee's own requests.
     if op_id.startswith("loan_request."):
-        manager_intent = bool(
-            re.search(
-                r"\b(?:managed|manage|managing)\s+by\s+me\b"
-                r"|\b(?:what|which)\s+loan\s+requests?\s+"
-                r"(?:am\s+i\s+)?managing\b"
-                r"|\bhow\s+many\s+loan\s+requests?\s+"
-                r"am\s+i\s+managing\b"
-                r"|\bloan\s+requests?\s+i\s+manage\b",
-                q,
-            )
-        )
-
-        if manager_intent:
-            context = identity_filters.get(
-                "managed_by_employee_id"
-            )
-            if context:
-                filters.pop("employee_id", None)
-                filters["managed_by_employee_id"] = {
-                    "$context": context
-                }
-        else:
-            context = identity_filters.get("employee_id")
-            if context:
-                filters.pop("managed_by_employee_id", None)
-                filters["employee_id"] = {
-                    "$context": context
-                }
+        context = identity_filters.get("employee_id")
+        if context:
+            filters.pop("managed_by_employee_id", None)
+            filters["employee_id"] = {"$context": context}
 
     if op_id.startswith("task."):
         identity_field = _task_identity_filter(q)

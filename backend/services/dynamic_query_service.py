@@ -807,13 +807,8 @@ def execute_query_plan(
                 "= :authenticated_organization_id"
             ),
             (
-                "("
                 f"{loan_alias}.{preparer.quote('employee_id')} "
-                "= :authenticated_employee_id "
-                "OR "
-                f"{loan_alias}.{preparer.quote('managed_by_employee_id')} "
                 "= :authenticated_employee_id"
-                ")"
             ),
         ]
 
