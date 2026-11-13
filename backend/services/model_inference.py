@@ -334,6 +334,7 @@ def generate_plan(question: str) -> dict[str, Any]:
         raise PlanRejectedError(rejected) from exc
 
     if not isinstance(plan, dict):
+        logger.warning("Model returned non-object JSON")
         raise PlanRejectedError(rejected)
 
     operation_id = OPERATION_ALIASES.get(plan.get("operation_id"), plan.get("operation_id"))
@@ -345,12 +346,13 @@ def generate_plan(question: str) -> dict[str, Any]:
         logger.debug("Model returned unknown operation %r", operation_id)
         raise PlanRejectedError(rejected)
     if not isinstance(filters, dict):
+        logger.warning("Model returned non-object filters for %s", operation_id)
         raise PlanRejectedError(rejected)
 
     allowed_filters = set(catalog[operation_id].get("filters", []))
     if not set(filters).issubset(allowed_filters):
         rejected_filters = sorted(set(filters) - allowed_filters)
-        logger.debug(
+        logger.warning(
             "Model returned unsupported filters for %s: %s",
             operation_id, rejected_filters,
         )
@@ -364,7 +366,7 @@ def generate_plan(question: str) -> dict[str, Any]:
             if item is None:
                 continue
             if not isinstance(item, str) or not DATE_VALUE_RE.match(item):
-                logger.debug("Model returned invalid date value for %s.%s", operation_id, name)
+                logger.warning("Model returned invalid date value for %s.%s", operation_id, name)
                 raise PlanRejectedError(rejected)
 
     return plan
