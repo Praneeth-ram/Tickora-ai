@@ -75,6 +75,13 @@ def greeting_node(state: ChatState) -> dict[str, Any]:
 
 
 def context_node(state: ChatState) -> dict[str, Any]:
+    from backend.db import engine as owner_engine
+    from backend.services.chat_memory import load_last_topic
+    from backend.services.llm_chat_service import apply_session_topic
+
+    last_topic = load_last_topic(owner_engine, state["employee_id"], state["session_id"])
+    question = apply_session_topic(state["question"], last_topic)
+    normalized = resolve_context(question)
     normalized = resolve_context(state["question"])
     update: dict[str, Any] = {"normalized_question": normalized}
     direct = direct_answer(

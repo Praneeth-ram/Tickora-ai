@@ -233,18 +233,24 @@ _DOMAIN_RE = re.compile(
 )
 
 
+_TOPIC_PATTERNS = [
+    ("wfh", _WFH_RE),
+    ("leave", _LEAVE_RE),
+    ("holiday", _HOLIDAY_RE),
+    ("timesheet", TIMESHEET_RE),
+    ("payroll", _PAYROLL_RE),
+    ("loan", re.compile(r"\b(?:loans?|penalty\s+deduction)\b", re.IGNORECASE)),
+    ("task", re.compile(r"\btasks?\b", re.IGNORECASE)),
+    ("attendance", re.compile(
+        r"\battendance\b|\bclock\b|\bcheck[- ]?(?:in|out)\b|\bpunch\b|\blate\b|\babsent\b|\bpresent\b",
+        re.IGNORECASE,
+    )),
+]
+
 def _primary_topic(part: str) -> str | None:
-    q = part.lower()
-    if _WFH_RE.search(q):
-        return "wfh"
-    if _LEAVE_RE.search(q):
-        return "leave"
-    if _HOLIDAY_RE.search(q):
-        return "holiday"
-    if _ATTENDANCE_RE.search(q) or re.search(r"\b(?:clock|check|punch|attend)", q):
-        return "attendance"
-    if re.search(r"\b(?:loans?|penalty\s+deduction)\b", q):
-        return "loan"
+    for topic, pattern in _TOPIC_PATTERNS:
+        if pattern.search(part):
+            return topic
     return None
 
 DATE_PHRASE_RE = re.compile(
@@ -270,6 +276,17 @@ def _inherit_dates(parts: list[str]) -> list[str]:
             part = f"{part} on {topic_date[topic]}"
         result.append(part)
     return result
+
+FOLLOW_UP_PREFIX_RE = re.compile(r"^\s*(?:and|also|what\s+about|how\s+about|same|for)\b", re.IGNORECASE)
+
+def apply_session_topic(question: str, last_topic: str | None) -> str:
+    """Append the previous topic to a follow-up that names no topic of its own."""
+    if not last_topic or _primary_topic(question) is not None:
+        return question
+    words = question.split()
+    if len(words) <= 6 or FOLLOW_UP_PREFIX_RE.search(question):
+        return f"{question.rstrip('?.! ')} {last_topic}"
+    return question
 
 
 def split_compound_question(question: str) -> list[str]:
@@ -3032,14 +3049,23 @@ def run_llm_chat(
     question: str,
     employee_id: int,
     organization_id: int | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
-    """Orchestrate the stages in the same order as before the split."""
+    """Orchestrate the stages: memory, split, route, plan, correct, execute, format."""
+    from backend.db import engine as owner_engine
+    from backend.services.chat_memory import load_last_topic, save_last_topic
     from backend.services.model_inference import model_inference_available
+
+    last_topic = (
+        load_last_topic(owner_engine, employee_id, session_id) if session_id else None
+    )
+    question = apply_session_topic(question, last_topic)
+
     parts = split_compound_question(question)
     if len(parts) > 1:
         with _capture_combined_answers():
             results = [
-                run_llm_chat(part, employee_id, organization_id)
+                run_llm_chat(part, employee_id, organization_id, session_id)
                 for part in parts
             ]
         return _combine_results(question, results)
@@ -3077,7 +3103,7 @@ def run_llm_chat(
         return _text_result(question, answer, intent="attendance_records")
 
     try:
-        return execute_and_format(
+        result = execute_and_format(
             question,
             normalized_question,
             plan,
@@ -3090,6 +3116,10 @@ def run_llm_chat(
     except AccessDenied:
         return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
 
+    topic = _primary_topic(normalized_question)
+    if session_id and topic:
+        save_last_topic(owner_engine, employee_id, session_id, topic)
+    return result
 
 def execute_and_format(
     question: str,

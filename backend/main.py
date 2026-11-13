@@ -544,6 +544,7 @@ def _chat(
                 question=body.question.strip(),
                 employee_id=employee_id,
                 organization_id=organization_id,
+                session_id=body.session_id,
             )
 
         else:
