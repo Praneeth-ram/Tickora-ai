@@ -13,6 +13,11 @@ from sqlalchemy import text
 from backend.exceptions import ForbiddenError
 
 audit = logging.getLogger("audit")
+_model_fingerprint = "not_loaded"
+
+def set_model_fingerprint(value: str) -> None:
+    global _model_fingerprint
+    _model_fingerprint = value
 
 SUPER_ADMIN = "super_admin"
 ADMIN = "admin"
@@ -110,9 +115,10 @@ def authorize_entity(actor: Actor, entity: str) -> str:
     rule = ENTITY_RULES.get(entity)
     scope = rule["scopes"].get(actor.role) if rule else None
     audit.info(
-        "role=%s employee_id=%s entity=%s decision=%s",
+        "role=%s employee_id=%s entity=%s decision=%s model=%s",
         actor.role, actor.employee_id, entity,
         "allowed" if scope else "denied",
+        _model_fingerprint,
     )
     if scope is None:
         raise AccessDenied()

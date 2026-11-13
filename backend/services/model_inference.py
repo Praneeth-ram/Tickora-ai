@@ -6,6 +6,7 @@ torch and transformers are imported inside load_model(), so the backend can
 start on machines that do not have the model dependencies installed.
 """
 import copy
+import hashlib
 import json
 import logging
 import threading
@@ -13,11 +14,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 import time
-
+from contextlib import contextmanager
 import re as regex
 
 from backend.services.llm_chat_service import ModelUnavailableError, PlanRejectedError
 from backend.services.operation_registry import build_operation_registry
+from backend.security.access_policy import set_model_fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,21 @@ PREFIX_CHUNK_SIZE = 128
 
 DATE_VALUE_RE = regex.compile(r"^\d{4}-\d{2}(-\d{2})?$")
 
-_generation_lock = threading.Lock()
+_generation_slots = threading.BoundedSemaphore(value=1)
+QUEUE_WAIT_SECONDS = 5.0
+GENERATION_MAX_SECONDS = 30.0
+
+
+@contextmanager
+def _generation_slot():
+    if not _generation_slots.acquire(timeout=QUEUE_WAIT_SECONDS):
+        raise ModelUnavailableError("The assistant is busy. Please retry in a moment.")
+    try:
+        yield
+    finally:
+        _generation_slots.release()
+
+
 _state: dict[str, Any] = {
     "tokenizer": None,
     "model": None,
@@ -40,8 +56,37 @@ _state: dict[str, Any] = {
     "prefix": None,
 }
 
+
 def is_loaded() -> bool:
     return _state["model"] is not None and _state["tokenizer"] is not None
+
+
+def model_inference_available() -> bool:
+    return is_loaded()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _compute_fingerprint() -> dict[str, str]:
+    """Identify the model, catalog, and prompt in use. Changes when any of them change."""
+    adapter_file = ADAPTER_PATH / "adapter_model.safetensors"
+    return {
+        "adapter_sha256": _sha256_file(adapter_file)[:16] if adapter_file.exists() else "missing",
+        "catalog_sha256": _sha256_file(CATALOG_PATH)[:16],
+        "prompt_sha256": _state.get("prompt_fingerprint") or "not_loaded",
+    }
+
+
+def fingerprint() -> dict[str, str]:
+    cached = _state.get("fingerprint")
+    return cached if cached is not None else _compute_fingerprint()
+
 
 def _load_catalog() -> dict[str, dict[str, Any]]:
     """Load the saved catalog and merge in the currently registered operations."""
@@ -66,6 +111,7 @@ def _load_catalog() -> dict[str, dict[str, Any]]:
         }
     return catalog_items
 
+
 def _build_system_prompt(catalog: dict[str, dict[str, Any]]) -> str:
     with DATASET_PATH.open("r", encoding="utf-8") as f:
         first_example = json.loads(next(f))
@@ -87,12 +133,13 @@ def _build_system_prompt(catalog: dict[str, dict[str, Any]]) -> str:
     )
 
     today_val = date.today()
-    system_prompt += (
+    date_block = (
         f"\nCURRENT TEMPORAL CONTEXT:"
         f"\n- Today's date is {today_val.isoformat()} (Year: {today_val.year}, Month: {today_val.strftime('%B')})."
         f"\n- When the user refers to 'this year', the year is {today_val.year}."
         f"\n- When the user refers to 'this month', the month is {today_val.strftime('%B')} {today_val.year}."
     )
+    system_prompt += date_block
 
     system_prompt += (
         "\nIMPORTANT OPERATIONAL MAPPINGS:"
@@ -132,7 +179,14 @@ def _build_system_prompt(catalog: dict[str, dict[str, Any]]) -> str:
         "approved period_start and period_end filters.\n"
         "- Return only the JSON query plan, without explanation.\n"
     )
+
+    # Hash the complete prompt except today's date, so the fingerprint changes
+    # only when the prompt, catalog, or operation registry changes.
+    static_text = system_prompt.replace(date_block, "")
+    _state["prompt_fingerprint"] = hashlib.sha256(static_text.encode("utf-8")).hexdigest()[:16]
+
     return system_prompt
+
 
 def _build_prefix(tokenizer, model, system_prompt: str) -> dict[str, Any]:
     """Run the fixed system prompt in chunks and keep its KV cache."""
@@ -154,6 +208,12 @@ def _build_prefix(tokenizer, model, system_prompt: str) -> dict[str, Any]:
                 use_cache=True,
             ).past_key_values
     return {"ids": prefix_ids, "cache": cache, "date": date.today(), "system_prompt": system_prompt}
+
+
+def _model_version_string() -> str:
+    fp = _state["fingerprint"]
+    return f"{fp['adapter_sha256']}/{fp['catalog_sha256']}/{fp['prompt_sha256']}"
+
 
 def load_model() -> None:
     """Load the tokenizer, base model, and LoRA adapter. Raises on failure."""
@@ -193,7 +253,11 @@ def load_model() -> None:
     _state.update(tokenizer=tokenizer, model=model, catalog=catalog,
                   system_prompt=system_prompt, prefix=prefix)
 
+    _state["fingerprint"] = _compute_fingerprint()
+    set_model_fingerprint(_model_version_string())
+
     logger.info("Tickora model loaded on %s", torch.cuda.get_device_name(0))
+
 
 def generate_plan(question: str) -> dict[str, Any]:
     """Return a validated query plan for the question.
@@ -211,11 +275,13 @@ def generate_plan(question: str) -> dict[str, Any]:
     device = model.get_input_embeddings().weight.device
 
     started = time.perf_counter()
-    with _generation_lock, torch.inference_mode():
+    with _generation_slot(), torch.inference_mode():
         # The system prompt contains today's date, so rebuild it when the day changes.
         if _state["prefix"]["date"] != date.today():
             _state["system_prompt"] = _build_system_prompt(catalog)
             _state["prefix"] = _build_prefix(tokenizer, model, _state["system_prompt"])
+            _state["fingerprint"] = _compute_fingerprint()
+            set_model_fingerprint(_model_version_string())
         prefix = _state["prefix"]
 
         messages = [
@@ -238,6 +304,7 @@ def generate_plan(question: str) -> dict[str, Any]:
                 max_new_tokens=MAX_NEW_TOKENS,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id,
+                max_time=GENERATION_MAX_SECONDS,
             )
         except Exception as exc:
             logger.exception("Model generation failed")

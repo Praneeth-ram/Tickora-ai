@@ -12,8 +12,10 @@ from transformers import (
     BitsAndBytesConfig,
 )
 from peft import PeftModel
+from backend.services import model_inference
 from backend.services.operation_registry import build_operation_registry
 import os
+import hashlib
 
 
 BASE_MODEL = "Qwen/Qwen2.5-3B-Instruct"
@@ -28,6 +30,21 @@ tokenizer = None
 model = None
 catalog = {}
 generation_lock = Lock()
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+def model_fingerprint() -> dict[str, str]:
+    adapter_file = ADAPTER_PATH / "adapter_model.safetensors"
+    return {
+        "adapter_sha256": _sha256(adapter_file)[:16] if adapter_file.exists() else "missing",
+        "catalog_sha256": _sha256(CATALOG_PATH)[:16],
+        "prompt_sha256": hashlib.sha256(_state["system_prompt"].encode()).hexdigest()[:16],
+    }
 
 class QuestionRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
@@ -182,10 +199,8 @@ def load_model():
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ready" if model is not None else "loading",
-        "model_loaded": model is not None,
-    }
+    return {"status": "ok", "model_loaded": model_inference.is_loaded(),
+        "model": model_inference.fingerprint()}
 
 @app.get("/operations")
 def operations():

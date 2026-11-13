@@ -3034,6 +3034,7 @@ def run_llm_chat(
     organization_id: int | None = None,
 ) -> dict[str, Any]:
     """Orchestrate the stages in the same order as before the split."""
+    from backend.services.model_inference import model_inference_available
     parts = split_compound_question(question)
     if len(parts) > 1:
         with _capture_combined_answers():
@@ -3055,6 +3056,13 @@ def run_llm_chat(
 
     raw_plan = plan_question(normalized_question)
     if not is_approved_operation(raw_plan.get("operation_id")):
+        if not model_inference_available():
+            return _text_result(
+                question,
+                "The assistant is temporarily unavailable for this question. "
+                "Questions about holidays and your own records may still work once it recovers.",
+                intent="unavailable",
+            )
         return _text_result(question, UNSUPPORTED_MESSAGE, intent="unsupported")
 
     try:

@@ -42,6 +42,12 @@ from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_pers
 
 chat_limiter = LoginRateLimiter(max_attempts=30, window_seconds=60)
 
+from prometheus_client import Counter, Histogram, make_asgi_app
+
+CHAT_LATENCY = Histogram("chat_latency_seconds", "Chat request latency",
+                         buckets=(0.5, 1, 2, 5, 10, 15, 30, 60))
+CHAT_OUTCOME = Counter("chat_outcome_total", "Chat outcomes", ["outcome"])
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Load the model once per process. If it cannot load, the API still starts
@@ -59,6 +65,8 @@ app = FastAPI(
     description="Attendance data API for the Tickora assistant",
     version="0.1.0",
 )
+
+app.mount("/metrics", make_asgi_app())
 
 from backend.security.audit_log import configure_audit_logger
 configure_audit_logger()
@@ -172,6 +180,7 @@ def health_check():
     return {
         "status": "ok",
         "model_loaded": model_inference.is_loaded(),
+        "model": model_inference.fingerprint(),
     }
 
 
