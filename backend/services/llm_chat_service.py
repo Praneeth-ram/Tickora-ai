@@ -1798,7 +1798,7 @@ def _result(
             show_table = False
 
     response_text = answer
-    if show_table:
+    if show_table and intent != "employee_directory":
         response_text = _table_intro(intent, data, period)
     if raw_data is None:
         raw_data = data
@@ -2762,6 +2762,13 @@ DIRECTORY_EXCLUDE_RE = re.compile(
 
 
 def is_directory_question(question: str) -> bool:
+    # Payroll and pay wording is never a directory request, even when it names all employees.
+    if _PAYROLL_RE.search(question) or re.search(
+        r"\b(?:salar\w*|pay\w*|deduct\w*|gross|net|earning\w*|amount\w*)\b",
+        question,
+        re.IGNORECASE,
+    ):
+        return False
     return bool(DIRECTORY_RE.search(question)) and not DIRECTORY_EXCLUDE_RE.search(question)
 
 

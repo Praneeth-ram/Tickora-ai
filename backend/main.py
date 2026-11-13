@@ -37,6 +37,7 @@ import re
 from backend.services.date_resolver import validate_date_range
 import logging
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
+from backend.security.input_screen import screen_question
 from backend.security.access_policy import set_subject, reset_subject
 from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_person_phrases, resolve_subject, names_a_person
 
@@ -430,6 +431,9 @@ def chat_with_tickora(
     current_employee: dict = Depends(get_current_employee),
 ):
     employee_id = require_matching_employee(employee_code, current_employee)
+    blocked = screen_question(body.question)
+    if blocked is not None:
+        return jsonable_encoder(_text_result(body.question, blocked, intent="access_denied"))
     chat_limiter.hit(f"chat:{employee_id}")
     with engine.connect() as connection:
         actor = load_actor(connection, employee_id, current_employee["employee_code"])
@@ -461,6 +465,7 @@ def _localize(result: dict) -> dict:
         if isinstance(result.get(key), str):
             result[key] = _third_person(result[key], name)
     return result
+
 
 def _chat(
     body: ChatRequest,
