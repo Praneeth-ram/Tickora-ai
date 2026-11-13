@@ -12,4 +12,5 @@ class ChatState(TypedDict, total=False):
     raw_plan: dict[str, Any]
     plan: dict[str, Any]
     status: str
+    clarification: str | None
     result: dict[str, Any]

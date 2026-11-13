@@ -1,5 +1,7 @@
 import re
 from typing import Any
+
+# from sqlalchemy import exc
 from backend.agents.state import ChatState
 from backend.security.access_policy import get_subject
 from backend.services.date_resolver import InvalidDateError
@@ -99,6 +101,7 @@ def planning_node(state: ChatState) -> dict[str, Any]:
 
 def correction_node(state: ChatState) -> dict[str, Any]:
     if not is_approved_operation(state["raw_plan"].get("operation_id")):
+        logger.warning("Plan operation not approved: %r", state["raw_plan"].get("operation_id"))
         return {"status": "invalid", "clarification": None}
     try:
         plan, period = correct_plan(
@@ -106,7 +109,16 @@ def correction_node(state: ChatState) -> dict[str, Any]:
             state["employee_id"], state["organization_id"], get_current_date(),
         )
     except InvalidDateError as exc:
-        return {"status": "invalid", "clarification": str(exc)}
+        return {
+            "status": "invalid",
+            "clarification": str(exc),
+            "result": _text_result(
+                state["question"],
+                f"'{exc}' is not a valid date. Please check the day and month, "
+                "for example: 19 October 2026.",
+                "attendance_records",
+            ),
+        }
     status, reason = validate_plan(plan)
     return {"plan": plan, "period": period, "status": status, "clarification": reason}
 
@@ -119,7 +131,8 @@ def execution_node(state: ChatState) -> dict[str, Any]:
         )
     except AccessDenied:
         result = _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")
-    except ModelServiceError:
+    except ModelServiceError as exc:
+        logger.warning("Execution rejected plan: %s", exc)
         result = _text_result(state["question"], UNSUPPORTED_MESSAGE, "unsupported")
     except SQLAlchemyError:
         logger.exception("Query failed for plan operation")
@@ -135,7 +148,7 @@ def error_node(state: ChatState) -> dict[str, Any]:
         return {"result": _text_result(state["question"], WRITE_MESSAGE, "unsupported")}
     if state.get("request_type") == "third_party":
         return {"result": _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")}
-    if state.get("status") == "invalid" and state.get("clarification"):
+    if state.get("clarification") is not None:
         return {"result": _text_result(
             state["question"],
             f"'{state['clarification']}' is not a valid date. Please check the day and month, "
