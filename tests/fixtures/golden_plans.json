@@ -1,0 +1,156 @@
+{
+  "fingerprint": {
+    "adapter_sha256": "02a0e06319983b53",
+    "catalog_sha256": "3509eaed11cc5376",
+    "prompt_sha256": "335dba56ac09c1d2"
+  },
+  "model_plans": {
+    "What are my attendance records for October?": {
+      "operation_id": "attendance.list",
+      "filters": {
+        "attendance_date": {
+          "gte": "2026-10-01",
+          "lte": "2026-10-31"
+        }
+      }
+    },
+    "Is October 31 a holiday?": {
+      "operation_id": "holiday.list",
+      "filters": {
+        "holiday_date": "2026-10-31"
+      }
+    },
+    "Show my leave requests": {
+      "operation_id": "leave_request.list",
+      "filters": {}
+    },
+    "Show my WFH requests": {
+      "operation_id": "wfh_request.list",
+      "filters": {}
+    },
+    "Show my timesheets for October": {
+      "operation_id": "timesheet.list",
+      "filters": {
+        "period_start": {
+          "gte": "2026-11-01",
+          "lte": "2026-11-30"
+        }
+      }
+    },
+    "What is my gross salary?": {
+      "operation_id": "payroll_summary.list",
+      "aggregate_field": "gross_amount",
+      "filters": {}
+    },
+    "Show my loan requests": {
+      "operation_id": "loan_request.list",
+      "filters": {}
+    },
+    "How many leave requests do I have?": {
+      "operation_id": "leave_request.count",
+      "filters": {}
+    },
+    "Show my assigned tasks": {
+      "operation_id": "task.list",
+      "filters": {
+        "assigned_to_employee_id": "me"
+      }
+    },
+    "How many holidays are there in 2026?": {
+      "rejected": true
+    },
+    "Show my leave balance": {
+      "operation_id": "leave_balance.list",
+      "filters": {}
+    },
+    "What was my clock-in time on October 5?": {
+      "operation_id": "attendance.list",
+      "filters": {
+        "attendance_date": "2026-10-05"
+      }
+    }
+  },
+  "live_plans": {
+    "What are my attendance records for October?": {
+      "operation_id": "attendance.list",
+      "filters": {
+        "attendance_date": {
+          "gte": "2026-10-01",
+          "lte": "2026-10-31"
+        }
+      }
+    },
+    "Is October 31 a holiday?": {
+      "operation_id": "holiday.list",
+      "filters": {
+        "holiday_date": {
+          "gte": "2026-10-31",
+          "lte": "2026-10-31"
+        }
+      }
+    },
+    "Show my leave requests": {
+      "operation_id": "leave_request.list",
+      "filters": {}
+    },
+    "Show my WFH requests": {
+      "operation_id": "wfh_request.list",
+      "filters": {}
+    },
+    "Show my timesheets for October": {
+      "operation_id": "timesheet.list",
+      "filters": {
+        "period_start": {
+          "gte": "2026-10-01",
+          "lte": "2026-10-31"
+        }
+      }
+    },
+    "What is my gross salary?": {
+      "operation_id": "payroll_summary.list",
+      "filters": {}
+    },
+    "Show my loan requests": {
+      "operation_id": "loan_request.list",
+      "filters": {
+        "employee_id": {
+          "$context": "employee_id"
+        }
+      }
+    },
+    "How many leave requests do I have?": {
+      "operation_id": "leave_request.count",
+      "filters": {}
+    },
+    "Show my assigned tasks": {
+      "operation_id": "task.list",
+      "filters": {
+        "assigned_to_employee_id": {
+          "$context": "employee_id"
+        }
+      }
+    },
+    "How many holidays are there in 2026?": {
+      "operation_id": "holiday.count",
+      "filters": {
+        "holiday_date": {
+          "gte": "2026-01-01",
+          "lte": "2026-12-31"
+        }
+      }
+    },
+    "Show my leave balance": {
+      "operation_id": "leave_balance.list",
+      "filters": {}
+    },
+    "What was my clock-in time on October 5?": {
+      "operation_id": "attendance.list",
+      "filters": {
+        "attendance_date": {
+          "gte": "2026-10-05",
+          "lte": "2026-10-05"
+        }
+      }
+    }
+  }
+}

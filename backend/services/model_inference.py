@@ -36,6 +36,10 @@ DATE_VALUE_RE = regex.compile(r"^\d{4}-\d{2}(-\d{2})?$")
 _generation_slots = threading.BoundedSemaphore(value=1)
 QUEUE_WAIT_SECONDS = 5.0
 GENERATION_MAX_SECONDS = 30.0
+OPERATION_ALIASES = {
+    "payroll_summary.sum": "payroll_summary.list",
+    "payroll_summary.count": "payroll_summary.list",
+}
 
 
 @contextmanager
@@ -332,7 +336,10 @@ def generate_plan(question: str) -> dict[str, Any]:
     if not isinstance(plan, dict):
         raise PlanRejectedError(rejected)
 
-    operation_id = plan.get("operation_id")
+    operation_id = OPERATION_ALIASES.get(plan.get("operation_id"), plan.get("operation_id"))
+    plan["operation_id"] = operation_id
+    if operation_id == "payroll_summary.list":
+        plan.pop("aggregate_field", None)
     filters = plan.get("filters")
     if operation_id not in catalog:
         logger.warning("Model returned unknown operation %r", operation_id)
