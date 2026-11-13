@@ -330,7 +330,7 @@ def generate_plan(question: str) -> dict[str, Any]:
     try:
         plan = json.loads(answer)
     except json.JSONDecodeError as exc:
-        logger.warning("Model returned invalid JSON: %r", answer)
+        logger.debug("Model returned invalid JSON: %r", answer)
         raise PlanRejectedError(rejected) from exc
 
     if not isinstance(plan, dict):
@@ -342,7 +342,7 @@ def generate_plan(question: str) -> dict[str, Any]:
         plan.pop("aggregate_field", None)
     filters = plan.get("filters")
     if operation_id not in catalog:
-        logger.warning("Model returned unknown operation %r", operation_id)
+        logger.debug("Model returned unknown operation %r", operation_id)
         raise PlanRejectedError(rejected)
     if not isinstance(filters, dict):
         raise PlanRejectedError(rejected)
@@ -350,7 +350,7 @@ def generate_plan(question: str) -> dict[str, Any]:
     allowed_filters = set(catalog[operation_id].get("filters", []))
     if not set(filters).issubset(allowed_filters):
         rejected_filters = sorted(set(filters) - allowed_filters)
-        logger.warning(
+        logger.debug(
             "Model returned unsupported filters for %s: %s",
             operation_id, rejected_filters,
         )
@@ -364,7 +364,7 @@ def generate_plan(question: str) -> dict[str, Any]:
             if item is None:
                 continue
             if not isinstance(item, str) or not DATE_VALUE_RE.match(item):
-                logger.warning("Model returned invalid date value for %s.%s", operation_id, name)
+                logger.debug("Model returned invalid date value for %s.%s", operation_id, name)
                 raise PlanRejectedError(rejected)
 
     return plan
