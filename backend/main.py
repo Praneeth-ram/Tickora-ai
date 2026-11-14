@@ -39,6 +39,7 @@ import logging
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 from backend.security.input_screen import screen_question
 from backend.security.access_policy import set_subject, reset_subject
+from backend.security.log_redaction import install_pii_redaction, register_names
 from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_person_phrases, resolve_subject, names_a_person
 
 chat_limiter = LoginRateLimiter(max_attempts=30, window_seconds=60)
@@ -49,8 +50,30 @@ CHAT_LATENCY = Histogram("chat_latency_seconds", "Chat request latency",
                          buckets=(0.5, 1, 2, 5, 10, 15, 30, 60))
 CHAT_OUTCOME = Counter("chat_outcome_total", "Chat outcomes", ["outcome"])
 
+logger = logging.getLogger(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Redact employee codes and names in every log handler, including the
+    # uvicorn handlers, which exist only once the server has started.
+    install_pii_redaction()
+
+    # Register employee names for redaction. Runs after logging is configured.
+    try:
+        with engine.connect() as connection:
+            names = connection.execute(
+                text("SELECT full_name FROM public.employees WHERE is_active = TRUE")
+            ).scalars().all()
+        register_names(names)
+    except Exception:
+        logger.exception("Could not load employee names for log redaction.")
+
     # Load the model once per process. If it cannot load, the API still starts
     # and chat answers 503 until the problem is fixed and the server restarted.
     try:
@@ -73,14 +96,6 @@ from backend.security.audit_log import configure_audit_logger
 configure_audit_logger()
 
 register_exception_handlers(app)
-logger = logging.getLogger(__name__)
-
-import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
 
 # Add CORS middleware to allow frontend to call this backend
 app.add_middleware(
