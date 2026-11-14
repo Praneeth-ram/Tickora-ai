@@ -30,12 +30,14 @@ from backend.services.auth_service import (
 import os
 from backend.services.llm_chat_service import (
     _text_result,
+    get_current_date,
     run_llm_chat,
     ModelServiceError,
 )
 import re
 from backend.services.date_resolver import validate_date_range
 import logging
+from backend.services import answer_cache
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 from backend.security.input_screen import screen_question
 from backend.security.access_policy import set_subject, reset_subject
@@ -517,7 +519,20 @@ def _chat(
         )
 
     if get_settings().agent_orchestration:
+        from time import perf_counter
         from backend.agents.graph import get_chat_graph
+
+        started = perf_counter()
+        answer_key = answer_cache.answer_key(
+            employee_id,
+            current_employee.get("role", "employee"),
+            body.question.strip().lower(),
+            get_current_date().isoformat(),
+        )
+        cached = answer_cache.get_answer(answer_key)
+        if cached is not None:
+            logger.info("answer_cache=hit elapsed=%.3fs", perf_counter() - started)
+            return jsonable_encoder(cached)
 
         state = get_chat_graph().invoke({
             "question": body.question.strip(),
@@ -526,7 +541,11 @@ def _chat(
             "employee_code": current_employee["employee_code"],
             "organization_id": organization_id,
         })
-        return jsonable_encoder(_localize(state["result"]))
+        result = jsonable_encoder(_localize(state["result"]))
+        if result.get("intent") not in {"access_denied", "unsupported"}:
+            answer_cache.set_answer(answer_key, result)
+        logger.info("answer_cache=miss elapsed=%.3fs", perf_counter() - started)
+        return result
 
     try:
         use_llm = os.getenv(

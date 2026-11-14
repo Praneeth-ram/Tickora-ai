@@ -9,8 +9,6 @@ from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-
 from backend.security.access_policy import AccessDenied, get_subject
 from backend.services.answer_builder import (
     range_clock_answer,
@@ -47,7 +45,6 @@ from backend.services.dynamic_query_service import (
 )
 
 logger = logging.getLogger(__name__)
-
 
 DEFAULT_TIMEZONE = os.getenv("APP_TIMEZONE", os.getenv("TICKORA_TIMEZONE", "Asia/Kolkata"))
 
@@ -2876,21 +2873,33 @@ def direct_answer(
 
 def plan_question(normalized_question: str) -> dict[str, Any]:
     """Return the raw plan from the model, or the keyword fallback.
-
-    Raises ModelUnavailableError only when the fallback is not an approved operation,
-    which matches the previous behavior.
+    Model plans are cached per day and fingerprint. Keyword fallbacks are never cached.
+    Raises ModelUnavailableError only when the fallback is not an approved operation.
     """
+    from backend.services import answer_cache as cache
+    from backend.services.model_inference import fingerprint
+
     model_error: ModelServiceError | None = None
+    plan_cache_key = cache.plan_key(
+        normalized_question,
+        get_current_date().isoformat(),
+        str(fingerprint()),
+    )
 
     if _is_payroll_query(normalized_question):
         raw_plan = {"operation_id": "payroll_summary.list", "filters": {}}
     else:
-        try:
-            raw_plan = get_query_plan(normalized_question)
-        except ModelServiceError as exc:
-            logger.warning("Model plan unavailable, using keyword plan: %s", type(exc).__name__)
-            model_error = exc
-            raw_plan = rule_based_plan(normalized_question)
+        cached_plan = cache.get_plan(plan_cache_key)
+        if cached_plan is not None:
+            raw_plan = cached_plan
+        else:
+            try:
+                raw_plan = get_query_plan(normalized_question)
+                cache.set_plan(plan_cache_key, raw_plan, ttl_seconds=3600)
+            except ModelServiceError as exc:
+                logger.warning("Model plan unavailable, using keyword plan: %s", type(exc).__name__)
+                model_error = exc
+                raw_plan = rule_based_plan(normalized_question)
 
     if _is_payroll_query(normalized_question):
         raw_plan = {"operation_id": "payroll_summary.list", "filters": {}}
@@ -2908,7 +2917,6 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
         raise model_error
 
     return raw_plan
-
 
 def correct_plan(
     raw_plan: dict[str, Any],
