@@ -17,7 +17,7 @@ from backend.repositories.calendar_repository import (
     get_holidays,
     get_work_schedules,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from backend.services import model_inference
 from backend.errors import register_exception_handlers
 from backend.exceptions import ServiceUnavailableError
@@ -35,6 +35,8 @@ from backend.services.llm_chat_service import (
     ModelServiceError,
 )
 import re
+from typing import Literal
+from uuid import uuid4
 from backend.services.date_resolver import validate_date_range
 import logging
 from backend.services import answer_cache
@@ -118,6 +120,19 @@ class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
+class FeedbackRequest(BaseModel):
+    request_id: str = Field(min_length=8, max_length=64)
+    rating: Literal["up", "down"]
+    reason: Literal["wrong_number", "wrong_period", "wrong_intent", "unhelpful", "other"] | None = None
+
+    @model_validator(mode="after")
+    def reason_matches_rating(self):
+        if self.rating == "down" and self.reason is None:
+            raise ValueError("A reason is required when the rating is down.")
+        if self.rating == "up" and self.reason is not None:
+            raise ValueError("A reason is not accepted when the rating is up.")
+        return self
+    
 def require_matching_employee(
     requested_employee_code: str,
     current_employee: dict,
@@ -462,12 +477,16 @@ def chat_with_tickora(
             )
     token = set_actor(actor)
     subject_token = set_subject(subject_id) if subject_id is not None else None
+    request_id = str(uuid4())
     try:
-        return _chat(body, employee_id, current_employee)
+        response = _chat(body, employee_id, current_employee)
     finally:
         if subject_token is not None:
             reset_subject(subject_token)
         reset_actor(token)
+    if isinstance(response, dict):
+        response["request_id"] = request_id
+    return response
 
 def _localize(result: dict) -> dict:
     from backend.security.access_policy import get_subject, subject_name
@@ -596,3 +615,23 @@ def _chat(
             status_code=503,
             detail=str(exc),
         ) from exc
+
+@app.post("/api/feedback")
+def submit_feedback(
+    body: FeedbackRequest,
+    current_employee: dict = Depends(get_current_employee),
+):
+    with engine.begin() as connection:
+        connection.execute(
+            text("""
+                INSERT INTO public.chat_feedback (request_id, employee_id, rating, reason)
+                VALUES (:request_id, :employee_id, :rating, :reason)
+            """),
+            {
+                "request_id": body.request_id,
+                "employee_id": current_employee["employee_id"],
+                "rating": body.rating,
+                "reason": body.reason,
+            },
+        )
+    return {"status": "recorded"}
