@@ -41,3 +41,8 @@ def test_returned_values_are_copies():
     got = cache.get_plan(key)
     got["operation_id"] = "changed"
     assert cache.get_plan(key)["operation_id"] == "x"
+
+def test_same_question_with_different_topic_has_different_key():
+    a = cache.answer_key(11, "employee", "what about november?", "2026-11-14", "attendance")
+    b = cache.answer_key(11, "employee", "what about november?", "2026-11-14", "leave balance")
+    assert a != b

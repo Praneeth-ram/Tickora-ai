@@ -2860,19 +2860,22 @@ def direct_answer(
         return team_attendance_result(question, actor, start, end)
 
     if is_leave_balance_question(normalized_question):
-        return _answer_leave_balance(
+        result = _answer_leave_balance(
             question,
             normalized_question,
             employee_id,
             today,
             organization_id=organization_id,
         )
+        result["operation_id"] = "leave_balance.list"
+        return result
 
     return None
 
 
 def plan_question(normalized_question: str) -> dict[str, Any]:
     """Return the raw plan from the model, or the keyword fallback.
+
     Model plans are cached per day and fingerprint. Keyword fallbacks are never cached.
     Raises ModelUnavailableError only when the fallback is not an approved operation.
     """
@@ -2917,6 +2920,7 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
         raise model_error
 
     return raw_plan
+
 
 def correct_plan(
     raw_plan: dict[str, Any],
@@ -3066,15 +3070,8 @@ def run_llm_chat(
     organization_id: int | None = None,
     session_id: str | None = None,
 ) -> dict[str, Any]:
-    """Orchestrate the stages: memory, split, route, plan, correct, execute, format."""
-    from backend.db import engine as owner_engine
-    from backend.services.chat_memory import load_last_topic, save_last_topic
+    """Legacy chat path. The graph path (agent_orchestration=True) is the default."""
     from backend.services.model_inference import model_inference_available
-
-    last_topic = (
-        load_last_topic(owner_engine, employee_id, session_id) if session_id else None
-    )
-    question = apply_session_topic(question, last_topic)
 
     parts = split_compound_question(question)
     if len(parts) > 1:
@@ -3118,7 +3115,7 @@ def run_llm_chat(
         return _text_result(question, answer, intent="attendance_records")
 
     try:
-        result = execute_and_format(
+        return execute_and_format(
             question,
             normalized_question,
             plan,
@@ -3130,11 +3127,6 @@ def run_llm_chat(
         )
     except AccessDenied:
         return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
-
-    topic = _primary_topic(normalized_question)
-    if session_id and topic:
-        save_last_topic(owner_engine, employee_id, session_id, topic)
-    return result
 
 def execute_and_format(
     question: str,

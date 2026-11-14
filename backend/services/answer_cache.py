@@ -63,9 +63,8 @@ def plan_key(normalized_question: str, today_iso: str, fingerprint_text: str) ->
     """Plans are shared across users: no identity in the key or the value."""
     return "plan:" + _digest(normalized_question, today_iso, fingerprint_text)
 
-def answer_key(employee_id: int, role: str, normalized_question: str, today_iso: str) -> str:
-    """Answers are per employee and role. The employee ID is always part of the key."""
-    return f"answer:{employee_id}:{role}:" + _digest(normalized_question, today_iso)
+def answer_key(employee_id: int, role: str, normalized_question: str, today_iso: str, topic: str | None = None) -> str:
+    return f"answer:{employee_id}:{role}:" + _digest(normalized_question, today_iso, topic or "")
 
 def answer_prefix(employee_id: int) -> str:
     return f"answer:{employee_id}:"

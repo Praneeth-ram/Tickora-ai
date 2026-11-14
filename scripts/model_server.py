@@ -1,3 +1,4 @@
+from backend.services.model_inference import _state
 from datetime import date
 import json
 from pathlib import Path

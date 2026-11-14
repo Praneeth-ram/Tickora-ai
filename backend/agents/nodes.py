@@ -48,6 +48,15 @@ WRITE_MESSAGE = (
     "cancel, or approve anything. Please use the HR system to make changes."
 )
 
+FOLLOWUP_RE = re.compile(
+    r"^\s*(?:what|how)\s+about\b|^\s*(?:and|also|same)\b",
+    re.IGNORECASE,
+)
+FOLLOWUP_CLARIFY = (
+    "Please ask the full question, including the topic, for example "
+    "'Show my records for November'."
+)
+
 def supervisor_node(state: ChatState) -> dict[str, Any]:
     logger.debug("GRAPH PATH: %s", state["question"])
     question = state["question"]
@@ -77,13 +86,6 @@ def greeting_node(state: ChatState) -> dict[str, Any]:
 
 
 def context_node(state: ChatState) -> dict[str, Any]:
-    from backend.db import engine as owner_engine
-    from backend.services.chat_memory import load_last_topic
-    from backend.services.llm_chat_service import apply_session_topic
-
-    last_topic = load_last_topic(owner_engine, state["employee_id"], state["session_id"])
-    question = apply_session_topic(state["question"], last_topic)
-    normalized = resolve_context(question)
     normalized = resolve_context(state["question"])
     update: dict[str, Any] = {"normalized_question": normalized}
     direct = direct_answer(
@@ -92,8 +94,23 @@ def context_node(state: ChatState) -> dict[str, Any]:
     )
     if direct is not None:
         update["result"] = direct
+        return update
+    if FOLLOWUP_RE.search(normalized):
+        last_operation = state.get("last_operation")
+        if last_operation and is_approved_operation(last_operation):
+            # Reuse the operation the previous answer used; the new period is set by correction.
+            update["raw_plan"] = {"operation_id": last_operation, "filters": {}}
+        else:
+            update["result"] = _text_result(state["question"], FOLLOWUP_CLARIFY, "unsupported")
     return update
 
+
+def route_after_context(state: ChatState) -> str:
+    if "result" in state:
+        return "done"
+    if "raw_plan" in state:
+        return "correct"
+    return "plan"
 
 def planning_node(state: ChatState) -> dict[str, Any]:
     return {"raw_plan": plan_question(state["normalized_question"])}
@@ -129,10 +146,10 @@ def execution_node(state: ChatState) -> dict[str, Any]:
             state["employee_id"], state["organization_id"], get_current_date(),
             yes_no_status(state["normalized_question"]),
         )
+        result["operation_id"] = state["plan"].get("operation_id")
     except AccessDenied:
         result = _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")
-    except ModelServiceError as exc:
-        logger.warning("Execution rejected plan: %s", exc)
+    except ModelServiceError:
         result = _text_result(state["question"], UNSUPPORTED_MESSAGE, "unsupported")
     except SQLAlchemyError:
         logger.exception("Query failed for plan operation")
@@ -160,11 +177,6 @@ def error_node(state: ChatState) -> dict[str, Any]:
 
 def route_request(state: ChatState) -> str:
     return state["request_type"]
-
-
-def route_after_context(state: ChatState) -> str:
-    return "done" if "result" in state else "plan"
-
 
 def route_validation(state: ChatState) -> str:
     return state["status"]

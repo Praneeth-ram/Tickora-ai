@@ -39,6 +39,7 @@ from typing import Literal
 from uuid import uuid4
 from backend.services.date_resolver import validate_date_range
 import logging
+from backend.services.chat_memory import load_last_topic, save_last_topic
 from backend.services import answer_cache
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 from backend.security.input_screen import screen_question
@@ -61,6 +62,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
+def _remember_operation(operation_id: str | None, employee_id: int, session_id: str) -> None:
+    """Save the operation that answered, so a follow-up can reuse it."""
+    if operation_id and session_id:
+        save_last_topic(engine, employee_id, session_id, operation_id)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -542,15 +547,18 @@ def _chat(
         from backend.agents.graph import get_chat_graph
 
         started = perf_counter()
+        last_operation = load_last_topic(engine, employee_id, body.session_id)
         answer_key = answer_cache.answer_key(
             employee_id,
             current_employee.get("role", "employee"),
             body.question.strip().lower(),
             get_current_date().isoformat(),
+            last_operation,
         )
         cached = answer_cache.get_answer(answer_key)
         if cached is not None:
             logger.info("answer_cache=hit elapsed=%.3fs", perf_counter() - started)
+            _remember_operation(cached.pop("operation_id", None), employee_id, body.session_id)
             return jsonable_encoder(cached)
 
         state = get_chat_graph().invoke({
@@ -559,10 +567,14 @@ def _chat(
             "employee_id": employee_id,
             "employee_code": current_employee["employee_code"],
             "organization_id": organization_id,
+            "last_operation": last_operation,
         })
+        operation_id = state["result"].get("operation_id")
         result = jsonable_encoder(_localize(state["result"]))
         if result.get("intent") not in {"access_denied", "unsupported"}:
-            answer_cache.set_answer(answer_key, result)
+            answer_cache.set_answer(answer_key, {**result, "operation_id": operation_id})
+        result.pop("operation_id", None)
+        _remember_operation(operation_id, employee_id, body.session_id)
         logger.info("answer_cache=miss elapsed=%.3fs", perf_counter() - started)
         return result
 

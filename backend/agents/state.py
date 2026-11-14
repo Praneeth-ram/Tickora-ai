@@ -6,6 +6,7 @@ class ChatState(TypedDict, total=False):
     employee_id: int
     employee_code: str
     organization_id: int
+    last_operation: str | None
     request_type: str
     normalized_question: str
     period: dict[str, Any]

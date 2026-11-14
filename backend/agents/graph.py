@@ -46,7 +46,7 @@ def get_chat_graph():
     graph.add_conditional_edges(
         "context",
         route_after_context,
-        {"done": END, "plan": "planning"},
+        {"done": END, "plan": "planning", "correct": "correction"},
     )
     graph.add_edge("planning", "correction")
     graph.add_conditional_edges(
