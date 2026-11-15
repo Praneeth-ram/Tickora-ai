@@ -7,6 +7,21 @@ Nothing here hardcodes leave-type names or IDs. Types come from the database
 import re
 from typing import Any
 
+MONTH_NAME_RE = re.compile(
+    r"\b(?:january|february|march|april|may|june|july|august|september|"
+    r"october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b",
+    re.IGNORECASE,
+)
+
+PER_YEAR_NOTE = "Leave balances are tracked per year, so this is the balance for {year}."
+
+
+def per_year_note(question: str, year: int) -> str | None:
+    """Return a note when a leave question names a month, since balances are yearly."""
+    if MONTH_NAME_RE.search(question):
+        return PER_YEAR_NOTE.format(year=year)
+    return None
+
 METRIC_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("pending", re.compile(r"\bpending\b")),
     ("used", re.compile(r"\b(?:used|use|uses|taken|take|took|consumed|utili[sz]ed|spent)\b")),

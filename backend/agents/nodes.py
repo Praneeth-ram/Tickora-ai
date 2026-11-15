@@ -14,6 +14,7 @@ from backend.services.llm_chat_service import (
     direct_answer,
     execute_and_format,
     get_current_date,
+    has_data_concept,
     is_approved_operation,
     is_directory_question,
     is_team_question,
@@ -23,6 +24,7 @@ from backend.services.llm_chat_service import (
     split_compound_question,
     validate_plan,
     yes_no_status,
+    out_of_scope_message,
     ModelServiceError
 )
 from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE
@@ -37,11 +39,29 @@ GREETING_RE = re.compile(
     re.IGNORECASE,
 )
 
+RETRIEVAL_OPENER_RE = re.compile(
+    r"^\s*(?:what|which|who|when|where|how|why|is|are|was|were|do|does|did|"
+    r"have|has|can\s+i|could\s+i|show|list|display|give\s+me|get|"
+    r"tell\s+me\s+(?:my|the)|my|i\s+want\s+to\s+see)\b",
+    re.IGNORECASE,
+)
+
+DATE_HINT_RE = re.compile(
+    r"\b(?:january|february|march|april|may|june|july|august|september|"
+    r"october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b"
+    r"|\b(?:19|20)\d{2}\b",
+    re.IGNORECASE,
+)
+
 WRITE_RE = re.compile(
     r"^\s*(?:(?:please|can you|could you|would you|i want to|i need to)\s+)*"
     r"(?:delete|remove|cancel|update|change|edit|modify|approve|reject|submit|apply|create|add)\b",
     re.IGNORECASE,
 )
+
+def is_read_shape(question: str) -> bool:
+    """A read request opens with a question or a retrieval verb. Anything else is not a read."""
+    return bool(RETRIEVAL_OPENER_RE.search(question))
 
 WRITE_MESSAGE = (
     "I can only show information from your records. I can't change, add, "
@@ -66,6 +86,12 @@ def supervisor_node(state: ChatState) -> dict[str, Any]:
         return {"request_type": "write_request"}
     if is_team_question(question) or is_directory_question(question):
         return {"request_type": "query"}
+    if not (
+        FOLLOWUP_RE.search(question)
+        or (is_read_shape(question) and has_data_concept(question))
+        or (has_data_concept(question) and DATE_HINT_RE.search(question))
+    ):
+        return {"request_type": "out_of_scope"}
     if len(split_compound_question(question)) > 1:
         return {"request_type": "compound"}
     if get_subject() is None and is_third_party_request(question):
@@ -165,6 +191,8 @@ def error_node(state: ChatState) -> dict[str, Any]:
         return {"result": _text_result(state["question"], WRITE_MESSAGE, "unsupported")}
     if state.get("request_type") == "third_party":
         return {"result": _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")}
+    if state.get("request_type") == "out_of_scope":
+        return {"result": _text_result(state["question"], out_of_scope_message(), "unsupported")}
     if state.get("clarification") is not None:
         return {"result": _text_result(
             state["question"],

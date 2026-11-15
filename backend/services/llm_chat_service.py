@@ -223,12 +223,41 @@ def rule_based_plan(question: str) -> dict[str, Any]:
         return {"operation_id": None, "filters": {}}
     return {"operation_id": entity + suffix, "filters": {}}
 
+@lru_cache(maxsize=1)
+def _data_terms() -> frozenset[str]:
+    """Words taken from the approved registry: entity and table names, split on underscores."""
+    terms: set[str] = set()
+    for definition in build_operation_registry(schema_name="public").values():
+        for name in (definition.get("entity"), definition.get("table")):
+            if isinstance(name, str):
+                terms.update(part for part in name.lower().split("_") if len(part) > 2)
+    return frozenset(terms)
+
+
+def has_data_concept(question: str) -> bool:
+    words = {w.rstrip("s") for w in re.findall(r"[a-z]+", question.lower())}
+    return any(term.rstrip("s") in words for term in _data_terms())
+
+@lru_cache(maxsize=1)
+def out_of_scope_message() -> str:
+    """Tell the user what they can ask, using the topics the registry supports."""
+    topics: set[str] = set()
+    for definition in build_operation_registry(schema_name="public").values():
+        entity = definition.get("entity")
+        if isinstance(entity, str):
+            topics.add(entity.replace("_", " "))
+    ordered = sorted(topics)
+    listed = ", ".join(ordered[:-1]) + " and " + ordered[-1]
+    return (
+        "I can only answer questions about your own HR records, such as "
+        f"{listed}. For example, try 'Show my attendance for October'."
+    )
+
 
 _DOMAIN_RE = re.compile(
     r"\b(?:leaves?|wfh|work\s+from\s+home|holidays?|attendance|clock|check\s*(?:in|out)|"
     r"status|late|absent|present|timesheets?|applied)\b"
 )
-
 
 _TOPIC_PATTERNS = [
     ("wfh", _WFH_RE),
@@ -2902,7 +2931,11 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
             except ModelServiceError as exc:
                 logger.warning("Model plan unavailable, using keyword plan: %s", type(exc).__name__)
                 model_error = exc
-                raw_plan = rule_based_plan(normalized_question)
+                raw_plan = (
+                    rule_based_plan(normalized_question)
+                    if has_data_concept(normalized_question)
+                    else {"operation_id": None, "filters": {}}
+                )
 
     if _is_payroll_query(normalized_question):
         raw_plan = {"operation_id": "payroll_summary.list", "filters": {}}

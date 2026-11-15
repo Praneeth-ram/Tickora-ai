@@ -41,6 +41,7 @@ def get_chat_graph():
             "third_party": "controlled_error",
             "unsupported": "controlled_error",
             "write_request": "controlled_error",
+            "out_of_scope": "controlled_error",
         },
     )
     graph.add_conditional_edges(
