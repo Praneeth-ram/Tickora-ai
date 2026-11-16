@@ -28,9 +28,10 @@ from backend.services.llm_chat_service import (
     validate_plan,
     yes_no_status,
     out_of_scope_message,
+    _HOLIDAY_RE,
     ModelServiceError
 )
-from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE
+from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE, get_actor, SUPER_ADMIN
 from sqlalchemy.exc import SQLAlchemyError
 
 import logging
@@ -53,6 +54,16 @@ DATE_HINT_RE = re.compile(
     r"\b(?:january|february|march|april|may|june|july|august|september|"
     r"october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b"
     r"|\b(?:19|20)\d{2}\b",
+    re.IGNORECASE,
+)
+
+DATA_CONCEPT_RE = re.compile(
+    r"\b(?:attendance|attend\w*|clock|check[- ]?(?:in|out)|punch|late|absent|present|"
+    r"half[- ]day|overtime|worked|hours?|leaves?|balance|wfh|work\s+from\s+home|"
+    r"holidays?|timesheets?|tasks?|payroll|pay|paid|salary|salaries|net|gross|"
+    r"payslips?|payslip|deductions?|deducted|loans?|installments?|schedule|"
+    r"performance\s+score|status|pending|approved|rejected|submitted|draft|"
+    r"records?|requests?|apply|applied|credited)\b",
     re.IGNORECASE,
 )
 
@@ -116,12 +127,20 @@ def supervisor_node(state: ChatState) -> dict[str, Any]:
         return {"request_type": "greeting"}
     if WRITE_RE.search(question):
         return {"request_type": "write_request"}
+    actor = get_actor()
+    if (
+        actor is not None
+        and actor.role != SUPER_ADMIN
+        and re.search(r"\b(?:company|organi[sz]ation|every\s+employee|all\s+employees?)\b", question, re.IGNORECASE)
+        and not _HOLIDAY_RE.search(question)
+    ):
+        return {"request_type": "third_party"}
     if is_team_question(question) or is_directory_question(question):
         return {"request_type": "query"}
     if not (
         _is_followup(question, state.get("last_operation"))
+        or DATA_CONCEPT_RE.search(question)
         or (is_read_shape(question) and has_data_concept(question))
-        or (has_data_concept(question) and DATE_HINT_RE.search(question))
     ):
         return {"request_type": "out_of_scope"}
     if len(split_compound_question(question)) > 1:

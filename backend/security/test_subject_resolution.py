@@ -1,5 +1,7 @@
 import unittest
-from backend.security.subject_resolution import names_a_person
+from unittest.mock import MagicMock
+from backend.security.access_policy import Actor, SUPER_ADMIN
+from backend.security.subject_resolution import names_a_person, resolve_subject
 
 class _Actor:
     employee_id = 1
@@ -13,6 +15,24 @@ KNOWN = frozenset({
 })
 
 class TestSubjectResolution(unittest.TestCase):
+    def test_super_admin_self_reference_resolves_to_actor(self):
+        connection = MagicMock()
+        connection.execute.return_value.mappings.return_value.all.return_value = [
+            {
+                "id": 1,
+                "employee_code": "EMP001",
+                "full_name": "Admin User",
+            }
+        ]
+
+        subject_id = resolve_subject(
+            connection,
+            Actor(1, 1, 1, SUPER_ADMIN),
+            "Show my payroll for September",
+        )
+
+        self.assertEqual(subject_id, 1)
+
     def test_known_terms_and_calendar_questions_do_not_name_a_person(self):
         questions = [
             "How many Casual Leave days do I have?",

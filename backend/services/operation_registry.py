@@ -574,6 +574,8 @@ def build_operation_registry(
         required_employees = {
             "id",
             "organization_id",
+            "employee_code",
+            "full_name",
         }
         required_summaries = {
             "employee_id",
@@ -601,6 +603,8 @@ def build_operation_registry(
                 "operation": "list",
                 "scope": "employee_organization",
                 "fields": [
+                    "employee_code",
+                    "employee_name",
                     "period_start",
                     "period_end",
                     "gross_amount",

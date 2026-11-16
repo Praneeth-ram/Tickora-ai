@@ -278,6 +278,12 @@ def execute_query_plan(
             )
 
         payroll_field_sql = {
+            "employee_code": (
+                f"e.{preparer.quote('employee_code')}"
+            ),
+            "employee_name": (
+                f"e.{preparer.quote('full_name')}"
+            ),
             "period_start": (
                 f"pp.{preparer.quote('period_start')}"
             ),

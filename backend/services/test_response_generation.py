@@ -41,6 +41,60 @@ def test_payroll_net_pay_response_uses_plain_sentence():
     assert response == "Your net pay for October 2026 was INR 4,250.00."
 
 
+def test_all_employee_payroll_response_shows_payroll_details_and_identity():
+    response = _payroll_response(
+        [
+            {
+                "employee_code": "EMP011",
+                "employee_name": "Employee One",
+                "period_start": date(2026, 9, 1),
+                "period_end": date(2026, 9, 30),
+                "gross_amount": Decimal("5000.00"),
+                "deduction_amount": Decimal("750.00"),
+                "net_amount": Decimal("4250.00"),
+                "currency": "INR",
+            }
+        ],
+        {"start_date": "2026-09-01", "end_date": "2026-09-30"},
+        "Show all employees' payroll for September",
+    )
+
+    assert response == (
+        "Here are 1 payroll records in September 2026:\n"
+        "| Employee Code | Employee Name | Gross Amount | Deduction Amount | Net Amount | Currency |\n"
+        "|---|---|---:|---:|---:|---|\n"
+        "| EMP011 | Employee One | 5,000.00 | 750.00 | 4,250.00 | INR |"
+    )
+
+
+def test_all_employee_payroll_plan_selects_payroll_details_and_identity():
+    plan, _period = normalize_and_correct_plan(
+        {"operation_id": "payroll_summary.list", "filters": {}},
+        "Show all employees' payroll for September",
+        date(2026, 11, 16),
+    )
+
+    assert plan["fields"] == [
+        "employee_code",
+        "employee_name",
+        "gross_amount",
+        "deduction_amount",
+        "net_amount",
+        "currency",
+    ]
+
+
+def test_own_payroll_plan_omits_employee_name_and_code():
+    plan, _period = normalize_and_correct_plan(
+        {"operation_id": "payroll_summary.list", "filters": {}},
+        "Show my payroll for September",
+        date(2026, 11, 16),
+    )
+
+    assert "employee_code" not in plan["fields"]
+    assert "employee_name" not in plan["fields"]
+
+
 def test_result_keeps_structured_and_raw_data_when_table_is_hidden():
     structured = {"count": 4}
     raw = {"record_count": 4}

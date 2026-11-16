@@ -47,7 +47,10 @@ from backend.security.access_policy import set_subject, reset_subject
 from backend.security.log_redaction import install_pii_redaction, register_names
 from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_person_phrases, resolve_subject, names_a_person
 
-chat_limiter = LoginRateLimiter(max_attempts=30, window_seconds=60)
+chat_limiter = LoginRateLimiter(
+    max_attempts=int(os.getenv("CHAT_RATE_LIMIT_PER_MINUTE", "120")),
+    window_seconds=60,
+)
 
 from prometheus_client import Counter, Histogram, make_asgi_app
 
@@ -494,11 +497,17 @@ def chat_with_tickora(
     return response
 
 def _localize(result: dict) -> dict:
-    from backend.security.access_policy import get_subject, subject_name
+    from backend.security.access_policy import get_actor, get_subject, subject_name
     from backend.services.llm_chat_service import _third_person
 
+    actor = get_actor()
     subject_id = get_subject()
-    if subject_id is None:
+    if (
+        subject_id is None
+        or actor is None
+        or subject_id == actor.employee_id
+        or result.get("intent") in {"access_denied", "unsupported", "unavailable"}
+    ):
         return result
     with engine.connect() as connection:
         name = subject_name(connection, subject_id)
@@ -506,7 +515,6 @@ def _localize(result: dict) -> dict:
         if isinstance(result.get(key), str):
             result[key] = _third_person(result[key], name)
     return result
-
 
 def _chat(
     body: ChatRequest,

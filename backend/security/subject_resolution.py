@@ -4,6 +4,9 @@ from sqlalchemy import text
 from backend.security.access_policy import ADMIN, SUPER_ADMIN, Actor, scope_clause
 
 CODE_RE = re.compile(r"\bEMP\d+\b", re.IGNORECASE)
+NAME_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
+POSSESSIVE_NAME_RE = re.compile(r"\b([A-Za-z][A-Za-z'-]*)'s\b", re.IGNORECASE)
+SELF_REFERENCE_RE = re.compile(r"\b(?:my|mine|myself)\b", re.IGNORECASE)
 
 # One message for every failure, so the chatbot never reveals whether a person exists.
 NOT_FOUND_MESSAGE = (
@@ -46,10 +49,18 @@ def resolve_subject(connection, actor: Actor, question: str) -> int | None:
         params,
     ).mappings().all()
 
-    return match_subject(rows, question)
+    subject_id = match_subject(rows, question)
+    if subject_id is not None:
+        return subject_id
+    if (
+        SELF_REFERENCE_RE.search(question)
+        and not CODE_RE.search(question)
+        and not NAME_RE.search(question)
+        and not POSSESSIVE_NAME_RE.search(question)
+    ):
+        return actor.employee_id
+    return None
 
-NAME_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
-POSSESSIVE_NAME_RE = re.compile(r"\b([A-Za-z][A-Za-z'-]*)'s\b", re.IGNORECASE)
 NOT_A_NAME = {
     "is", "are", "was", "were", "what", "when", "where", "which", "who", "how",
     "show", "list", "do", "does", "did", "can", "tell", "give", "the", "my", "your", "our",

@@ -554,6 +554,8 @@ def test_payroll_query_uses_authorized_row_scope(
             "table": "payroll_summaries",
             "operation": "list",
             "fields": [
+                "employee_code",
+                "employee_name",
                 "period_start",
                 "period_end",
                 "gross_amount",
@@ -578,7 +580,18 @@ def test_payroll_query_uses_authorized_row_scope(
             return_value=registry,
         ):
             execute_query_plan(
-                {"operation_id": "payroll_summary.list", "filters": {}},
+                {
+                    "operation_id": "payroll_summary.list",
+                    "fields": [
+                        "employee_code",
+                        "employee_name",
+                        "gross_amount",
+                        "deduction_amount",
+                        "net_amount",
+                        "currency",
+                    ],
+                    "filters": {},
+                },
                 employee_id=actor.employee_id,
                 organization_id=actor.organization_id,
                 db_engine=engine,
@@ -591,5 +604,11 @@ def test_payroll_query_uses_authorized_row_scope(
     generated_sql, parameters = connection.execute.call_args.args
     assert expected_sql in str(generated_sql)
     assert "authenticated_employee_id" not in str(generated_sql)
+    assert "employee_code" in str(generated_sql)
+    assert "employee_name" in str(generated_sql)
+    assert "gross_amount" in str(generated_sql)
+    assert "deduction_amount" in str(generated_sql)
+    assert "net_amount" in str(generated_sql)
+    assert "currency" in str(generated_sql)
     for key, value in expected_params.items():
         assert parameters[key] == value

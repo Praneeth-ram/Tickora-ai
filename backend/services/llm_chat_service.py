@@ -40,6 +40,7 @@ from backend.services.leave_balance_answer import (
 )
 from backend.security.access_policy import (
     ADMIN,
+    EMPLOYEE,
     SUPER_ADMIN,
     REFUSAL_MESSAGE,
     get_actor,
@@ -48,6 +49,8 @@ from backend.services.dynamic_query_service import (
     TEAM_SUMMARY_LIMIT,
     execute_team_summary,
 )
+from backend.db import agent_engine
+from backend.security.access_policy import subject_name as lookup_subject_name
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +97,25 @@ WORK_LOCATION_RE = re.compile(
     r"where\s+was\s+i\s+working)\b",
     re.IGNORECASE,
 )
+_SELF_REFERENCE_RE = re.compile(r"\b(?:my|mine|myself)\b", re.IGNORECASE)
+PAYROLL_IDENTIFIED_FIELDS = [
+    "employee_code",
+    "employee_name",
+    "period_start",
+    "period_end",
+    "gross_amount",
+    "deduction_amount",
+    "net_amount",
+    "currency",
+]
+PAYROLL_SELF_FIELDS = [
+    "period_start",
+    "period_end",
+    "gross_amount",
+    "deduction_amount",
+    "net_amount",
+    "currency",
+]
 WORK_LOCATION_FIELDS = ["attendance_date", "work_location"]
 SUM_QUESTION_RE = re.compile(
     r"\b(?:total\s+(?:worked\s+)?(?:minutes|hours|time)|how\s+much\s+overtime|"
@@ -127,6 +149,7 @@ TIMESHEET_STATUS_LABELS = {
     "rejected": "rejected",
 }
 _POSSESSIVE_RE = re.compile(r"\b([a-z]+)'s\b")
+_EMPLOYEE_CODE_RE = re.compile(r"\bemp\d{3}\b", re.IGNORECASE)
 _SELF_POSSESSIVE_EXCLUSIONS = {
     "what", "that", "it", "there", "here", "who", "let", "this", "he", "she",
     "today", "time", "day", "month", "year", "week",
@@ -173,6 +196,11 @@ _PAYROLL_RE = re.compile(
     r"(?:salary|pay)\s+(?:credited|deposited))\b",
     re.IGNORECASE,
 )
+_ALL_EMPLOYEES_RE = re.compile(
+    r"\b(?:all|every|each)\s+(?:the\s+)?employees?\b"
+    r"|\b(?:everyone|everybody)\b",
+    re.IGNORECASE,
+)
 
 def _is_payroll_query(question: str) -> bool:
     q = question.lower()
@@ -185,6 +213,15 @@ def _is_payroll_query(question: str) -> bool:
     )
 
     return bool(_PAYROLL_RE.search(q) and not is_loan_query)
+
+
+def _is_all_employee_payroll_query(question: str) -> bool:
+    return bool(_PAYROLL_RE.search(question) and _ALL_EMPLOYEES_RE.search(question))
+
+
+def _is_self_reference_question(question: str) -> bool:
+    return bool(_SELF_REFERENCE_RE.search(question))
+
 
 _WFH_RE = re.compile(r"\bwfh\b|\bwork\s+from\s+home\b")
 _LEAVE_RE = re.compile(r"\bleaves?\b")
@@ -241,7 +278,9 @@ def _data_terms() -> frozenset[str]:
 
 def has_data_concept(question: str) -> bool:
     words = {w.rstrip("s") for w in re.findall(r"[a-z]+", question.lower())}
-    return any(term.rstrip("s") in words for term in _data_terms())
+    return bool(_DOMAIN_RE.search(question)) or any(
+        term.rstrip("s") in words for term in _data_terms()
+    )
 
 @lru_cache(maxsize=1)
 def out_of_scope_message() -> str:
@@ -393,6 +432,8 @@ def _last_day_of_month(d: date) -> date:
     nxt = (d.replace(day=28) + timedelta(days=4)).replace(day=1)
     return nxt - timedelta(days=1)
 
+def _own_code(actor) -> str | None:
+    return actor.employee_code
 
 def _loan_metric_field(
     question: str,
@@ -1062,6 +1103,20 @@ def normalize_and_correct_plan(
                                    "aggregate_field": "overtime_minutes" if "overtime" in q else "worked_minutes"})
 
     normalized["filters"] = filters
+    if op_id == "payroll_summary.list":
+        actor = get_actor()
+        subject_id = get_subject()
+        views_others = (
+            actor is not None
+            and actor.role == SUPER_ADMIN
+            and (
+                _is_all_employee_payroll_query(question)
+                or (subject_id is not None and subject_id != actor.employee_id)
+            )
+        )
+        normalized["fields"] = (
+            PAYROLL_IDENTIFIED_FIELDS.copy() if views_others else PAYROLL_SELF_FIELDS.copy()
+        )
     period = {
         "start_date": date_range[0].isoformat() if date_range else None,
         "end_date": date_range[1].isoformat() if date_range else None,
@@ -1526,6 +1581,57 @@ def _payroll_response(
             return "not recorded"
         return f"{Decimal(str(value)):,.2f}"
 
+    if _is_all_employee_payroll_query(question):
+        start = as_date(period.get("start_date"))
+        end = as_date(period.get("end_date"))
+        span = period_phrase(start, end)
+        columns = [
+            "Employee Code",
+            "Employee Name",
+            "Gross Amount",
+            "Deduction Amount",
+            "Net Amount",
+            "Currency",
+        ]
+        table_rows = [
+            [
+                str(row.get("employee_code") or "not recorded"),
+                str(row.get("employee_name") or "not recorded"),
+                money(row.get("gross_amount")),
+                money(row.get("deduction_amount")),
+                money(row.get("net_amount")),
+                str(row.get("currency") or "not recorded"),
+            ]
+            for row in rows
+        ]
+        widths = [
+            max(len(column), *(len(row[index]) for row in table_rows))
+            for index, column in enumerate(columns)
+        ]
+        header = "| " + " | ".join(
+            column.ljust(widths[index])
+            for index, column in enumerate(columns)
+        ) + " |"
+        separator = "| " + " | ".join(
+            "-" * (widths[index] - 1) + ":"
+            if index in {2, 3, 4}
+            else "-" * widths[index]
+            for index in range(len(columns))
+        ) + " |"
+        lines = [
+            f"Here are {len(rows)} payroll records{f' {span}' if span else ''}:",
+            header,
+            separator,
+        ]
+        for values in table_rows:
+            lines.append("| " + " | ".join(
+                value.rjust(widths[index])
+                if index in {2, 3, 4}
+                else value.ljust(widths[index])
+                for index, value in enumerate(values)
+            ) + " |")
+        return "\n".join(lines)
+
     def period_label(row: dict[str, Any]) -> str:
         start = as_date(row.get("period_start"))
         end = as_date(row.get("period_end"))
@@ -1829,8 +1935,21 @@ def _result(
             show_table = False
 
     response_text = answer
-    if show_table and intent != "employee_directory":
+    if show_table and intent not in {"employee_directory", "payroll_employees"}:
         response_text = _table_intro(intent, data, period)
+
+    actor = get_actor()
+    subject_id = get_subject()
+    if (
+        intent not in {"access_denied", "unsupported", "unavailable"}
+        and actor is not None
+        and subject_id is not None
+        and subject_id != actor.employee_id
+    ):
+        with agent_engine.connect() as connection:
+            name = lookup_subject_name(connection, subject_id)
+        response_text = _third_person(response_text, name)
+
     if raw_data is None:
         raw_data = data
 
@@ -2561,22 +2680,22 @@ def _answer_status_check(question, normalized_question, plan, period, employee_i
     return _result(question, answer, intent, period, False, rows, result["data"])
 
 
-def is_third_party_request(question: str) -> bool:
-    """True when the question asks about someone other than the logged-in employee."""
+def is_third_party_request(question: str, own_code: str | None = None) -> bool:
     q = question.lower()
     for match in _POSSESSIVE_RE.finditer(q):
         if match.group(1) not in _SELF_POSSESSIVE_EXCLUSIONS:
+            return True
+    for match in _EMPLOYEE_CODE_RE.finditer(question):
+        if own_code is None or match.group(0).upper() != own_code.upper():
             return True
     return bool(_THIRD_PARTY_WORDS_RE.search(q))
 
 
 def should_refuse_third_party_request(question: str) -> bool:
     actor = get_actor()
-    return (
-        get_subject() is None
-        and is_third_party_request(question)
-        and (actor is None or actor.role != SUPER_ADMIN)
-    )
+    if actor is None or actor.role != EMPLOYEE:
+        return False
+    return get_subject() is None and is_third_party_request(question, own_code=_own_code(actor))
 
 
 TEAM_RE = re.compile(
@@ -2888,6 +3007,9 @@ def direct_answer(
         )
 
     actor = get_actor()
+    if actor is not None and _is_all_employee_payroll_query(normalized_question):
+        if actor.role != SUPER_ADMIN:
+            return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
     if actor is not None and is_directory_question(normalized_question):
         if actor.role not in {ADMIN, SUPER_ADMIN}:
             return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
@@ -2959,14 +3081,19 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
     entity = request_entity(normalized_question) if status_target else None
     if entity:
         raw_plan = {"operation_id": f"{entity}.list", "filters": {}}
+
+    if not is_approved_operation(raw_plan.get("operation_id")):
+        fallback_plan = (
+            rule_based_plan(normalized_question)
+            if has_data_concept(normalized_question)
+            else {"operation_id": None, "filters": {}}
+        )
+        if is_approved_operation(fallback_plan.get("operation_id")):
+            raw_plan = fallback_plan
+        elif isinstance(model_error, ModelUnavailableError):
+            raise model_error
+
     logger.debug("operation=%s", raw_plan.get("operation_id"))
-
-    if (
-        not is_approved_operation(raw_plan.get("operation_id"))
-        and isinstance(model_error, ModelUnavailableError)
-    ):
-        raise model_error
-
     return raw_plan
 
 
@@ -3377,38 +3504,42 @@ def execute_and_format(
             organization_id=organization_id,
         )
 
-    if operation_id == "payroll_summary.list":
-        message = _payroll_response(
-            data,
-            period,
-            normalized_question,
+    if operation_id == "payroll_summary.list" and _is_all_employee_payroll_query(normalized_question):
+        rows = data if isinstance(data, list) else []
+        employee_count = len({row.get("employee_code") for row in rows if row.get("employee_code")})
+        span = period_phrase(
+            as_date(period.get("start_date")),
+            as_date(period.get("end_date")),
         )
-        # Specific metric questions return a concise answer without a table.
+        where = f" {span}" if span else ""
+        return _result(
+            question,
+            f"Here are the payroll records for {employee_count} employees{where}.",
+            "payroll_employees",
+            period,
+            bool(rows),
+            rows,
+            raw_data,
+        )
+
+    if operation_id == "payroll_summary.list":
+        message = _payroll_response(data, period, normalized_question)
         asks_specific_metric = bool(
             re.search(
-                r"\b(?:deductions?|deductible|deductibles|"
-                r"tax(?:es)?\s+deducted|"
-                r"deduction\s+amount|"
-                r"deducted(?:\s+(?:amount|from|for))?|"
-                r"net\s+(?:amount|salary|pay|income)|"
-                r"take[- ]home\s+(?:pay|salary|amount)|"
-                r"amount\s+(?:received|credited)|"
-                r"gross\s+(?:amount|salary|pay|earnings)|"
+                r"\b(?:deductions?|deductible|deductibles|tax(?:es)?\s+deducted|"
+                r"deduction\s+amount|deducted(?:\s+(?:amount|from|for))?|"
+                r"net\s+(?:amount|salary|pay|income)|take[- ]home\s+(?:pay|salary|amount)|"
+                r"amount\s+(?:received|credited)|gross\s+(?:amount|salary|pay|earnings)|"
                 r"earnings\s+before\s+deductions)\b",
                 normalized_question.lower(),
             )
-        )
-        show_payroll_table = (
-            isinstance(data, list)
-            and bool(data)
-            and not asks_specific_metric
         )
         return _result(
             question,
             message,
             "payroll_lookup",
             period,
-            show_payroll_table,
+            isinstance(data, list) and bool(data) and not asks_specific_metric,
             data if isinstance(data, list) else [],
             raw_data,
         )

@@ -90,7 +90,7 @@ def test_unrelated_question_does_not_inherit_the_previous_operation():
     ],
 )
 def test_super_admin_can_ask_for_payroll(question):
-    token = set_actor(Actor(1, 1, None, SUPER_ADMIN))
+    token = set_actor(Actor(1, 1, None, SUPER_ADMIN, "EMP001"))
     try:
         assert nodes.supervisor_node({"question": question}) == {
             "request_type": "query"
@@ -100,7 +100,7 @@ def test_super_admin_can_ask_for_payroll(question):
 
 
 def test_non_super_admin_cannot_ask_for_all_employees_payroll():
-    token = set_actor(Actor(11, 1, 2, EMPLOYEE))
+    token = set_actor(Actor(11, 1, 2, EMPLOYEE, "EMP011"))
     try:
         assert nodes.supervisor_node({
             "question": "Show all employees' payroll for September",

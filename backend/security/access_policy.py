@@ -72,6 +72,7 @@ class Actor:
     organization_id: int
     department_id: int | None
     role: str
+    employee_code: str
 
     def __post_init__(self) -> None:
         if self.role not in ROLES:
@@ -108,6 +109,7 @@ def load_actor(connection, employee_id: int, employee_code: str) -> Actor:
         organization_id=row["organization_id"],
         department_id=row["department_id"],
         role=row["role"],
+        employee_code=employee_code,
     )
 
 def authorize_entity(actor: Actor, entity: str) -> str:
