@@ -4,7 +4,11 @@ from typing import Any
 # from sqlalchemy import exc
 from backend.agents.state import ChatState
 from backend.security.access_policy import get_subject
-from backend.services.date_resolver import InvalidDateError
+from backend.services.date_resolver import (
+    InvalidDateError,
+    MONTHS,
+    resolve_date_spec,
+)
 from backend.services.llm_chat_service import (
     UNSUPPORTED_MESSAGE,
     _capture_combined_answers,
@@ -77,6 +81,35 @@ FOLLOWUP_CLARIFY = (
     "'Show my records for November'."
 )
 
+PERIOD_WORDS = {
+    *MONTHS,
+    "and", "at", "between", "current", "during", "first", "for", "from",
+    "in", "last", "month", "of", "on", "past", "previous", "second",
+    "the", "this", "third", "through", "thru", "till", "to", "today",
+    "fourth", "until", "week", "year", "yesterday", "st", "nd", "rd", "th",
+}
+
+
+def _is_period_only_followup(question: str) -> bool:
+    tokens = re.findall(r"[a-z]+|\d+", question.lower())
+    if not tokens or any(
+        not token.isdigit() and token not in PERIOD_WORDS for token in tokens
+    ):
+        return False
+    try:
+        return resolve_date_spec(question, get_current_date()) is not None
+    except InvalidDateError:
+        return True
+
+
+def _is_followup(question: str, last_operation: str | None) -> bool:
+    return bool(FOLLOWUP_RE.search(question)) or (
+        bool(last_operation)
+        and is_approved_operation(last_operation)
+        and _is_period_only_followup(question)
+    )
+
+
 def supervisor_node(state: ChatState) -> dict[str, Any]:
     logger.debug("GRAPH PATH: %s", state["question"])
     question = state["question"]
@@ -87,7 +120,7 @@ def supervisor_node(state: ChatState) -> dict[str, Any]:
     if is_team_question(question) or is_directory_question(question):
         return {"request_type": "query"}
     if not (
-        FOLLOWUP_RE.search(question)
+        _is_followup(question, state.get("last_operation"))
         or (is_read_shape(question) and has_data_concept(question))
         or (has_data_concept(question) and DATE_HINT_RE.search(question))
     ):
@@ -121,8 +154,8 @@ def context_node(state: ChatState) -> dict[str, Any]:
     if direct is not None:
         update["result"] = direct
         return update
-    if FOLLOWUP_RE.search(normalized):
-        last_operation = state.get("last_operation")
+    last_operation = state.get("last_operation")
+    if _is_followup(normalized, last_operation):
         if last_operation and is_approved_operation(last_operation):
             # Reuse the operation the previous answer used; the new period is set by correction.
             update["raw_plan"] = {"operation_id": last_operation, "filters": {}}

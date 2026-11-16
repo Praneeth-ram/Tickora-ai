@@ -1,6 +1,6 @@
 from sqlalchemy import text
 
-SESSION_IDLE_MINUTES = 30
+SESSION_IDLE_MINUTES = 240
 MAX_SESSION_ID_LENGTH = 100
 
 def load_last_topic(engine, employee_id: int, session_id: str) -> str | None:
@@ -29,7 +29,8 @@ def save_last_topic(engine, employee_id: int, session_id: str, topic: str) -> No
                 ON CONFLICT (employee_id, session_id)
                 DO UPDATE SET last_topic = EXCLUDED.last_topic, last_active = now()
             """),
-            {"employee_id": employee_id, "session_id": session_id, "topic": topic[:40]},
+            {"employee_id": employee_id, "session_id": session_id,
+             "topic": topic[:40]},
         )
 
 def purge_expired(engine) -> int:
