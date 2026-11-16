@@ -308,14 +308,6 @@ def execute_query_plan(
 
         payroll_conditions = [
             (
-                f"ps.{preparer.quote('employee_id')} "
-                "= :authenticated_employee_id"
-            ),
-            (
-                f"e.{preparer.quote('id')} "
-                "= :authenticated_employee_id"
-            ),
-            (
                 f"e.{preparer.quote('organization_id')} "
                 "= :authenticated_organization_id"
             ),
@@ -330,10 +322,16 @@ def execute_query_plan(
         ]
 
         payroll_params: dict[str, Any] = {
-            "authenticated_employee_id": employee_id,
             "authenticated_organization_id": organization_id,
             "query_limit": limit,
         }
+
+        if subject is not None:
+            payroll_conditions.append(
+                f"ps.{preparer.quote('employee_id')} "
+                "= :requested_employee_id"
+            )
+            payroll_params["requested_employee_id"] = subject
 
         payroll_scope_clause, payroll_scope_params = scope_clause(
             actor,

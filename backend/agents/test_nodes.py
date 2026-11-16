@@ -4,6 +4,13 @@ import pytest
 
 from backend.agents import nodes
 from backend.agents.graph import get_chat_graph
+from backend.security.access_policy import (
+    Actor,
+    EMPLOYEE,
+    SUPER_ADMIN,
+    reset_actor,
+    set_actor,
+)
 from backend.services import chat_memory
 
 
@@ -73,6 +80,33 @@ def test_unrelated_question_does_not_inherit_the_previous_operation():
         "question": "is 2026 a leap year?",
         "last_operation": "leave_request.list",
     }) == {"request_type": "out_of_scope"}
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Show EMP011's payroll for this year",
+        "Show all employees' payroll for September",
+    ],
+)
+def test_super_admin_can_ask_for_payroll(question):
+    token = set_actor(Actor(1, 1, None, SUPER_ADMIN))
+    try:
+        assert nodes.supervisor_node({"question": question}) == {
+            "request_type": "query"
+        }
+    finally:
+        reset_actor(token)
+
+
+def test_non_super_admin_cannot_ask_for_all_employees_payroll():
+    token = set_actor(Actor(11, 1, 2, EMPLOYEE))
+    try:
+        assert nodes.supervisor_node({
+            "question": "Show all employees' payroll for September",
+        }) == {"request_type": "third_party"}
+    finally:
+        reset_actor(token)
 
 
 def test_invalid_date_is_reported_by_chat_graph(monkeypatch):

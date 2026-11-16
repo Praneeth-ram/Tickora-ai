@@ -12,7 +12,9 @@ from backend.security.access_policy import (
     EMPLOYEE,
     SUPER_ADMIN,
     reset_actor,
+    reset_subject,
     set_actor,
+    set_subject,
 )
 from unittest.mock import MagicMock, patch
 
@@ -517,4 +519,77 @@ def test_task_name_filter_uses_role_scope_not_authenticated_employee(
     assert "authenticated_employee_id" not in str(generated_sql)
     assert parameters["assigned_to_employee_id"] == 12
     for key, value in expected_scope_params.items():
+        assert parameters[key] == value
+
+
+@pytest.mark.parametrize(
+    ("actor", "subject_id", "expected_sql", "expected_params"),
+    [
+        (
+            Actor(1, 1, 1, SUPER_ADMIN),
+            None,
+            "actor_organization_id",
+            {"actor_organization_id": 1},
+        ),
+        (
+            Actor(1, 1, 1, SUPER_ADMIN),
+            11,
+            "requested_employee_id",
+            {"actor_organization_id": 1, "requested_employee_id": 11},
+        ),
+        (
+            Actor(2, 1, 2, ADMIN),
+            None,
+            "actor_employee_id",
+            {"actor_employee_id": 2},
+        ),
+    ],
+)
+def test_payroll_query_uses_authorized_row_scope(
+    actor, subject_id, expected_sql, expected_params
+):
+    registry = {
+        "payroll_summary.list": {
+            "entity": "payroll_summary",
+            "table": "payroll_summaries",
+            "operation": "list",
+            "fields": [
+                "period_start",
+                "period_end",
+                "gross_amount",
+                "deduction_amount",
+                "net_amount",
+                "currency",
+            ],
+            "filters": ["period_start", "period_end"],
+        }
+    }
+    engine = create_engine("sqlite://")
+    connection = MagicMock()
+    connection.execute.return_value.mappings.return_value.all.return_value = []
+    engine.begin = MagicMock()
+    engine.begin.return_value.__enter__.return_value = connection
+    actor_token = set_actor(actor)
+    subject_token = set_subject(subject_id) if subject_id is not None else None
+
+    try:
+        with patch(
+            "backend.services.dynamic_query_service.build_operation_registry",
+            return_value=registry,
+        ):
+            execute_query_plan(
+                {"operation_id": "payroll_summary.list", "filters": {}},
+                employee_id=actor.employee_id,
+                organization_id=actor.organization_id,
+                db_engine=engine,
+            )
+    finally:
+        if subject_token is not None:
+            reset_subject(subject_token)
+        reset_actor(actor_token)
+
+    generated_sql, parameters = connection.execute.call_args.args
+    assert expected_sql in str(generated_sql)
+    assert "authenticated_employee_id" not in str(generated_sql)
+    for key, value in expected_params.items():
         assert parameters[key] == value

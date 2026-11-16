@@ -38,7 +38,12 @@ from backend.services.leave_balance_answer import (
     is_leave_balance_question,
     match_leave_type,
 )
-from backend.security.access_policy import ADMIN, SUPER_ADMIN, REFUSAL_MESSAGE, get_actor
+from backend.security.access_policy import (
+    ADMIN,
+    SUPER_ADMIN,
+    REFUSAL_MESSAGE,
+    get_actor,
+)
 from backend.services.dynamic_query_service import (
     TEAM_SUMMARY_LIMIT,
     execute_team_summary,
@@ -2564,6 +2569,16 @@ def is_third_party_request(question: str) -> bool:
             return True
     return bool(_THIRD_PARTY_WORDS_RE.search(q))
 
+
+def should_refuse_third_party_request(question: str) -> bool:
+    actor = get_actor()
+    return (
+        get_subject() is None
+        and is_third_party_request(question)
+        and (actor is None or actor.role != SUPER_ADMIN)
+    )
+
+
 TEAM_RE = re.compile(
     r"\b(?:team|teams|department|departments|everyone|everybody|"
     r"all\s+employees|organi[sz]ation)\b",
@@ -2762,7 +2777,7 @@ def supervisor(question: str) -> str:
     if is_team_question(question) or is_directory_question(question):
         return "query"
     """Route the request: 'third_party' is refused, everything else continues."""
-    if get_subject() is None and is_third_party_request(question):
+    if should_refuse_third_party_request(question):
         return "third_party"
     return "query"
 

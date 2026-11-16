@@ -3,7 +3,6 @@ from typing import Any
 
 # from sqlalchemy import exc
 from backend.agents.state import ChatState
-from backend.security.access_policy import get_subject
 from backend.services.date_resolver import (
     InvalidDateError,
     MONTHS,
@@ -22,9 +21,9 @@ from backend.services.llm_chat_service import (
     is_approved_operation,
     is_directory_question,
     is_team_question,
-    is_third_party_request,
     plan_question,
     resolve_context,
+    should_refuse_third_party_request,
     split_compound_question,
     validate_plan,
     yes_no_status,
@@ -127,7 +126,7 @@ def supervisor_node(state: ChatState) -> dict[str, Any]:
         return {"request_type": "out_of_scope"}
     if len(split_compound_question(question)) > 1:
         return {"request_type": "compound"}
-    if get_subject() is None and is_third_party_request(question):
+    if should_refuse_third_party_request(question):
         return {"request_type": "third_party"}
     return {"request_type": "query"}
 
