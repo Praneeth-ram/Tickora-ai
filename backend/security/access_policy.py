@@ -58,7 +58,7 @@ ENTITY_RULES = {
 OWNER_COLUMNS = {"task": "assigned_to_employee_id"}
 
 # Fields only a super admin may read.
-SUPER_ADMIN_ONLY_FIELDS = frozenset({"performance_score", "remarks"})
+SUPER_ADMIN_ONLY_FIELDS = frozenset({"remarks"})
 
 class AccessDenied(Exception):
     """The actor's role does not allow the requested data."""

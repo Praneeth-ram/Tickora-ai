@@ -43,6 +43,11 @@ GREETING_RE = re.compile(
     re.IGNORECASE,
 )
 
+GREETING_EXTRA_RE = re.compile(
+    r"^\s*(?:thanks|thank you|bye|goodbye|help|what can you do)[!.?\s]*$",
+    re.IGNORECASE,
+)
+
 RETRIEVAL_OPENER_RE = re.compile(
     r"^\s*(?:what|which|who|when|where|how|why|is|are|was|were|do|does|did|"
     r"have|has|can\s+i|could\s+i|show|list|display|give\s+me|get|"
@@ -63,13 +68,19 @@ DATA_CONCEPT_RE = re.compile(
     r"holidays?|timesheets?|tasks?|payroll|pay|paid|salary|salaries|net|gross|"
     r"payslips?|payslip|deductions?|deducted|loans?|installments?|schedule|"
     r"performance\s+score|status|pending|approved|rejected|submitted|draft|"
-    r"records?|requests?|apply|applied|credited)\b",
+    r"records?|requests?|apply|applied|credited|office|miss|days?|"
+    r"half[- ]days?|diwali|festival|holiday)\b",
     re.IGNORECASE,
 )
 
 WRITE_RE = re.compile(
     r"^\s*(?:(?:please|can you|could you|would you|i want to|i need to)\s+)*"
     r"(?:delete|remove|cancel|update|change|edit|modify|approve|reject|submit|apply|create|add)\b",
+    re.IGNORECASE,
+)
+
+CREATIVE_RE = re.compile(
+    r"\b(?:poem|poetry|story|stories|joke|song|essay|limerick|haiku|rap)\b",
     re.IGNORECASE,
 )
 
@@ -119,14 +130,15 @@ def _is_followup(question: str, last_operation: str | None) -> bool:
         and _is_period_only_followup(question)
     )
 
-
 def supervisor_node(state: ChatState) -> dict[str, Any]:
     logger.debug("GRAPH PATH: %s", state["question"])
-    question = state["question"]
-    if GREETING_RE.fullmatch(question):
+    question = resolve_context(state["question"])
+    if GREETING_RE.fullmatch(question) or GREETING_EXTRA_RE.fullmatch(question):
         return {"request_type": "greeting"}
     if WRITE_RE.search(question):
         return {"request_type": "write_request"}
+    if CREATIVE_RE.search(question):
+        return {"request_type": "out_of_scope"}
     actor = get_actor()
     if (
         actor is not None

@@ -58,7 +58,7 @@ DEFAULT_TIMEZONE = os.getenv("APP_TIMEZONE", os.getenv("TICKORA_TIMEZONE", "Asia
 
 UNSUPPORTED_MESSAGE = (
     "I can answer questions about your attendance, leave, work-from-home requests, "
-    "holidays, and timesheets. Please ask about one of these."
+    "holidays, timesheets, tasks, payroll, and loans. Please ask about one of these."
 )
 
 OPERATION_DATE_FIELDS = {
@@ -729,6 +729,15 @@ def normalize_and_correct_plan(
         normalized["operation_id"] = op_id
         for key in ("group_by_field", "aggregate_function", "aggregate_field", "fields"):
             normalized.pop(key, None)
+
+    is_half_day_query = bool(re.search(r"\bhalf[- ]days?\b", q))
+    if is_half_day_query and re.search(r"\b(?:how\s+many|count|number\s+of)\b", q):
+        op_id = "attendance.count"
+        normalized["operation_id"] = op_id
+        for key in ("group_by_field", "aggregate_function", "aggregate_field", "fields"):
+            normalized.pop(key, None)
+        normalized.setdefault("filters", {})
+        normalized["filters"]["status"] = "half_day"
     
         # Correct task routing independently of the model's initial choice.
     valid_statuses_by_entity = {
@@ -3035,6 +3044,33 @@ def direct_answer(
         )
         result["operation_id"] = "leave_balance.list"
         return result
+
+    if re.search(
+        r"\b(?:start|begin)\s+(?:time|work|my\s+shift)\b|\bshift\s+(?:start|time)\b",
+        normalized_question,
+        re.IGNORECASE,
+    ):
+        sched = _execute(
+            {"operation_id": "work_schedule.list", "filters": {}},
+            employee_id,
+            limit=10,
+            organization_id=organization_id,
+        )
+        rows = sched["data"] if isinstance(sched["data"], list) else []
+        start_value = rows[0].get("shift_start") if rows else None
+        if start_value:
+            answer = f"Your shift starts at {start_value}."
+        else:
+            answer = "I couldn't find a work schedule for you."
+        return _result(
+            question,
+            answer,
+            "schedule_lookup",
+            {"start_date": None, "end_date": None},
+            False,
+            rows,
+            sched["data"],
+        )
 
     return None
 
