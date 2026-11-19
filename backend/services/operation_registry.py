@@ -627,11 +627,13 @@ def build_operation_registry(
 
     return registry
 
-
+from backend.services.payload.entities import registry_for_role
 def get_model_catalog(
     registry: dict[str, dict[str, Any]],
+    role: str,
 ) -> list[dict[str, Any]]:
-    """Expose approved capabilities, not unrestricted schema metadata."""
+    """Expose approved capabilities for one role, not unrestricted schema metadata."""
+    allowed = registry_for_role(registry, role)
     return [
         {
             "operation_id": operation_id,
@@ -643,5 +645,5 @@ def get_model_catalog(
             "aggregate_fields": definition.get("aggregate_fields", []),
             "group_by_fields": definition.get("group_by_fields", []),
         }
-        for operation_id, definition in sorted(registry.items())
+        for operation_id, definition in sorted(allowed.items())
     ]

@@ -327,6 +327,12 @@ def execute_query_plan(
             ),
         ]
 
+        if actor.role != SUPER_ADMIN or plan.get("scope") != "org":
+            payroll_conditions.append(
+                f"ps.{preparer.quote('employee_id')} = :authenticated_employee_id"
+            )
+            payroll_params["authenticated_employee_id"] = employee_id
+
         payroll_params: dict[str, Any] = {
             "authenticated_organization_id": organization_id,
             "query_limit": limit,
@@ -808,19 +814,22 @@ def execute_query_plan(
         loan_conditions = [
             (
                 f"{loan_alias}.{preparer.quote('organization_id')} "
-                "= :authenticated_organization_id"
+                    "= :authenticated_organization_id"
             ),
-            (
-                f"{loan_alias}.{preparer.quote('employee_id')} "
-                "= :authenticated_employee_id"
-            ),
+            
         ]
 
         loan_params: dict[str, Any] = {
             "authenticated_organization_id": organization_id,
-            "authenticated_employee_id": employee_id,
             "query_limit": limit,
         }
+
+        if actor.role != SUPER_ADMIN or plan.get("scope") != "org":
+            loan_conditions.append(
+                f"{loan_alias}.{preparer.quote('employee_id')} "
+                "= :authenticated_employee_id"
+            )
+            loan_params["authenticated_employee_id"] = employee_id
 
         loan_scope_clause, loan_scope_params = scope_clause(
             actor,
@@ -1230,13 +1239,17 @@ def execute_query_plan(
             params.update(clause_params)
 
     if definition["entity"] not in {"holiday", "leave_type"}:
-        conditions.append(
-            f"{preparer.quote(owner_column(definition['entity']))} "
-            "= :self_employee_id"
+        skip_self_filter = (
+            definition["entity"] == "loan_request"
+            and actor.role == SUPER_ADMIN
+            and plan.get("scope") == "org"
         )
-        params["self_employee_id"] = employee_id
-
-        # Enforce access scope using authenticated identity.
+        if not skip_self_filter:
+            conditions.append(
+                f"{preparer.quote(owner_column(definition['entity']))} "
+                "= :self_employee_id"
+            )
+            params["self_employee_id"] = employee_id
     elif definition["scope"] == "organization_read":
         if organization_id is None:
             raise QueryPlanError(

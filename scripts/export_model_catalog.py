@@ -7,7 +7,7 @@ from backend.services.operation_registry import (
 )
 
 registry = build_operation_registry()
-catalog = get_model_catalog(registry)
+catalog = get_model_catalog(registry, role="super_admin")
 
 output = Path("data/model_catalog.json")
 output.parent.mkdir(parents=True, exist_ok=True)

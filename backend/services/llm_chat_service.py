@@ -21,6 +21,8 @@ from backend.services.answer_builder import (
 )
 from backend.services.date_resolver import InvalidDateError, resolve_date_spec, resolve_discrete_dates
 from backend.services.dynamic_query_service import QueryPlanError, execute_query_plan
+from backend.services.model_inference import fingerprint
+from backend.services.model_errors import ModelServiceError, ModelUnavailableError, PlanRejectedError
 from backend.services.request_answer_builder import (
     as_date,
     holiday_answer,
@@ -97,7 +99,12 @@ WORK_LOCATION_RE = re.compile(
     r"where\s+was\s+i\s+working)\b",
     re.IGNORECASE,
 )
-_SELF_REFERENCE_RE = re.compile(r"\b(?:my|mine|myself)\b", re.IGNORECASE)
+_SELF_REFERENCE_RE = re.compile(
+    r"\b(?:my|mine|myself|me)\b"
+    r"|\b(?:do|did|have|had|can|could|would|should|am|was)\s+i\b"
+    r"|\bi\s+(?:have|had|am|was|owe|need|want)\b",
+    re.IGNORECASE,
+)
 PAYROLL_IDENTIFIED_FIELDS = [
     "employee_code",
     "employee_name",
@@ -158,18 +165,20 @@ _THIRD_PARTY_WORDS_RE = re.compile(
     r"\b(?:his|her|their|someone|somebody|colleague|colleagues|team|manager|employee|employees|another\s+employee)\b"
 )
 
+OTHER_ENTITY_RE = re.compile(
+    r"\b(?:loans?|leaves?|wfh|work\s+from\s+home|timesheets?|tasks?|"
+    r"payroll|salary|holidays?|performance)\b",
+    re.IGNORECASE,
+)
 
-class ModelServiceError(RuntimeError):
-    """Raised when a question cannot be answered from the query plan."""
-
-
-class ModelUnavailableError(ModelServiceError):
-    """The model server cannot be reached or timed out."""
-
-
-class PlanRejectedError(ModelServiceError):
-    """The model server responded, but could not turn the question into a supported plan."""
-
+def is_team_question(question: str) -> bool:
+    if _HOLIDAY_RE.search(question.lower()):
+        return False
+    if _PAYROLL_RE.search(question):
+        return False
+    if OTHER_ENTITY_RE.search(question):
+        return False
+    return bool(TEAM_RE.search(question))
 
 def get_current_date() -> date:
     try:
@@ -221,6 +230,20 @@ def _is_all_employee_payroll_query(question: str) -> bool:
 
 def _is_self_reference_question(question: str) -> bool:
     return bool(_SELF_REFERENCE_RE.search(question))
+
+ORG_WORDING_RE = re.compile(
+    r"\b(?:all|every|each|everyone|everybody|organi[sz]ation|company|"
+    r"team|department|employees?)\b",
+    re.IGNORECASE,
+)
+
+def query_scope(question: str, actor) -> str:
+    """'org' only for a super admin who asks about the organization; otherwise 'own'."""
+    if actor is None or actor.role != SUPER_ADMIN:
+        return "own"
+    if _is_self_reference_question(question):
+        return "own"
+    return "org" if ORG_WORDING_RE.search(question) else "own"
 
 
 _WFH_RE = re.compile(r"\bwfh\b|\bwork\s+from\s+home\b")
@@ -1025,6 +1048,16 @@ def normalize_and_correct_plan(
             op_id in {"attendance.group_by", "task.group_by"}
             and normalized.get("group_by_field") == "status"
         ):
+            normalized["scope"] = query_scope(question, get_actor())
+            if op_id.startswith("loan_request."):
+                context = identity_filters.get("employee_id")
+                if context and normalized["scope"] == "own":
+                    filters.pop("managed_by_employee_id", None)
+                    filters["employee_id"] = {"$context": context}
+                else:
+                    filters.pop("employee_id", None)
+                    filters.pop("managed_by_employee_id", None)
+
             if op_id.startswith("loan_request."):
                 filters.pop("status", None)
                 filters["loan_status"] = explicit_status
@@ -1048,13 +1081,16 @@ def normalize_and_correct_plan(
     if is_attended_query:
         filters.pop("status", None)
 
-    # Resolve Loan Request identity from the authenticated employee.
-    # Default loan queries refer to the employee's own requests.
+    # Apply the resolved scope before executing a loan request query.
     if op_id.startswith("loan_request."):
+        normalized["scope"] = query_scope(question, get_actor())
         context = identity_filters.get("employee_id")
-        if context:
+        if context and normalized["scope"] == "own":
             filters.pop("managed_by_employee_id", None)
             filters["employee_id"] = {"$context": context}
+        else:
+            filters.pop("employee_id", None)
+            filters.pop("managed_by_employee_id", None)
 
     if op_id.startswith("task."):
         identity_field = _task_identity_filter(q)
@@ -1206,6 +1242,7 @@ def count_response(
     span: str,
     filters: dict[str, Any] | None = None,
     question: str = "",
+    scope: str | None = None,
 ) -> str:
     """Generate a meaningful count response from the query result and filters."""
 
@@ -1269,14 +1306,31 @@ def count_response(
         return (
             f"You are managing {count} {description}{where}."
         )
+    
+    actor = get_actor()
+    if (
+        entity == "loan_request"
+        and actor is not None
+        and actor.role == SUPER_ADMIN
+        and (
+            scope == "org"
+            or (scope is None and "employee_id" not in filters)
+        )
+    ):
+        if count == 0:
+            return f"No {plural} were found in your organization{where}."
+        return f"There are {count} {description} in your organization{where}."
 
     # Handle normal personal Loan Request counts.
     employee_filter = filters.get("employee_id")
     is_personal_loan_query = (
         entity == "loan_request"
-        and employee_filter == {"$context": "employee_id"}
+        and (
+            scope == "own"
+            or employee_filter == {"$context": "employee_id"}
+        )
     )
-
+    
     if is_personal_loan_query:
         if count == 0:
             return f"You have no {description}{where}."
@@ -2728,6 +2782,12 @@ TEAM_RE = re.compile(
     r"all\s+employees|organi[sz]ation)\b",
     re.IGNORECASE,
 )
+TEAM_ATTENDANCE_RE = re.compile(
+    r"\b(?:attendance|present|absent|late|half[- ]days?|"
+    r"clock[- ]?(?:in|out)|check[- ]?(?:in|out)|punch(?:es|ed)?|"
+    r"overtime|worked\s+(?:hours|days))\b",
+    re.IGNORECASE,
+)
 
 
 def is_team_question(question: str) -> bool:
@@ -2737,7 +2797,7 @@ def is_team_question(question: str) -> bool:
     # Salary and payroll questions are never team attendance views.
     if _PAYROLL_RE.search(question):
         return False
-    return bool(TEAM_RE.search(question))
+    return bool(TEAM_RE.search(question) and TEAM_ATTENDANCE_RE.search(question))
 
 def team_attendance_result(
     question: str,
@@ -3106,10 +3166,12 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
     from backend.services.model_inference import fingerprint
 
     model_error: ModelServiceError | None = None
+    actor = get_actor()
+    role = actor.role if actor else "anonymous"
     plan_cache_key = cache.plan_key(
         normalized_question,
         get_current_date().isoformat(),
-        str(fingerprint()),
+        f"{role}|{fingerprint()}",
     )
 
     if _is_payroll_query(normalized_question):
@@ -3138,6 +3200,14 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
     entity = request_entity(normalized_question) if status_target else None
     if entity:
         raw_plan = {"operation_id": f"{entity}.list", "filters": {}}
+
+    registry = build_operation_registry(schema_name="public")
+    requested_entity = _registered_entity_mentioned(normalized_question, registry)
+    if requested_entity:
+        operation = "count" if _COUNT_RE.search(normalized_question) else "list"
+        operation_id = f"{requested_entity}.{operation}"
+        if operation_id in registry:
+            raw_plan = {**raw_plan, "operation_id": operation_id}
 
     if not is_approved_operation(raw_plan.get("operation_id")):
         fallback_plan = (
@@ -3352,6 +3422,14 @@ def run_llm_chat(
             )
         return _text_result(question, UNSUPPORTED_MESSAGE, intent="unsupported")
 
+    from backend.services.payload.entities import can_access_entity
+
+    actor = get_actor()
+    entity = raw_plan["operation_id"].split(".", 1)[0]
+    if actor is not None and not can_access_entity(entity, actor.role):
+        logger.warning("Blocked %s for role %s", entity, actor.role)
+        return _text_result(question, REFUSAL_MESSAGE, intent="access_denied")
+
     try:
         plan, period = correct_plan(
             raw_plan, question, normalized_question, employee_id, organization_id, today,
@@ -3507,8 +3585,9 @@ def execute_and_format(
                 status=status_filter,
                 span=span,
                 filters=plan.get("filters", {}),
-        question=normalized_question,
-    )
+                question=normalized_question,
+                scope=plan.get("scope"),
+            )
         return _result(question, answer, intent, period, False, data, raw_data)
 
     if operation == "group_by":

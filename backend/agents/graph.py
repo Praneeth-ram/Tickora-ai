@@ -56,6 +56,7 @@ def get_chat_graph():
         {
             "ok": "execution",
             "invalid": "controlled_error",
+            "access_denied": END,
         },
     )
 

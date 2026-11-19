@@ -258,6 +258,40 @@ def test_loan_start_month_filter_expands_iso_month_to_valid_date_range():
     assert parameters["loan_start_month_lte"].isoformat() == "2026-10-31"
 
 
+def test_super_admin_organization_loan_count_uses_organization_scope():
+    plan = {
+        "operation_id": "loan_request.count",
+        "scope": "org",
+        "filters": {},
+    }
+    schema, engine, connection = loan_query_setup()
+    connection.execute.return_value.mappings.return_value.all.return_value = [
+        {"record_count": 2}
+    ]
+    token = set_actor(Actor(1, 1, None, SUPER_ADMIN))
+    try:
+        with patch(
+            "backend.services.operation_registry.discover_schema",
+            return_value=schema,
+        ):
+            result = execute_query_plan(
+                plan,
+                employee_id=1,
+                organization_id=1,
+                db_engine=engine,
+            )
+    finally:
+        reset_actor(token)
+
+    generated_sql, parameters = connection.execute.call_args.args
+    sql = str(generated_sql)
+    assert result["data"] == {"count": 2}
+    assert "IN (SELECT e.id" in sql
+    assert "e.organization_id = :actor_organization_id" in sql
+    assert "self_employee_id" not in parameters
+    assert parameters["actor_organization_id"] == 1
+
+
 def test_loan_date_filter_accepts_a_single_day():
     plan = {
         "operation_id": "loan_request.list",

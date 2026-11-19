@@ -32,6 +32,11 @@ def test_admin_loans_are_own_only():
     assert sql == "employee_id = :actor_employee_id"
 
 
+def test_employee_loans_are_own_only():
+    sql, _ = scope_clause(actor(EMPLOYEE), "loan_request", "employee_id")
+    assert sql == "employee_id = :actor_employee_id"
+
+
 def test_super_admin_payroll_is_organization_wide():
     sql, params = scope_clause(actor(SUPER_ADMIN), "payroll_summary", "employee_id")
     assert "organization_id = :actor_organization_id" in sql

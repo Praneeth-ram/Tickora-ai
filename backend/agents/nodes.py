@@ -204,11 +204,25 @@ def route_after_context(state: ChatState) -> str:
 def planning_node(state: ChatState) -> dict[str, Any]:
     return {"raw_plan": plan_question(state["normalized_question"])}
 
-
+from backend.security.access_policy import get_actor
+from backend.services.payload.entities import can_access_entity
 def correction_node(state: ChatState) -> dict[str, Any]:
-    if not is_approved_operation(state["raw_plan"].get("operation_id")):
-        logger.warning("Plan operation not approved: %r", state["raw_plan"].get("operation_id"))
+    raw_operation = state["raw_plan"].get("operation_id")
+
+    if not is_approved_operation(raw_operation):
+        logger.warning("Plan operation not approved: %r", raw_operation)
         return {"status": "invalid", "clarification": None}
+
+    actor = get_actor()
+    raw_entity = str(raw_operation or "").split(".", 1)[0]
+    if actor is not None and not can_access_entity(raw_entity, actor.role):
+        logger.warning("Blocked %s for role %s before correction", raw_entity, actor.role)
+        return {
+            "status": "access_denied",
+            "clarification": None,
+            "result": _text_result(state["question"], REFUSAL_MESSAGE, "access_denied"),
+        }
+
     try:
         plan, period = correct_plan(
             state["raw_plan"], state["question"], state["normalized_question"],
@@ -229,6 +243,10 @@ def correction_node(state: ChatState) -> dict[str, Any]:
     return {"plan": plan, "period": period, "status": status, "clarification": reason}
 
 def execution_node(state: ChatState) -> dict[str, Any]:
+    actor = get_actor()
+    entity = str(state["plan"].get("operation_id", "")).split(".", 1)[0]
+    if actor is not None and not can_access_entity(entity, actor.role):
+        return {"result": _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")}
     try:
         result = execute_and_format(
             state["question"], state["normalized_question"], state["plan"], state["period"],

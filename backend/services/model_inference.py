@@ -18,7 +18,7 @@ from contextlib import contextmanager
 import re as regex
 import re
 
-from backend.services.llm_chat_service import ModelUnavailableError, PlanRejectedError
+from backend.services.model_errors import ModelUnavailableError, PlanRejectedError
 from backend.services.operation_registry import build_operation_registry
 from backend.security.access_policy import set_model_fingerprint
 
