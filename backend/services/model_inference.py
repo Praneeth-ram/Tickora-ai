@@ -16,6 +16,7 @@ from typing import Any
 import time
 from contextlib import contextmanager
 import re as regex
+import re
 
 from backend.services.llm_chat_service import ModelUnavailableError, PlanRejectedError
 from backend.services.operation_registry import build_operation_registry
@@ -272,7 +273,25 @@ def generate_plan(question: str) -> dict[str, Any]:
         raise ModelUnavailableError("The Tickora language model is temporarily unavailable.")
 
     import torch
+    from backend.services.text_normalizer import correct_typos
 
+    OUT_OF_SCOPE_RE = re.compile(
+        r"\b(?:write|poem|story|joke|song|recipe|weather|capital|ceo|news)\b",
+        re.IGNORECASE,
+    )
+    HR_TERMS_RE = re.compile(
+        r"\b(?:attendance|attend\w*|absen\w*|present\w*|late|leave|wfh|"
+        r"work\s+from\s+home|timesheet\w*|holiday\w*|payroll|salary|loan|task\w*|"
+        r"clock\w*|check[- ]?(?:in|out)|punch\w*|hours?|hrs?|minutes?|overtime|"
+        r"days?|status|work\w*|location|off)\b",
+        re.IGNORECASE,
+    )
+    checked = correct_typos(question)
+
+    if OUT_OF_SCOPE_RE.search(checked) or not HR_TERMS_RE.search(checked):
+        logger.debug("Question is outside HR attendance scope: %r", question)
+        raise PlanRejectedError("I couldn't turn that question into a supported query.")
+    
     tokenizer = _state["tokenizer"]
     model = _state["model"]
     catalog = _state["catalog"]
@@ -325,7 +344,7 @@ def generate_plan(question: str) -> dict[str, Any]:
         generated_tokens.shape[0],
         answer,
     )
-
+    logger.debug("raw model output for %r: %s", question, answer)
     rejected = "I couldn't turn that question into a supported query."
     try:
         plan = json.loads(answer)

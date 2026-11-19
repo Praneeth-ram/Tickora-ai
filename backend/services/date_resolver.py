@@ -314,11 +314,11 @@ def resolve_date_spec(question: str, today: date) -> DateSpec | None:
         return DateSpec(s, s + timedelta(days=6), "week")
     if re.search(r"\bthis\s+month\b", q):
         s, e = _month_bounds(today.year, today.month)
-        return DateSpec(s, e, "month")
+        return DateSpec(s, min(e, today), "month")
     if re.search(r"\blast\s+month\b", q):
         prev = today.replace(day=1) - timedelta(days=1)
         s, e = _month_bounds(prev.year, prev.month)
-        return DateSpec(s, e, "month")
+        return DateSpec(s, min(e, today), "month")
     if re.search(r"\b(?:this|current)\s+year\b", q):
         return DateSpec(date(today.year, 1, 1), date(today.year, 12, 31), "year")
     if re.search(r"\blast\s+year\b", q):

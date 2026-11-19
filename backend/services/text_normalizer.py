@@ -45,26 +45,26 @@ _MIN_SIMILARITY = 0.8
 
 
 def _best_match(word: str) -> str | None:
+    threshold = 0.85 if len(word) <= 3 else _MIN_SIMILARITY
     best, best_score = None, 0.0
     for candidate in _VOCABULARY:
         if len(candidate) < 3:
             continue
         if sorted(candidate) == sorted(word):
-            return candidate  # letters swapped, e.g. "wrok" -> "work"
+            return candidate
         score = difflib.SequenceMatcher(None, word, candidate).ratio()
         if score > best_score:
             best, best_score = candidate, score
-    return best if best_score >= _MIN_SIMILARITY else None
+    return best if best_score >= threshold else None
 
 
 def correct_typos(question: str) -> str:
-    """Correct misspelled words that are close to a known word. Other text is unchanged."""
     def fix(match: re.Match) -> str:
         word = match.group(0)
         lower = word.lower()
-        if len(lower) < 4 or lower in _VOCABULARY:
+        if len(lower) < 3 or lower in _VOCABULARY:
             return word
         if any(lower.rstrip("s") == known.rstrip("s") for known in _VOCABULARY):
-            return word  # plural or singular of a known word, e.g. "times"
+            return word
         return _best_match(lower) or word
     return _WORD.sub(fix, question)

@@ -121,7 +121,7 @@ SUM_QUESTION_RE = re.compile(
     r"\b(?:total\s+(?:worked\s+)?(?:minutes|hours|time)|how\s+much\s+overtime|"
     r"total\s+overtime|sum\s+of\s+(?:worked\s+)?minutes|calculate\s+(?:my\s+)?total\s+worked|"
     r"how\s+many\s+(?:hours|minutes)|hours\s+(?:did\s+i\s+|i\s+)?(?:have\s+)?work(?:ed)?|"
-    r"worked\s+hours|working\s+hours)\b"
+    r"worked\s+hours|working\s+hours|overtime)\b"
 )
 ATTENDED_STATUSES = {"PRESENT": "present", "LATE": "late", "HALF_DAY": "half day"}
 ATTENDED_RE = re.compile(
@@ -660,16 +660,23 @@ def normalize_and_correct_plan(
     normalized.pop("aggregate_function", None)
 
     if asks_work_location:
-        op_id = "attendance.list"
-        normalized["operation_id"] = op_id
-        for key in ("group_by_field", "aggregate_function", "aggregate_field"):
-            normalized.pop(key, None)
+        if re.search(r"\b(?:breakdown|group(?:ed)?|by)\b", q):
+            op_id = "attendance.group_by"
+            normalized.update({"operation_id": op_id, "group_by_field": "work_location",
+                               "aggregate_function": "count"})
+        else:
+            op_id = "attendance.list"
+            normalized["operation_id"] = op_id
+            for key in ("group_by_field", "aggregate_function", "aggregate_field"):
+                normalized.pop(key, None)
 
     is_summary_query = bool(
         re.search(
             r"\b(?:attendance\s+summary|summary\s+of\s+(?:my\s+)?attendance|"
             r"attendance\s+breakdown|breakdown\s+of\s+(?:my\s+)?attendance|"
-            r"attendance\s+status(?:es)?\s+overview)\b",
+            r"attendance\s+status(?:es)?\s+overview|"
+            r"(?:attendance|status)\s+(?:breakdown|overview)|"
+            r"status\s+breakdown)\b",
             q,
         )
         or ("attendance" in q and "summary" in q and "timesheet" not in q)
@@ -707,6 +714,12 @@ def normalize_and_correct_plan(
         normalized["operation_id"] = op_id
         normalized["aggregate_field"] = "overtime_minutes" if "overtime" in q else "worked_minutes"
         for key in ("group_by_field", "aggregate_function", "fields"):
+            normalized.pop(key, None)
+
+    if re.search(r"\bon\s+leave\b", q) and not re.search(r"\bleave\s+requests?\b|\bapplied\b", q):
+        op_id = "attendance.count"
+        normalized["operation_id"] = op_id
+        for key in ("group_by_field", "aggregate_function", "aggregate_field", "fields"):
             normalized.pop(key, None)
 
     is_count_query = bool(re.search(r"\b(?:how\s+many|count|number\s+of)\b", q))
@@ -751,13 +764,16 @@ def normalize_and_correct_plan(
         },
     }
     status_keywords = {
-        "late": "late", "absent": "absent", "present": "present",
-        "half day": "half_day", "half-day": "half_day", "pending": "pending",
-        "approved": "approved", "rejected": "rejected", "cancelled": "cancelled",
-        "active": "active",
+        "late": "late", "absent": "absent", "absences": "absent", "absence": "absent",
+        "present": "present",
+        "half days": "half_day", "half day": "half_day", "half-day": "half_day",
+        "half-days": "half_day",
+        "on leave": "on_leave",
+        "pending": "pending", "approved": "approved", "rejected": "rejected",
+        "cancelled": "cancelled", "active": "active",
         "draft": "draft", "submitted": "submitted",
-        "in progress": "in_progress","completed": "completed"
-    }
+        "in progress": "in_progress", "completed": "completed",
+        }
 
     is_task_query = bool(re.search(r"\btasks?\b", q))
     task_statuses = {
@@ -775,7 +791,7 @@ def normalize_and_correct_plan(
     # classification. Entity and table names come from the approved registry.
     requested_entity = _registered_entity_mentioned(question, registry)
     if requested_entity:
-        grouped_request = bool(
+        grouped_request = is_summary_query or bool(re.search(r"\b(?:breakdown|break\s+down)\b", q)) or bool(
             re.search(
                 r"\b(?:group(?:ed)?|breakdown|break\s+down|"
                 r"categorize|category)\b",
@@ -1084,7 +1100,7 @@ def normalize_and_correct_plan(
                 }
     elif date_range is None and op_id in DEFAULT_MONTH_OPERATIONS:
         start = today.replace(day=1)
-        end = _last_day_of_month(start)
+        end = min(_last_day_of_month(start), today)
         date_range = (start, end)
         filters[date_field] = {"gte": start.isoformat(), "lte": end.isoformat()}
     elif (
@@ -2910,9 +2926,14 @@ def supervisor(question: str) -> str:
     return "query"
 
 
+ABSENCE_PHRASE_RE = re.compile(
+    r"\b(?:days?\s+(?:did\s+i|i)\s+miss(?:ed)?|miss(?:ed)?\s+(?:work|days?))\b",
+    re.IGNORECASE,
+)
+
 def resolve_context(question: str) -> str:
-    """Normalize the question text. Dates are resolved later, during correction."""
-    return correct_typos(question)
+    q = ABSENCE_PHRASE_RE.sub("absent days", question)
+    return correct_typos(q)
 
 
 def is_approved_operation(operation_id: Any) -> bool:
@@ -3031,7 +3052,7 @@ def direct_answer(
             start, end = resolve_date_range_from_question(normalized_question, today)
         else:
             start = today.replace(day=1)
-            end = _last_day_of_month(start)
+            end = min(_last_day_of_month(start), today)
         return team_attendance_result(question, actor, start, end)
 
     if is_leave_balance_question(normalized_question):
@@ -3132,6 +3153,21 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
     logger.debug("operation=%s", raw_plan.get("operation_id"))
     return raw_plan
 
+from backend.services.date_resolver import resolve_date_spec
+
+def _normalize_single_date(plan, question, today):
+    filters = plan.get("filters", {})
+    if "punched_at" in filters:
+        filters["attendance_date"] = filters.pop("punched_at")
+    value = filters.get("attendance_date")
+    if isinstance(value, dict) and set(value) == {"eq"}:
+        filters["attendance_date"] = value["eq"]
+    if plan.get("operation_id", "").startswith("attendance."):
+        spec = resolve_date_spec(question, today)
+        if spec is not None and spec.start == spec.end:
+            filters["attendance_date"] = spec.start.isoformat()
+    plan["filters"] = filters
+    return plan
 
 def correct_plan(
     raw_plan: dict[str, Any],
@@ -3266,6 +3302,8 @@ def correct_plan(
             if field not in selected_fields:
                 selected_fields.append(field)
         plan["fields"] = [field for field in selected_fields if field in task_fields]
+
+        plan = _normalize_single_date(plan, question, today)
 
     return plan, period
 

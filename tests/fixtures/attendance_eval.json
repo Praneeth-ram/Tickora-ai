@@ -1,0 +1,1194 @@
+{
+  "meta": {
+    "today": "2026-11-18",
+    "employee_id": 1,
+    "organization_id": 1,
+    "late_convention": "status == late",
+    "this_month": "month-to-date",
+    "this_week": "not tested"
+  },
+  "cases": [
+    {
+      "id": "ATT-001",
+      "group": "absent-last-week",
+      "question": "How many days was I absent last week?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-002",
+      "group": "absent-last-week",
+      "question": "Number of absent days last week",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-003",
+      "group": "absent-last-week",
+      "question": "How many absences did I have last week?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-004",
+      "group": "absent-last-week",
+      "question": "hw many days absnt last wek",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-005",
+      "group": "absent-last-week",
+      "question": "Was I absent on any day last week?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-006",
+      "group": "late-count",
+      "question": "How many late days did I have last week?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-007",
+      "group": "late-count",
+      "question": "How many times was I late this month?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-18"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-008",
+      "group": "late-count",
+      "question": "how many times was i late last month",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-009",
+      "group": "late-count",
+      "question": "Was I late on any day last week?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-010",
+      "group": "late-count",
+      "question": "late cnt last week",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-011",
+      "group": "late-count",
+      "question": "How many late days in October?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-012",
+      "group": "status-count",
+      "question": "How many days was I present in October?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "present",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "present",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-013",
+      "group": "status-count",
+      "question": "How many half days did I take in October?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "half_day",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "half_day",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-014",
+      "group": "status-count",
+      "question": "How many days was I on leave in October?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "on_leave",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "on_leave",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-015",
+      "group": "status-count",
+      "question": "Days I was present in September?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "present",
+          "attendance_date": {
+            "gte": "2026-09-01",
+            "lte": "2026-09-30"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "present",
+          "attendance_date": {
+            "gte": "2026-09-01",
+            "lte": "2026-09-30"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-016",
+      "group": "status-count",
+      "question": "How many half days last month?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "half_day"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "half_day",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-017",
+      "group": "status-count",
+      "question": "How many days was I present last week?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "present"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "present",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-018",
+      "group": "hours-sum",
+      "question": "How many hours did I work this month?",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {},
+        "aggregate_field": "worked_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-18"
+          }
+        },
+        "aggregate_field": "worked_minutes"
+      }
+    },
+    {
+      "id": "ATT-019",
+      "group": "hours-sum",
+      "question": "Total hours I worked last month",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {},
+        "aggregate_field": "worked_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "aggregate_field": "worked_minutes"
+      }
+    },
+    {
+      "id": "ATT-020",
+      "group": "hours-sum",
+      "question": "How many hours did I work last week?",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {},
+        "aggregate_field": "worked_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        },
+        "aggregate_field": "worked_minutes"
+      }
+    },
+    {
+      "id": "ATT-021",
+      "group": "hours-sum",
+      "question": "hw mny hrs did i wrk this mnth",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {},
+        "aggregate_field": "worked_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-18"
+          }
+        },
+        "aggregate_field": "worked_minutes"
+      }
+    },
+    {
+      "id": "ATT-022",
+      "group": "hours-sum",
+      "question": "How many hours did I work in October?",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "aggregate_field": "worked_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "aggregate_field": "worked_minutes"
+      }
+    },
+    {
+      "id": "ATT-023",
+      "group": "overtime-sum",
+      "question": "How much overtime did I do this month?",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {},
+        "aggregate_field": "overtime_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-18"
+          }
+        },
+        "aggregate_field": "overtime_minutes"
+      }
+    },
+    {
+      "id": "ATT-024",
+      "group": "overtime-sum",
+      "question": "overtime last week",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {},
+        "aggregate_field": "overtime_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        },
+        "aggregate_field": "overtime_minutes"
+      }
+    },
+    {
+      "id": "ATT-025",
+      "group": "overtime-sum",
+      "question": "Total overtime in October",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "aggregate_field": "overtime_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "aggregate_field": "overtime_minutes"
+      }
+    },
+    {
+      "id": "ATT-026",
+      "group": "status-breakdown",
+      "question": "Give me my attendance summary for 1 to 10 November",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-10"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-10"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-027",
+      "group": "status-breakdown",
+      "question": "attendance breakdown last week",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {},
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-028",
+      "group": "status-breakdown",
+      "question": "attendance summary for October",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-029",
+      "group": "status-breakdown",
+      "question": "status breakdown this month",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {},
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-18"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-030",
+      "group": "status-breakdown",
+      "question": "how many days per status in September",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-09-01",
+            "lte": "2026-09-30"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-09-01",
+            "lte": "2026-09-30"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-031",
+      "group": "status-breakdown",
+      "question": "attendance overview for last month",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {},
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-032",
+      "group": "status-breakdown",
+      "question": "attndnce summry for octber",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-033",
+      "group": "clock-lookup",
+      "question": "When did I clock in on 3 November?",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-03"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-03"
+        }
+      }
+    },
+    {
+      "id": "ATT-034",
+      "group": "clock-lookup",
+      "question": "What time did I clock in on 5 Nov?",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-05"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-05"
+        }
+      }
+    },
+    {
+      "id": "ATT-035",
+      "group": "clock-lookup",
+      "question": "clock out time on 10 November",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-10"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-10"
+        }
+      }
+    },
+    {
+      "id": "ATT-036",
+      "group": "clock-lookup",
+      "question": "check in on 12 Nov",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-12"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-12"
+        }
+      }
+    },
+    {
+      "id": "ATT-037",
+      "group": "clock-lookup",
+      "question": "What time did I punch in on 2 October?",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-10-02"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-10-02"
+        }
+      }
+    },
+    {
+      "id": "ATT-038",
+      "group": "clock-lookup",
+      "question": "When did I check out on 7 November?",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-07"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-07"
+        }
+      }
+    },
+    {
+      "id": "ATT-039",
+      "group": "clock-lookup",
+      "question": "wen did i clok in on 4 nov",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-04"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": "2026-11-04"
+        }
+      }
+    },
+    {
+      "id": "ATT-040",
+      "group": "range-list",
+      "question": "Show my attendance records for 1 to 5 November",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-05"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-05"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-041",
+      "group": "range-list",
+      "question": "attendance list for October",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-042",
+      "group": "range-list",
+      "question": "list my late days in October",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-043",
+      "group": "range-list",
+      "question": "show my absent days in September",
+      "expected_raw": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-09-01",
+            "lte": "2026-09-30"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-09-01",
+            "lte": "2026-09-30"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-044",
+      "group": "explicit-count",
+      "question": "How many days in November was I absent?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-30"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-30"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-045",
+      "group": "explicit-count",
+      "question": "absent days between 1 and 10 October",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-10"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-10"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-046",
+      "group": "explicit-count",
+      "question": "How many late days between 5 and 15 October?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-10-05",
+            "lte": "2026-10-15"
+          }
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "late",
+          "attendance_date": {
+            "gte": "2026-10-05",
+            "lte": "2026-10-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-047",
+      "group": "explicit-count",
+      "question": "How many days was I absent on 6 October?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": "2026-10-06"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": "2026-10-06"
+        }
+      }
+    },
+    {
+      "id": "ATT-048",
+      "group": "location",
+      "question": "Where did I work in October?",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "group_by_field": "work_location",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "group_by_field": "work_location",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-049",
+      "group": "location",
+      "question": "work location breakdown this month",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {},
+        "group_by_field": "work_location",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-01",
+            "lte": "2026-11-18"
+          }
+        },
+        "group_by_field": "work_location",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-050",
+      "group": "status-breakdown",
+      "question": "last week's attendance summary",
+      "expected_raw": {
+        "operation_id": "attendance.group_by",
+        "filters": {},
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      },
+      "expected_final": {
+        "operation_id": "attendance.group_by",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        },
+        "group_by_field": "status",
+        "aggregate_function": "count"
+      }
+    },
+    {
+      "id": "ATT-051",
+      "group": "status-count",
+      "question": "How many days did I miss last week?",
+      "expected_raw": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent"
+        }
+      },
+      "expected_final": {
+        "operation_id": "attendance.count",
+        "filters": {
+          "status": "absent",
+          "attendance_date": {
+            "gte": "2026-11-09",
+            "lte": "2026-11-15"
+          }
+        }
+      }
+    },
+    {
+      "id": "ATT-052",
+      "group": "hours-sum",
+      "question": "Total worked minutes for last month",
+      "expected_raw": {
+        "operation_id": "attendance.sum",
+        "filters": {},
+        "aggregate_field": "worked_minutes"
+      },
+      "expected_final": {
+        "operation_id": "attendance.list",
+        "filters": {
+          "attendance_date": {
+            "gte": "2026-10-01",
+            "lte": "2026-10-31"
+          }
+        },
+        "aggregate_field": "worked_minutes"
+      }
+    },
+    {
+      "id": "ATT-053",
+      "group": "out-of-scope",
+      "question": "What's the weather today?",
+      "expected_raw": {
+        "operation_id": null,
+        "filters": {}
+      },
+      "expected_final": null
+    },
+    {
+      "id": "ATT-054",
+      "group": "out-of-scope",
+      "question": "Write me a poem about working hours",
+      "expected_raw": {
+        "operation_id": null,
+        "filters": {}
+      },
+      "expected_final": null
+    },
+    {
+      "id": "ATT-055",
+      "group": "out-of-scope",
+      "question": "Who is the CEO of my company?",
+      "expected_raw": {
+        "operation_id": null,
+        "filters": {}
+      },
+      "expected_final": null
+    },
+    {
+      "id": "ATT-056",
+      "group": "out-of-scope",
+      "question": "What is the capital of India?",
+      "expected_raw": {
+        "operation_id": null,
+        "filters": {}
+      },
+      "expected_final": null
+    }
+  ]
+}
