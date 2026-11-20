@@ -25,8 +25,8 @@ EMPLOYEE = "employee"
 ROLES = frozenset({SUPER_ADMIN, ADMIN, EMPLOYEE})
 
 REFUSAL_MESSAGE = (
-    "I can only show your own records. I can't access another employee's "
-    "attendance, leave, or other details."
+     "Your role doesn't include access to that information. "
+     "Please contact HR if you need it."
 )
 
 # Scope per role: "self", "department", or "org".

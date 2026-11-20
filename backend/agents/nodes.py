@@ -1,6 +1,9 @@
 import re
+from datetime import date
+from functools import lru_cache
 from typing import Any
 
+from backend.config import get_settings
 # from sqlalchemy import exc
 from backend.agents.state import ChatState
 from backend.services.date_resolver import (
@@ -32,6 +35,11 @@ from backend.services.llm_chat_service import (
     ModelServiceError
 )
 from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE, get_actor, SUPER_ADMIN
+from backend.services.operation_registry import build_operation_registry
+from backend.services.payload.builders import (
+    PayloadError, build_count, build_group_by, build_sum,
+)
+from backend.services.payload.entities import build_specs
 from sqlalchemy.exc import SQLAlchemyError
 
 import logging
@@ -63,7 +71,7 @@ DATE_HINT_RE = re.compile(
 )
 
 DATA_CONCEPT_RE = re.compile(
-    r"\b(?:attendance|attend\w*|clock|check[- ]?(?:in|out)|punch|late|absent|present|"
+    r"\b(?:attendance|attend\w*|clock|check[- ]?(?:in|out)|punch|late|absent|absences?|present|"
     r"half[- ]day|overtime|worked|hours?|leaves?|balance|wfh|work\s+from\s+home|"
     r"holidays?|timesheets?|tasks?|payroll|pay|paid|salary|salaries|net|gross|"
     r"payslips?|payslip|deductions?|deducted|loans?|installments?|schedule|"
@@ -109,6 +117,66 @@ PERIOD_WORDS = {
     "the", "this", "third", "through", "thru", "till", "to", "today",
     "fourth", "until", "week", "year", "yesterday", "st", "nd", "rd", "th",
 }
+
+settings = get_settings()
+
+NARRATABLE_INTENTS = {
+    "attendance_records", "attendance_summary", "leave_status", "wfh_status",
+    "timesheet_lookup", "holiday_lookup", "leave_balance", "leave_type_lookup",
+}
+
+
+@lru_cache(maxsize=1)
+def _entity_specs() -> dict:
+    return build_specs(build_operation_registry(schema_name="public"))
+
+
+def _payload_for(plan: dict, period: dict, result: dict) -> dict | None:
+    """Build a payload from the rows already returned. Returns None when no builder applies."""
+    spec = _entity_specs().get("attendance")
+    start, end = period.get("start_date"), period.get("end_date")
+    if spec is None or not start or not end:
+        return None
+
+    s, e = date.fromisoformat(start), date.fromisoformat(end)
+    op = plan.get("operation_id")
+    filters = plan.get("filters") or {}
+    data = result.get("data")
+
+    try:
+        if op == "attendance.count" and isinstance(data, dict) and "count" in data:
+            return build_count(spec, data["count"], s, e, filters)
+
+        if op == "attendance.list" and isinstance(data, list):
+            field = plan.get("aggregate_field")
+            if field in {"worked_minutes", "overtime_minutes"}:
+                total = sum(int(r.get(field) or 0) for r in data)
+                return build_sum(spec, field, total, s, e, filters)
+            if filters.get("status"):
+                return build_count(spec, len(data), s, e, filters)
+
+        if op == "attendance.group_by" and isinstance(data, list):
+            return build_group_by(spec, data, s, e, filters)
+    except PayloadError:
+        return None
+
+    return None
+
+
+def _maybe_narrate(question: str, result: dict, plan: dict, period: dict) -> dict:
+    payload = _payload_for(plan, period, result)
+    logger.warning(
+        "narration: op=%s flag=%s payload=%s intent=%s",
+        plan.get("operation_id"), settings.llm_narration_enabled,
+        payload is not None, result.get("intent"),
+    )
+    if not settings.llm_narration_enabled or payload is None:
+        return result
+    if result.get("show_table") or result.get("intent") not in NARRATABLE_INTENTS:
+        return result
+    result["answer"] = narrate(question, payload, result["answer"])
+    result["message"] = result["answer"]
+    return result
 
 
 def _is_period_only_followup(question: str) -> bool:
@@ -206,6 +274,8 @@ def planning_node(state: ChatState) -> dict[str, Any]:
 
 from backend.security.access_policy import get_actor
 from backend.services.payload.entities import can_access_entity
+from backend.services.response_writer import narrate
+
 def correction_node(state: ChatState) -> dict[str, Any]:
     raw_operation = state["raw_plan"].get("operation_id")
 
@@ -265,6 +335,8 @@ def execution_node(state: ChatState) -> dict[str, Any]:
             "I couldn't read that information right now. Please try again or rephrase the question.",
             "unsupported",
         )
+
+    result = _maybe_narrate(state["question"], result, state["plan"], state["period"])
     return {"result": result}
 
 def error_node(state: ChatState) -> dict[str, Any]:

@@ -326,17 +326,16 @@ def execute_query_plan(
                 f"= ps.{preparer.quote('payroll_period_id')}"
             ),
         ]
+        payroll_params: dict[str, Any] = {
+            "authenticated_organization_id": organization_id,
+            "query_limit": limit,
+        }
 
         if actor.role != SUPER_ADMIN or plan.get("scope") != "org":
             payroll_conditions.append(
                 f"ps.{preparer.quote('employee_id')} = :authenticated_employee_id"
             )
             payroll_params["authenticated_employee_id"] = employee_id
-
-        payroll_params: dict[str, Any] = {
-            "authenticated_organization_id": organization_id,
-            "query_limit": limit,
-        }
 
         if subject is not None:
             payroll_conditions.append(

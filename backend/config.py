@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
 
     # Chat pipeline
-    llm_chat_enabled: bool = True
+    llm_chat_enabled: bool = False
+    llm_narration_enabled: bool = False
     model_timeout_seconds: float = 60.0
     model_checkpoint_path: str = "data/artifacts/tickora_intent_model.pt"
 

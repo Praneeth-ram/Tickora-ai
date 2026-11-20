@@ -132,7 +132,7 @@ SUM_QUESTION_RE = re.compile(
 )
 ATTENDED_STATUSES = {"PRESENT": "present", "LATE": "late", "HALF_DAY": "half day"}
 ATTENDED_RE = re.compile(
-    r"\b(?:attended|attend|attending|present\s+days?|days?\s+(?:i\s+)?(?:attend|attended|was\s+present)|"
+    r"\b(?:attended|attend|attending|days?\s+(?:i\s+)?(?:attend|attended|was\s+present)|"
     r"worked\s+days?)\b"
 )
 SUBMITTED_DATE_RE = re.compile(r"\bsubmitted\s+(?:at|on)\b")
@@ -682,6 +682,12 @@ def normalize_and_correct_plan(
     normalized.pop("group_by_field", None)
     normalized.pop("aggregate_function", None)
 
+    is_per_status_query = bool(
+        re.search(r"\b(?:per|by|each)\s+status\b", q)
+    ) and not re.search(
+        r"\b(?:leave|wfh|work from home|timesheet|holiday|loan|task)s?\b", q
+    )
+
     if asks_work_location:
         if re.search(r"\b(?:breakdown|group(?:ed)?|by)\b", q):
             op_id = "attendance.group_by"
@@ -703,6 +709,7 @@ def normalize_and_correct_plan(
             q,
         )
         or ("attendance" in q and "summary" in q and "timesheet" not in q)
+        or is_per_status_query
     )
     if is_summary_query:
         op_id = "attendance.group_by"
@@ -2184,6 +2191,9 @@ def _daily_working_hours_answer(rows, requested_dates, tz):
     return "Your working hours for the requested dates:\n" + "\n".join(lines)
 
 
+def _plural(value: int, singular: str, plural: str) -> str:
+    return f"{value} {singular if value == 1 else plural}"
+
 def _hours_sentence(rows, span, overtime):
     field = "overtime_minutes" if overtime else "worked_minutes"
     total = sum(int(row.get(field) or 0) for row in rows)
@@ -2192,11 +2202,11 @@ def _hours_sentence(rows, span, overtime):
     where = f" {span}" if span else ""
     if total == 0:
         return f"Your total {name}{where} was 0 hours and 0 minutes."
-    return f"Your total {name}{where} was {hours} hours and {minutes} minutes ({total:,} minutes)."
-
-
-
-
+    return (
+        f"Your total {name}{where} was "
+        f"{_plural(hours, 'hour', 'hours')} and {_plural(minutes, 'minute', 'minutes')} "
+        f"({total:,} minutes)."
+    )
 
 def _work_location_answer(rows, requested_dates=None):
     """Return only work locations for the requested dates or rows."""

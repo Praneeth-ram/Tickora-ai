@@ -1,0 +1,107 @@
+[
+  {
+    "question": "How many days was I present in October?",
+    "answer": "In the period from 1 Oct 2026 to 31 Oct 2026, you have 14 days of present attendance records.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many days was I absent in October?",
+    "answer": "No absent attendance records were found in October 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many days was I late in October?",
+    "answer": "You have 2 late attendance records in October 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many half days did I take in October?",
+    "answer": "No half day attendance records were found in October 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many days was I present in September?",
+    "answer": "In the period from 1 Sep 2026 to 30 Sep 2026, you have 18 days of present attendance records.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many days was I absent in September?",
+    "answer": "You have 1 absent attendance record in September 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many days was I late in September?",
+    "answer": "You have 3 late attendance records in September 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "Count my present days in October 2026.",
+    "answer": "You have 14 present attendance records in October 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many late days did I have this month?",
+    "answer": "No late attendance records were found from 1 to 20 November 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many absences did I have in October?",
+    "answer": "No absent attendance records were found in October 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many hours did I work in October?",
+    "answer": "In the period from 1 Oct 2026 to 31 Oct 2026, you worked for 125 hours and 41 minutes.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "What is my total worked time in September?",
+    "answer": "Your total worked time in September 2026 was 166 hours and 28 minutes (9,988 minutes) from 1 Sep 2026 to 30 Sep 2026.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How much overtime did I do in October?",
+    "answer": "Your total overtime in October 2026 was 1 hour and 20 minutes (80 minutes).",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "Total overtime in September?",
+    "answer": "Your total overtime in September 2026 was 1 hour and 42 minutes (102 minutes).",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many hours did I work in October 2026?",
+    "answer": "In the period from 1 Oct 2026 to 31 Oct 2026, you worked for 125 hours and 41 minutes.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "Show my attendance breakdown for October.",
+    "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "Give me my attendance summary for September.",
+    "answer": "Your attendance summary for September 2026 shows: absent days - 1, late days - 3, and present days - 18.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "Attendance overview for October.",
+    "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many days per status in October?",
+    "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "What is my attendance status breakdown for September?",
+    "answer": "Your attendance status breakdown for September 2026: absent: 1 day, late: 3 days, present: 18 days.",
+    "intent": "attendance_summary"
+  },
+  {
+    "question": "How many leave requests per status?",
+    "answer": "You have 1 leave request.",
+    "intent": "leave_status"
+  }
+]

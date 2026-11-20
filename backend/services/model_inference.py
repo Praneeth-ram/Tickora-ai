@@ -389,3 +389,37 @@ def generate_plan(question: str) -> dict[str, Any]:
                 raise PlanRejectedError(rejected)
 
     return plan
+
+def generate_text(system: str, user: str, max_new_tokens: int = 150) -> str:
+    """Plain-text generation on the base model (LoRA adapter disabled).
+
+    Used only for narration. Shares the single-GPU generation lock with the planner.
+    """
+    import torch
+
+    if not is_loaded():
+        raise ModelUnavailableError("The Tickora language model is temporarily unavailable.")
+
+    tokenizer = _state["tokenizer"]
+    model = _state["model"]
+    device = model.get_input_embeddings().weight.device
+
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tokenizer(prompt, return_tensors="pt").to(device)
+
+    with _generation_slot(), torch.inference_mode(), model.disable_adapter():
+        output = model.generate(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+            max_time=GENERATION_MAX_SECONDS,
+        )
+
+    new_tokens = output[0, inputs["input_ids"].shape[1]:]
+    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()

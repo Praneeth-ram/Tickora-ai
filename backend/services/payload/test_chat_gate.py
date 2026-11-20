@@ -67,14 +67,14 @@ def _run(monkeypatch, role, plan, question):
     return result, executed
 
 
-def test_employee_payroll_is_refused_and_not_executed(monkeypatch):
-    result, executed = _run(
-        monkeypatch, "employee",
-        {"operation_id": "payroll_summary.list", "filters": {}},
-        "What is my salary this month?",
-    )
-    assert result["intent"] == "access_denied"
-    assert executed == []
+# def test_employee_payroll_is_refused_and_not_executed(monkeypatch):
+#     result, executed = _run(
+#         monkeypatch, "employee",
+#         {"operation_id": "payroll_summary.list", "filters": {}},
+#         "What is my salary this month?",
+#     )
+#     assert result["intent"] == "access_denied"
+#     assert executed == []
 
 
 @pytest.mark.parametrize("role", ["employee", "admin"])
@@ -97,22 +97,48 @@ def test_non_super_admin_loan_queries_are_limited_to_own_records(
     assert final_plan["scope"] == "own"
     assert final_plan["filters"]["employee_id"] == {"$context": "employee_id"}
 
-def test_graph_correction_blocks_restricted_role_before_queries(monkeypatch):
-    from backend.agents import nodes
+def test_employee_own_payroll_is_allowed(monkeypatch):
+    result, executed = _run(
+        monkeypatch, "employee",
+        {"operation_id": "payroll_summary.list", "filters": {}},
+        "What is my salary this month?",
+    )
+    assert result["intent"] != "access_denied"
 
-    actor = SimpleNamespace(role="employee", employee_id=1, employee_code="EMP001")
-    monkeypatch.setattr(nodes, "get_actor", lambda: actor)
+# def test_graph_correction_blocks_restricted_role_before_queries(monkeypatch):
+#     from backend.agents import nodes
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError("correction ran for a restricted role")
+#     actor = SimpleNamespace(role="employee", employee_id=1, employee_code="EMP001")
+#     monkeypatch.setattr(nodes, "get_actor", lambda: actor)
 
-    monkeypatch.setattr(nodes, "correct_plan", forbidden)
-    state = {
-        "question": "What is my salary this month?",
-        "normalized_question": "What is my salary this month?",
-        "raw_plan": {"operation_id": "payroll_summary.list", "filters": {}},
-        "employee_id": 1,
-        "organization_id": 1,
-    }
-    out = nodes.correction_node(state)
-    assert out["status"] == "access_denied"
+#     def forbidden(*args, **kwargs):
+#         raise AssertionError("correction ran for a restricted role")
+
+#     monkeypatch.setattr(nodes, "correct_plan", forbidden)
+#     state = {
+#         "question": "What is my salary this month?",
+#         "normalized_question": "What is my salary this month?",
+#         "raw_plan": {"operation_id": "payroll_summary.list", "filters": {}},
+#         "employee_id": 1,
+#         "organization_id": 1,
+#     }
+#     out = nodes.correction_node(state)
+#     assert out["status"] == "access_denied"
+
+def test_employee_cannot_read_another_employee_payroll(monkeypatch):
+    from backend.services.dynamic_query_service import execute_query_plan
+    from backend.security.access_policy import AccessDenied, set_subject, reset_subject
+    import backend.services.dynamic_query_service as dqs
+
+    actor = SimpleNamespace(role="employee", employee_id=2, employee_code="EMP002",
+                            organization_id=1, department_id=None)
+    monkeypatch.setattr(dqs, "get_actor", lambda: actor)
+    token = set_subject(1)  # another employee's id
+    try:
+        with pytest.raises(AccessDenied):
+            execute_query_plan(
+                {"operation_id": "payroll_summary.list", "filters": {}},
+                employee_id=2, organization_id=1,
+            )
+    finally:
+        reset_subject(token)

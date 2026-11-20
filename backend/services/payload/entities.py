@@ -1,5 +1,5 @@
 from typing import Any
-from backend.security.access_policy import ADMIN, EMPLOYEE, SUPER_ADMIN
+from backend.security.access_policy import ADMIN, EMPLOYEE, ENTITY_RULES, SUPER_ADMIN
 
 ROLES = {EMPLOYEE, ADMIN, SUPER_ADMIN}
 
@@ -137,12 +137,11 @@ ROLES = {"employee", "admin", "super_admin"}
 SUPER_ADMIN_ONLY = {"payroll_summary"}
 
 def can_access_entity(entity: str, role: str) -> bool:
+    """True when the role has a scope for the entity. Row ownership is enforced by the executor."""
     if role not in ROLES:
         raise ValueError(f"Unknown role: {role!r}")
-    if entity in SUPER_ADMIN_ONLY:
-        return role == "super_admin"
-    return True
-
+    rule = ENTITY_RULES.get(entity)
+    return rule is not None and rule["scopes"].get(role) is not None
 
 def registry_for_role(registry: dict[str, dict], role: str) -> dict[str, dict]:
     """Drop every operation the role may not use. Apply before the planner catalog is built."""
