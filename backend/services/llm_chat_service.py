@@ -1272,8 +1272,6 @@ def count_response(
     }
 
     singular, plural = nouns.get(entity, ("record", "records"))
-    noun = singular if count == 1 else plural
-
     filters = filters or {}
 
     status_text = (
@@ -1281,6 +1279,9 @@ def count_response(
         if status
         else ""
     )
+    if entity == "attendance" and status_text == "half day":
+        singular, plural = "half day", "half days"
+    noun = singular if count == 1 else plural
 
     loan_status = filters.get("loan_status")
     loan_status_text = (

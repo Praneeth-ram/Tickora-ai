@@ -37,10 +37,7 @@ from backend.services.llm_chat_service import (
 )
 from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE, get_actor, SUPER_ADMIN
 from backend.services.operation_registry import build_operation_registry
-from backend.services.payload.builders import (
-    PayloadError, build_count, build_group_by, build_sum,
-)
-from backend.services.payload.entities import build_specs
+from backend.services.payload.entities import build_specs, narratable_for_role
 from sqlalchemy.exc import SQLAlchemyError
 
 import logging
@@ -126,12 +123,6 @@ LEAVE_STATUS_BREAKDOWN_MESSAGE = (
     "Ask for leave requests in October to see them."
 )
 
-NARRATABLE_INTENTS = {
-    "attendance_records", "attendance_summary", "leave_status", "wfh_status",
-    "timesheet_lookup", "holiday_lookup", "leave_balance", "leave_type_lookup",
-}
-
-
 @lru_cache(maxsize=1)
 def _entity_specs() -> dict:
     return build_specs(build_operation_registry(schema_name="public"))
@@ -151,7 +142,23 @@ def _route_answer(question, result, plan, period):
         return result
     if choose_route(result) == "table":
         return result
-    payload = compute_facts(question, plan, period, result)
+    actor = get_actor()
+    if actor is None:
+        return result
+    specs = _entity_specs()
+    entity = str(plan.get("operation_id") or "").partition(".")[0]
+    spec = specs.get(entity)
+    if (
+        spec is None
+        or not spec.get("narratable")
+        or spec.get("sensitive")
+        or not narratable_for_role(specs, entity, actor.role)
+    ):
+        return result
+
+    payload = compute_facts(question, plan, period, result, specs, actor.role)
+    if payload is None:
+        return result
     if "per status" in question.lower() and "groups" not in payload:
         if re.search(r"\bleave\s+requests?\b", question, re.IGNORECASE):
             template_answer = str(result.get("answer") or result.get("message") or "")
@@ -175,54 +182,6 @@ def _route_answer(question, result, plan, period):
         result["message"] = answer
     else:
         logger.warning("answer rejected; template kept: %r", answer)
-    return result
-
-
-def _payload_for(plan: dict, period: dict, result: dict) -> dict | None:
-    """Build a payload from the rows already returned. Returns None when no builder applies."""
-    spec = _entity_specs().get("attendance")
-    start, end = period.get("start_date"), period.get("end_date")
-    if spec is None or not start or not end:
-        return None
-
-    s, e = date.fromisoformat(start), date.fromisoformat(end)
-    op = plan.get("operation_id")
-    filters = plan.get("filters") or {}
-    data = result.get("data")
-
-    try:
-        if op == "attendance.count" and isinstance(data, dict) and "count" in data:
-            return build_count(spec, data["count"], s, e, filters)
-
-        if op == "attendance.list" and isinstance(data, list):
-            field = plan.get("aggregate_field")
-            if field in {"worked_minutes", "overtime_minutes"}:
-                total = sum(int(r.get(field) or 0) for r in data)
-                return build_sum(spec, field, total, s, e, filters)
-            if filters.get("status"):
-                return build_count(spec, len(data), s, e, filters)
-
-        if op == "attendance.group_by" and isinstance(data, list):
-            return build_group_by(spec, data, s, e, filters)
-    except PayloadError:
-        return None
-
-    return None
-
-
-def _maybe_narrate(question: str, result: dict, plan: dict, period: dict) -> dict:
-    payload = _payload_for(plan, period, result)
-    logger.warning(
-        "narration: op=%s flag=%s payload=%s intent=%s",
-        plan.get("operation_id"), settings.llm_narration_enabled,
-        payload is not None, result.get("intent"),
-    )
-    if not settings.llm_narration_enabled or payload is None:
-        return result
-    if result.get("show_table") or result.get("intent") not in NARRATABLE_INTENTS:
-        return result
-    result["answer"] = narrate(question, payload, result["answer"])
-    result["message"] = result["answer"]
     return result
 
 
@@ -319,9 +278,7 @@ def route_after_context(state: ChatState) -> str:
 def planning_node(state: ChatState) -> dict[str, Any]:
     return {"raw_plan": plan_question(state["normalized_question"])}
 
-from backend.security.access_policy import get_actor
 from backend.services.payload.entities import can_access_entity
-from backend.services.response_writer import narrate
 
 def correction_node(state: ChatState) -> dict[str, Any]:
     raw_operation = state["raw_plan"].get("operation_id")

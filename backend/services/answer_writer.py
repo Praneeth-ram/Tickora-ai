@@ -10,11 +10,11 @@ Rules:
 2. Answer the question that was asked.
 3. Use only the values in FACTS. Do not add, subtract, or convert any value.
 4. Use period_text exactly as given for the period.
-5. If found is false, say no matching records were found for that period.
+5. If found is false, say no matching items were found for period_text. Use the entity's unit from FACTS.
 6. Refer to the user as "you".
 7. Do not mention databases, queries, JSON, or the system.
 8. The user is the person being described. Always say "you" or "your". Never say "employees".
-9. For attendance counts, always say "days", never "instances", "times", or "records".
+9. Use unit_singular and unit from FACTS for singular and plural counts. Do not call another entity's items attendance days.
 10. Never put a space before a comma or full stop.
 11. Never say "days" for hours or minutes. Use "hours" and "minutes" only for time totals.
 12. Use singular and plural correctly: "1 hour", "2 hours", "1 day", "2 days".
@@ -23,7 +23,7 @@ Rules:
 15. Never write minute totals in brackets or otherwise. When hours and minutes are given, use only hours and minutes.
 16. Do not repeat the same figures in more than one sentence.
 17. Write status words plainly, without quotation marks.
-18. Express zero absences as "no absences", not "0 days of absence".
+18. For a zero absent-day count, say "no absent days were found", matching the template.
 19. Write the month and year together with no comma, for example "October 2026". Never write "October, 2026".
 20. Use period_text exactly as given. Do not put "this", "last", or "next" before it.
 21. Name the period from period_text. Never write "the specified period", "the requested period", or "the period".
@@ -122,6 +122,24 @@ def _has_invalid_unit_grammar(text: str) -> bool:
     return False
 
 
+def _has_invalid_count_unit(text: str, facts: dict) -> bool:
+    count = facts.get("count")
+    singular = facts.get("unit_singular")
+    plural = facts.get("unit")
+    if not isinstance(count, int) or isinstance(count, bool):
+        return False
+    if not isinstance(singular, str) or not isinstance(plural, str) or singular == plural:
+        return False
+
+    pattern = re.compile(
+        rf"\b{count}\s+(?:(?:[\w-]+)\s+){{0,2}}"
+        rf"(?P<unit>{re.escape(singular)}|{re.escape(plural)})\b",
+        re.IGNORECASE,
+    )
+    expected = singular if count == 1 else plural
+    return any(match.group("unit").lower() != expected.lower() for match in pattern.finditer(text))
+
+
 def passes_answer_check(answer: str, facts: dict) -> bool:
     text = answer.lower()
     # Five words is the shortest complete answer ("You had 2 late days.").
@@ -130,6 +148,8 @@ def passes_answer_check(answer: str, facts: dict) -> bool:
     if _has_negated_status(text, facts):
         return False
     if _has_invalid_unit_grammar(answer):
+        return False
+    if _has_invalid_count_unit(answer, facts):
         return False
     if PAREN_MINUTES_RE.search(answer):
         return False

@@ -40,7 +40,7 @@ def period_label(start: date | None, end: date | None) -> str:
 
 def label_value(value: Any) -> Any:
     if isinstance(value, str):
-        return STATUS_LABELS.get(value, value.replace("_", " "))
+        return STATUS_LABELS.get(value.lower(), value.replace("_", " "))
     return value
 
 
