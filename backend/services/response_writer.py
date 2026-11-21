@@ -36,6 +36,20 @@ Rules:
 
 MAX_NEW_TOKENS = 150
 
+MONTH_YEAR_RE = re.compile(
+    r"\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b",
+    re.IGNORECASE,
+)
+
+def check_period(candidate: str, draft: str) -> bool:
+    expected = {m.lower() for m in MONTH_YEAR_RE.findall(draft)}
+    return all(p in candidate.lower() for p in expected)
+
+QUALIFIERS = ("so far", "no ", "not ", "absent", "late", "present", "half", "overtime", "worked")
+
+def check_qualifiers(candidate: str, draft: str) -> bool:
+    cand, base = candidate.lower(), draft.lower()
+    return all(q in cand for q in QUALIFIERS if q in base)
 
 def _numbers(text: str) -> set[str]:
     """Normalise numbers so that '9', '9.0' and '09' compare equal."""
@@ -96,4 +110,13 @@ def narrate(question: str, payload: dict[str, Any], draft: str, generate=None) -
     if not check_guards(candidate, payload):
         logger.info("Narration rejected: sentence, voice, or period check")
         return draft
+
+    if not check_qualifiers(candidate, draft):
+        logger.info("Narration rejected: qualifier check")
+        return draft
+
+    if not check_period(candidate, draft):
+        logger.info("Narration rejected: period check")
+        return draft
+    
     return candidate

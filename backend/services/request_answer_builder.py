@@ -31,6 +31,8 @@ def period_phrase(start: date | None, end: date | None) -> str:
         return f"in {start:%B %Y}"
     if start.month == 1 and start.day == 1 and end.month == 12 and end.day == 31 and start.year == end.year:
         return f"in {start.year}"
+    if start.day == 1 and start.month == end.month and start.year == end.year:
+        return f"in {start:%B %Y} so far"
     return f"from {fmt_range(start, end)}"
 
 def requested_field(question: str) -> str | None:

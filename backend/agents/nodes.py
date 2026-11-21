@@ -130,6 +130,31 @@ NARRATABLE_INTENTS = {
 def _entity_specs() -> dict:
     return build_specs(build_operation_registry(schema_name="public"))
 
+from backend.services.answer_router import choose_route
+from backend.services.payload.answer_payload import compute_facts
+from backend.services.answer_writer import write_answer, passes_answer_check
+import json
+
+def _route_answer(question, result, plan, period):
+    if not settings.llm_narration_enabled:
+        return result
+    if choose_route(result) == "table":
+        return result
+    payload = compute_facts(question, plan, period, result)
+    facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
+    logger.warning("facts: %s", facts)
+    try:
+        answer = write_answer(question, payload)
+    except Exception:
+        logger.exception("LLM answer failed; using template")
+        return result
+    if passes_answer_check(answer, payload):
+        result["answer"] = answer
+        result["message"] = answer
+    else:
+        logger.warning("answer rejected; template kept: %r", answer)
+    return result
+
 
 def _payload_for(plan: dict, period: dict, result: dict) -> dict | None:
     """Build a payload from the rows already returned. Returns None when no builder applies."""
@@ -336,7 +361,7 @@ def execution_node(state: ChatState) -> dict[str, Any]:
             "unsupported",
         )
 
-    result = _maybe_narrate(state["question"], result, state["plan"], state["period"])
+    result = _route_answer(state["question"], result, state["plan"], state["period"])
     return {"result": result}
 
 def error_node(state: ChatState) -> dict[str, Any]:
