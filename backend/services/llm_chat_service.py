@@ -34,7 +34,7 @@ from backend.services.request_answer_builder import (
     status_check_answer,
 )
 from backend.services.response_formatter import format_work_schedules
-from backend.services.payroll_narration import is_payroll_detail_question
+from backend.services.payroll_narration import is_payroll_detail_question, requested_payroll_metrics
 from backend.services.text_normalizer import correct_typos
 from backend.services.operation_registry import build_operation_registry
 from backend.services.leave_balance_answer import (
@@ -1949,37 +1949,57 @@ def _payroll_response(
         )
         return f"Your total {label}{where} was {amounts}."
 
-    # For a specific metric without a total/highest/lowest request,
-    # show only that metric for each matching payroll period.
-    if metric:
-        if metric == "net_amount":
-            lines = []
-            for row in rows[:20]:
-                value = money(row.get(metric))
-                currency = str(row.get("currency") or "").strip()
-                prefix = f"{currency} " if currency else ""
-                lines.append(
-                    f"Your net pay for {period_label(row)} was "
-                    f"{prefix}{value}."
-                )
-            return "\n".join(lines)
-
+    requested_metrics = requested_payroll_metrics(question)
+    if len(requested_metrics) > 1:
+        metric_names = {
+            "gross_amount": "gross amount",
+            "deduction_amount": "deductions",
+            "net_amount": "net amount",
+        }
         lines = []
         for row in rows[:20]:
-            value = money(row.get(metric))
+            currency = str(row.get("currency") or "").strip()
+            prefix = f"{currency} " if currency else ""
+            parts = [
+                f"{metric_names[m]} {prefix}{money(row.get(m))}"
+                for m in requested_metrics
+            ]
+            lines.append(
+                f"Your {' and '.join(parts)} for {period_label(row)}."
+            )
+        return "\n".join(lines)
+    
+    # For a specific metric without a total/highest/lowest request,
+    # answer in one sentence per matching payroll period.
+    requested_metrics = requested_payroll_metrics(question)
+    metric_names = {
+        "gross_amount": "gross amount",
+        "deduction_amount": "deduction amount",
+        "net_amount": "net amount",
+    }
+
+    if len(requested_metrics) > 1:
+        lines = []
+        for row in rows[:20]:
+            currency = str(row.get("currency") or "").strip()
+            prefix = f"{currency} " if currency else ""
+            parts = [
+                f"{metric_names[m]} {prefix}{money(row.get(m))}"
+                for m in requested_metrics
+            ]
+            lines.append(f"Your {' and '.join(parts)} for {period_label(row)}.")
+        return "\n".join(lines)
+
+    if metric:
+        lines = []
+        for row in rows[:20]:
             currency = str(row.get("currency") or "").strip()
             prefix = f"{currency} " if currency else ""
             lines.append(
-                f"- {label.capitalize()} for {period_label(row)}: "
-                f"{prefix}{value}."
+                f"Your {metric_names[metric]} for {period_label(row)} was "
+                f"{prefix}{money(row.get(metric))}."
             )
-
-        heading = {
-            "gross_amount": "Your gross salary:",
-            "deduction_amount": "Your payroll deductions:",
-        }[metric]
-
-        return heading + "\n" + "\n".join(lines)
+        return "\n".join(lines)
 
     # Table carries the detail; _result adds the lead-in line.
     return ""

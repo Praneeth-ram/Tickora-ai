@@ -29,6 +29,7 @@ Rules:
 21. Name the period from period_text. Never write "the specified period", "the requested period", or "the period".
 22. For attendance, mention only statuses present in FACTS. Do not add a different attendance status.
 23. For payroll, reproduce each amount and currency code exactly as shown in FACTS. Do not round, convert, calculate, or add another amount.
+24. If FACTS lists more than one metric, state every metric in FACTS. Never leave one out.
 """
 
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")

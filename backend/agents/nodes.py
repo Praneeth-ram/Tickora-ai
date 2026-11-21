@@ -154,16 +154,22 @@ def _route_answer(question, result, plan, period):
     entity = str(plan.get("operation_id") or "").partition(".")[0]
     if entity == "payroll_summary":
         subject_id = get_subject()
+        logger.warning(
+            "Payroll gate: role=%s actor=%s subject=%s detail=%s",
+            actor.role, actor.employee_id, subject_id,
+            is_payroll_detail_question(question),
+        )
         if (
             not is_payroll_detail_question(question)
             or (subject_id is not None and subject_id != actor.employee_id)
-            or (actor.role == SUPER_ADMIN and subject_id != actor.employee_id)
+            # or (actor.role == SUPER_ADMIN and subject_id != actor.employee_id)
         ):
             return result
         payload = build_payroll_facts(
             question, period, result.get("data")
         )
         if payload is None:
+            logger.warning("Payroll facts not built; template kept. rows=%s", result.get("data"))
             return result
         try:
             answer = write_answer(question, payload)
@@ -174,7 +180,10 @@ def _route_answer(question, result, plan, period):
             result["answer"] = answer
             result["message"] = answer
         else:
-            logger.warning("Payroll narration rejected; template kept")
+            logger.warning(
+                "Payroll narration rejected; template kept. facts=%s answer=%r",
+                payload, answer,
+            )
         return result
 
     specs = _entity_specs()

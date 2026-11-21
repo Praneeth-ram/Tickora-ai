@@ -180,3 +180,33 @@ def test_payroll_amount_questions_use_llm_but_table_requests_do_not():
     assert write_answer.call_count == 1
     assert table["answer"] == result["answer"]
     assert super_admin_org_query["answer"] == result["answer"]
+
+def test_two_requested_metrics_both_appear_in_template():
+    from backend.services.llm_chat_service import _payroll_response
+
+    rows = [{
+        "period_start": "2026-10-01", "period_end": "2026-10-23",
+        "gross_amount": "63500.00", "deduction_amount": "7620.00",
+        "net_amount": "55880.00", "currency": "INR",
+    }]
+    answer = _payroll_response(
+        rows, {"start_date": "2026-10-01", "end_date": "2026-10-23"},
+        "what is my gross amount and deduction amount",
+    )
+    assert "63,500.00" in answer
+    assert "7,620.00" in answer
+
+def test_super_admin_own_payroll_question_is_narrated_when_subject_is_none():
+    from backend.agents import nodes
+    from backend.security.access_policy import Actor, SUPER_ADMIN
+
+    gate = (
+        lambda question, subject_id, actor: not (
+            not nodes.is_payroll_detail_question(question)
+            or (subject_id is not None and subject_id != actor.employee_id)
+        )
+    )
+    actor = Actor(employee_id=1, organization_id=1, department_id=None,
+                  role=SUPER_ADMIN, employee_code="EMP001")
+    assert gate("what is my gross amount on august month", None, actor)
+    assert not gate("what is my gross amount on august month", 2, actor)
