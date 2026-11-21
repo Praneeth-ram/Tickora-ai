@@ -18,6 +18,9 @@ from backend.services.answer_builder import (
     status_list_answer,
     status_records_answer,
     fmt_range,
+    fmt_clock,
+    fmt_day,
+    status_text,
 )
 from backend.services.date_resolver import InvalidDateError, resolve_date_spec, resolve_discrete_dates
 from backend.services.dynamic_query_service import QueryPlanError, execute_query_plan
@@ -1254,7 +1257,7 @@ def count_response(
     """Generate a meaningful count response from the query result and filters."""
 
     nouns = {
-        "attendance": ("attendance record", "attendance records"),
+        "attendance": ("day", "days"),
         "leave_request": ("leave request", "leave requests"),
         "wfh_request": (
             "work-from-home request",
@@ -1511,15 +1514,23 @@ def sum_response(field: str, total: Any, span: str) -> str:
     if not isinstance(total, (int, float, Decimal)) or isinstance(total, bool):
         raise ModelServiceError("The query returned a non-numeric aggregate.")
 
-    where = f" {span}" if span else ""
     value = Decimal(str(total))
     if field in {"worked_minutes", "overtime_minutes"}:
+        span = _normalise_hours_span(span)
+        where = f" {span}" if span else ""
         minutes_total = int(value)
         hours, minutes = divmod(minutes_total, 60)
         if field == "overtime_minutes":
-            return f"You recorded {hours} hours and {minutes} minutes of overtime{where}."
-        return f"You worked {hours} hours and {minutes} minutes{where}."
+            return (
+                f"You recorded {_plural(hours, 'hour', 'hours')} and "
+                f"{_plural(minutes, 'minute', 'minutes')} of overtime{where}."
+            )
+        return (
+            f"You worked {_plural(hours, 'hour', 'hours')} and "
+            f"{_plural(minutes, 'minute', 'minutes')}{where}."
+        )
 
+    where = f" {span}" if span else ""
     day_fields = {
         "allocated_days": "allocated leave",
         "used_days": "used leave",
@@ -1570,6 +1581,10 @@ def grouped_response(
         "leave_type_id": "leave type",
     }
     dimension = field_labels.get(group_by_field or "", "category")
+    if aggregate_function == "sum" and aggregate_field in {
+        "worked_minutes", "overtime_minutes"
+    }:
+        span = _normalise_hours_span(span)
     where = f" {span}" if span else ""
     parts = []
     for row in rows:
@@ -1587,7 +1602,10 @@ def grouped_response(
             if aggregate_field in {"worked_minutes", "overtime_minutes"}:
                 minutes_total = int(amount or 0)
                 hours, minutes = divmod(minutes_total, 60)
-                measure = f"{hours} hours and {minutes} minutes"
+                measure = (
+                    f"{_plural(hours, 'hour', 'hours')} and "
+                    f"{_plural(minutes, 'minute', 'minutes')}"
+                )
             elif aggregate_field in {"allocated_days", "used_days", "pending_days"}:
                 measure = f"{format(Decimal(str(amount or 0)), 'f')} days"
             else:
@@ -2194,14 +2212,27 @@ def _daily_working_hours_answer(rows, requested_dates, tz):
 def _plural(value: int, singular: str, plural: str) -> str:
     return f"{value} {singular if value == 1 else plural}"
 
+
+def _normalise_hours_span(span: str) -> str:
+    month_names = (
+        r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+        r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|"
+        r"Dec(?:ember)?)"
+    )
+    duplicate_month = re.compile(
+        rf"\b({month_names})\s*,\s*\1(?=\s+\d{{4}}\b)",
+        re.IGNORECASE,
+    )
+    return duplicate_month.sub(r"\1", span or "")
+
+
 def _hours_sentence(rows, span, overtime):
     field = "overtime_minutes" if overtime else "worked_minutes"
     total = sum(int(row.get(field) or 0) for row in rows)
     hours, minutes = divmod(total, 60)
     name = "overtime" if overtime else "worked time"
+    span = _normalise_hours_span(span)
     where = f" {span}" if span else ""
-    if total == 0:
-        return f"Your total {name}{where} was 0 hours and 0 minutes."
     return (
         f"Your total {name}{where} was "
         f"{_plural(hours, 'hour', 'hours')} and {_plural(minutes, 'minute', 'minutes')}."
@@ -2312,6 +2343,80 @@ def _work_location_answer(rows, requested_dates=None):
 
     return "\n".join(lines)
 
+ASPECT_FIELDS = {
+    "clock_in": ["attendance_date", "clock_in", "status", "work_location"],
+    "clock_out": ["attendance_date", "clock_out", "status", "work_location"],
+    "work_location": ["attendance_date", "work_location"],
+    "worked_hours": ["attendance_date", "worked_minutes"],
+    "overtime": ["attendance_date", "overtime_minutes"],
+    "status": ["attendance_date", "status", "work_location"],
+}
+
+
+def requested_aspects(question: str) -> list[str]:
+    q = question.lower()
+    aspects = []
+    if re.search(r"\bclock[- ]?in|check[- ]?in|punch[- ]?in\b", q):
+        aspects.append("clock_in")
+    if re.search(r"\bclock[- ]?out|check[- ]?out|punch[- ]?out\b", q):
+        aspects.append("clock_out")
+    if WORK_LOCATION_RE.search(q):
+        aspects.append("work_location")
+    if re.search(r"\b(?:worked|working)\s+hours?\b|\btotal\s+worked\s+time\b", q):
+        aspects.append("worked_hours")
+    if re.search(r"\bovertime\b", q):
+        aspects.append("overtime")
+    if re.search(r"\bstatus\b", q):
+        aspects.append("status")
+    return aspects
+
+
+def fields_for_aspects(aspects: list[str]) -> list[str]:
+    fields = ["attendance_date"]
+    for aspect in aspects:
+        for field in ASPECT_FIELDS.get(aspect, []):
+            if field not in fields:
+                fields.append(field)
+    return fields if aspects else ATTENDANCE_FIELDS
+
+
+def _attendance_aspects_answer(day, row, aspects, tz):
+    if row is None:
+        return f"I couldn't find an attendance record for {fmt_day(day)}."
+
+    phrases = []
+    for aspect in aspects:
+        if aspect == "clock_in":
+            clock_in = fmt_clock(row.get("clock_in"), tz) or "not recorded"
+            phrases.append(f"your clock-in time was {clock_in}")
+        elif aspect == "clock_out":
+            clock_out = fmt_clock(row.get("clock_out"), tz) or "not recorded"
+            phrases.append(f"your clock-out time was {clock_out}")
+        elif aspect == "work_location":
+            location = str(row.get("work_location") or "not recorded")
+            phrases.append(
+                f"your work location was {location.replace('_', ' ').strip().title()}"
+            )
+        elif aspect in {"worked_hours", "overtime"}:
+            field = "worked_minutes" if aspect == "worked_hours" else "overtime_minutes"
+            hours, minutes = divmod(int(row.get(field) or 0), 60)
+            label = "worked time" if aspect == "worked_hours" else "overtime"
+            phrases.append(
+                f"your {label} was "
+                f"{_plural(hours, 'hour', 'hours')} and "
+                f"{_plural(minutes, 'minute', 'minutes')}"
+            )
+        elif aspect == "status":
+            phrases.append(
+                f"your attendance status was {status_text(row.get('status'), None)}"
+            )
+
+    details = (
+        " and ".join(phrases)
+        if len(phrases) == 2
+        else f"{', '.join(phrases[:-1])}, and {phrases[-1]}"
+    )
+    return f"On {fmt_day(day)}, {details}."
 
 def _answer_attendance(question, normalized_question, plan, period, employee_id):
     tz = ZoneInfo(DEFAULT_TIMEZONE)
@@ -2321,9 +2426,9 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
     end = date.fromisoformat(period["end_date"])
     is_single_day = start == end
     discrete_dates = resolve_discrete_dates(normalized_question, get_current_date())
-    asks_work_location = bool(
-        WORK_LOCATION_RE.search(normalized_question)
-    )
+    aspects = requested_aspects(normalized_question)
+    asks_work_location = "work_location" in aspects
+    requested_fields = fields_for_aspects(aspects)
 
     # A list of separately named dates is not a continuous range. Fetch the span
     # once and keep only the requested dates, so dates between them are never returned.
@@ -2344,7 +2449,7 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
                         "lte": max(discrete_dates).isoformat(),
                     }
                 },
-                "fields": WORK_LOCATION_FIELDS if asks_work_location else ATTENDANCE_FIELDS,
+                "fields": requested_fields,
             },
             employee_id,
             limit=100,
@@ -2361,7 +2466,7 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         ]
 
         q_lower = normalized_question.lower()
-        if asks_work_location:
+        if asks_work_location and len(aspects) == 1:
             answer = _work_location_answer(
                 requested_rows,
                 discrete_dates,
@@ -2399,6 +2504,28 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
                     return item
             return None
 
+        if len(aspects) > 1:
+            answer = "\n".join(
+                _attendance_aspects_answer(
+                    requested_day,
+                    row_for_day(requested_day),
+                    aspects,
+                    tz,
+                )
+                for requested_day in discrete_dates
+            )
+            return _result(
+                question,
+                answer,
+                "attendance_records",
+                {
+                    "start_date": discrete_dates[0].isoformat(),
+                    "end_date": discrete_dates[-1].isoformat(),
+                },
+                False,
+                requested_rows,
+                raw_requested_rows,
+            )
         if asks_working_hours:
             answer = _daily_working_hours_answer(requested_rows, discrete_dates, tz)
         elif asks_if_late:
@@ -2441,11 +2568,7 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
         {
             "operation_id": "attendance.list",
             "filters": filters,
-            "fields": (
-                WORK_LOCATION_FIELDS
-                if asks_work_location
-                else ATTENDANCE_FIELDS
-            ),
+            "fields": requested_fields,
         },
         employee_id,
         limit=5 if is_single_day else 100,
@@ -2454,18 +2577,43 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
     period_out = {"start_date": start.isoformat(), "end_date": end.isoformat()}
     q = normalized_question.lower()
 
-    if asks_work_location:
-        answer = _work_location_answer(rows, [start] if is_single_day else None)
-
+    if is_single_day and len(aspects) > 1:
+        answer = _attendance_aspects_answer(
+            start,
+            rows[0] if rows else None,
+            aspects,
+            tz,
+        )
         return _result(
             question,
             answer,
-            "work_location",
+            "attendance_records",
             period_out,
             False,
             rows,
             result["data"],
         )
+
+    if asks_work_location and is_single_day:
+        row = rows[0] if rows else None
+        day_label = f"{start.day} {start:%B %Y}"
+        if row is None:
+            answer = f"I couldn't find an attendance record for {day_label}."
+        else:
+            parts = []
+            if "clock_in" in aspects:
+                parts.append(f"clock in at {fmt_clock(row.get('clock_in'), tz) or 'not recorded'}")
+            if "clock_out" in aspects:
+                parts.append(f"clock out at {fmt_clock(row.get('clock_out'), tz) or 'not recorded'}")
+            if "work_location" in aspects:
+                loc = str(row.get("work_location") or "not recorded").replace("_", " ").title()
+                parts.append(f"work from {loc}")
+            answer = f"On {day_label} you {' and '.join(parts)}."
+        return _result(question, answer, "attendance_records", period_out, False, rows, result["data"])
+
+    if asks_work_location:
+        answer = _work_location_answer(rows, None)
+        return _result(question, answer, "work_location", period_out, False, rows, result["data"])
 
     asks_if_late = bool(
         re.search(

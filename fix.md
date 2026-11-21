@@ -1,60 +1,115 @@
-Prompt: fix LLM answer defects in attendance responses
+# Tickora LLM Answer Generation: Implementation Plan and Status
 
-We have an LLM answer step for Tickora. The database returns results, compute_facts builds a JSON facts object, write_answer asks the LLM to phrase an answer, and passes_answer_check decides whether to keep the LLM reply or fall back to the template. The design must not change: tables stay as they are, the LLM only phrases facts, RBAC is unchanged, and the template is the fallback.
+## 1. Purpose
 
-The following defects were observed in flag-on output. Fix all of them.
+Tickora answers HR questions from database results. Simple detail answers are phrased by the LLM from facts that the backend computes. Large record lists are shown as tables. Every figure comes from the database; the LLM only writes the sentence.
 
-Defects to fix
+## 2. Design (agreed, do not change)
 
-Negated facts accepted. Replies such as "no late days" or "no absent days" pass when the facts show a positive count for that status. The check compares numbers only, so a negation is not caught.
-Minute totals leak through. Replies such as "166 hours and 28 minutes (9,988 minutes)" pass because 9988 is present in the facts. Minute totals must never appear in a reply when hours and minutes are given.
-Unit errors pass. Some replies state time in days. The unit check must reject any reply that uses "day" for hours or minutes.
-Misplaced punctuation. "October, 2026" appears when the period text has a comma in the wrong place. The rules must forbid this.
-Repetition across sentences. Some replies restate the same figures in two sentences.
-Awkward status labels. Replies quote status labels in quotation marks, for example "'late' status". Use plain words.
-Non-idiomatic absence wording. "0 days of absence" should read as "no absences".
+```
+User question
+  → access gate (RBAC, unchanged)
+  → planner (LLM, LoRA on; returns a query plan)
+  → correction (code: dates, status, identity, fields)
+  → execute (SQLAlchemy, scoped, parameterised)
+  → result shape
+      ├─ table route (no LLM): show_table and more than 5 rows
+      └─ detail route (LLM):   counts, specific details, breakdowns
+                              with 4 or fewer groups, lists of 5 rows or fewer
+  → facts handler (code builds labelled JSON for this shape)
+  → write_answer (base model, LoRA off, rules applied)
+  → passes_answer_check (number, unit, wording rules)
+      ├─ pass → LLM reply
+      └─ fail or error → template text (fallback)
+  → response (table, intent, period unchanged)
+```
 
-Files and changes
+Constraints:
+- No change to the planner, RBAC, or the table route.
+- The template is always the fallback.
+- The LLM never computes totals, rounds money, or chooses figures.
 
-A. backend/services/answer_writer.py
+## 3. What is implemented
 
-In ANSWER_RULES, append these rules after the existing rule 10:
-11. Never write "no" or "none" about a status whose count is above zero.
-Never write minute totals in brackets or otherwise. When hours and minutes are given, use only hours and minutes.
-Use "hours" and "minutes" for time totals. Never use "days" for time.
-Use singular and plural correctly: "1 hour", "2 hours", "1 day", "2 days".
-Do not repeat the same figures in more than one sentence.
-Write status words plainly, without quotation marks.
-Express zero absences as "no absences", not "0 days of absence".
-In passes_answer_check, add these checks, keeping the existing ones:
-Reject the reply if it contains a negation word ("no", "none", "zero") directly before a status label whose count in the facts is above zero. Use the group labels in facts["groups"], and the status and count keys for single counts.
-Reject the reply if it contains a parenthesised minutes figure, for example a pattern matching (\d[\d,]*\s*minutes).
-Reject the reply if the measure is "worked time" or "overtime" and the reply contains the word "day".
-Reject the reply if the reply contains a comma between a month name and a year, for example "October, 2026".
-Keep the existing checks: minimum word count, the no-records check when found is true, and every number in the reply must appear in the facts.
+### 3.1 Routing and wiring
+- `choose_route` in `backend/services/answer_router.py`: table or LLM.
+- `_route_answer` in `backend/agents/nodes.py`: called from `execution_node` for every entity. Returns the template when the flag is off, when the route is table, or when the question is a "per status" question with no groups.
+- Flag `LLM_NARRATION_ENABLED` in `config.py` (default `False`) and `.env`.
 
-B. backend/services/payload/answer_payload.py
+### 3.2 Facts (attendance)
+- `compute_facts` in `backend/services/payload/answer_payload.py`:
+  - count facts include `count`, `status`, `period_text`, `found`;
+  - minute totals are split into `hours` and `minutes` (no raw minute total);
+  - group-by facts include labelled `groups`;
+  - `period_text` comes from `period_phrase`.
+- Multi-aspect single-day questions (clock in, clock out, work location) are answered together. `requested_aspects` and `fields_for_aspects` select only the requested fields, and the template builds one sentence covering all aspects.
 
-In compute_facts, remove total_minutes from the worked-time and overtime facts. Keep hours and minutes.
-Keep period_text as it is, but strip surrounding whitespace.
-For status values, keep the existing labels. Do not add quotation marks.
+### 3.3 Answer step
+- `write_answer` in `backend/services/answer_writer.py`: sends the rules and facts to the base model with a 150-token cap.
+- `ANSWER_RULES`: one or two sentences, use only facts, use `period_text` exactly, say "you", no "instances" or "times", no quoted status labels, no comma between month and year, no "this"/"last"/"next" before a month, no "the specified period".
+- `passes_answer_check` rejects: short replies; numbers not in facts; "no" next to a status with positive count; minutes in brackets; "day" for time totals; comma between month and year; repeated month; "no records" when data exists; bare numbers in breakdowns; quoted status labels; "instances"/"times".
 
-C. Tests
+### 3.4 Template fixes (attendance)
+- Per-status questions route to the breakdown.
+- Overtime and worked-time sentences use singular/plural correctly and show the month once.
+- Partial-month wording uses "so far".
+- Leave per-status question returns a clear message, not a plain count.
 
-Create backend/services/test_answer_check.py with cases for each defect:
+### 3.5 Tests
+- `backend/services/test_answer_rules.py`: comma rule, singular count, relative period rule, vague period rule, per-status routing (5 tests, passing).
+- Attendance eval: `scripts/eval_narration.py` (21 questions), run flag-off and flag-on.
 
-"You had 2 late days." passes when the facts show late count 2.
-"You had no late days." fails when the facts show late count 2.
-"166 hours and 28 minutes (9,988 minutes)." fails.
-"166 days and 28 hours." fails.
-"14 present days in October, 2026." fails.
-A correct reply with the right unit and no negation passes.
+### 3.6 Verified results
+- Flag-off: all attendance figures match the expected values.
+- Flag-on: wrong replies are rejected and the template is shown. Remaining known issue: "half day days" passed one check (fix pending, see §5).
+- Two-question single-day case (clock in and work location) returns both aspects.
 
-Run uv run pytest backend/services/test_answer_check.py -q. All tests must pass before running the flag-on eval.
+## 4. What is not implemented
 
-Constraints
+- LLM answers for leave, WFH, timesheet, holiday, leave balance, task, loan, and payroll. These still use f-string templates.
+- Generic facts handlers per result shape (count, sum, group-by, rows, single record).
+- Per-entity field maps (allowed fields, labels, units).
+- Per-entity eval sets.
+- Entity-specific rules for money (loan, payroll).
 
-Do not change the table route, RBAC, or the planner.
-Do not remove the template fallback.
-Do not add new model calls.
-Keep the change to the three files above, plus the new test file.
+## 5. Pending work
+
+### 5.1 Fix before flag-on rollout
+1. "half day days" passes the check: add a check for a unit word repeated after "day" or "half day".
+2. Zero-count wording: choose "No absences in October 2026." or "No absent days were found…" and make the template and the rule match.
+3. Confirm the template for half days reads "No half day attendance records were found…" (not "half day days").
+
+### 5.2 Refactor attendance into the shared handlers
+1. Move the shape code in `compute_facts` into named handlers: `_count_facts`, `_minutes_facts`, `_groups_facts`, `_rows_facts`, `_single_record_facts`.
+2. Move the attendance field map into a shared field-map module.
+3. Rerun the attendance eval; output must match before the refactor.
+
+### 5.3 Generic pipeline for other entities (Option A)
+1. Leave requests (count, list, status): handler, field map, rules check, eval set.
+2. WFH requests: same as leave.
+3. Timesheets (latest status, list): handler and eval.
+4. Holidays (count, list): handler and eval.
+5. Leave balance (per type: allocated, used, pending): handler and eval.
+6. Tasks (count, sum, group by status): handler and eval.
+7. Payroll and loan: handler, strict amount check (every amount and currency must match facts exactly, no rounding), and eval. Enable last.
+
+Each entity is enabled only after its flag-on eval has no wrong replies.
+
+### 5.4 Operations
+- Rotate database passwords and `JWT_SECRET_KEY` (credentials were shared in conversation).
+- Keep `LLM_NARRATION_ENABLED=False` in production until the rollout decision.
+- Remove dead narration code (`_maybe_narrate`, `_payload_for`, `_entity_specs`, `NARRATABLE_INTENTS`) and unused imports.
+
+## 6. Rollout
+
+1. Attendance: fix §5.1, refactor §5.2, run eval, test-environment UI check.
+2. Each entity in §5.3 order, each with its own eval and test-environment check.
+3. Production: enable per entity, only after its checks pass.
+
+## 7. Checks before enabling any flag
+
+- Flag-off eval matches expected figures.
+- Flag-on eval has no wrong replies (no unit, figure, period, comma, or negation errors).
+- Table questions are identical with the flag on and off.
+- Unit tests pass.
+- Log shows `facts:` for LLM answers and `answer rejected` for fallbacks.

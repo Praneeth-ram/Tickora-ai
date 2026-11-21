@@ -25,6 +25,7 @@ from backend.services.llm_chat_service import (
     is_directory_question,
     is_team_question,
     plan_question,
+    requested_aspects,
     resolve_context,
     should_refuse_third_party_request,
     split_compound_question,
@@ -120,6 +121,11 @@ PERIOD_WORDS = {
 
 settings = get_settings()
 
+LEAVE_STATUS_BREAKDOWN_MESSAGE = (
+    "I can show leave requests by status only as a list. "
+    "Ask for leave requests in October to see them."
+)
+
 NARRATABLE_INTENTS = {
     "attendance_records", "attendance_summary", "leave_status", "wfh_status",
     "timesheet_lookup", "holiday_lookup", "leave_balance", "leave_type_lookup",
@@ -138,17 +144,31 @@ import json
 def _route_answer(question, result, plan, period):
     if not settings.llm_narration_enabled:
         return result
+    if (
+        result.get("intent") == "attendance_records"
+        and len(requested_aspects(question)) > 1
+    ):
+        return result
     if choose_route(result) == "table":
         return result
     payload = compute_facts(question, plan, period, result)
+    if "per status" in question.lower() and "groups" not in payload:
+        if re.search(r"\bleave\s+requests?\b", question, re.IGNORECASE):
+            template_answer = str(result.get("answer") or result.get("message") or "")
+            if not re.search(
+                r"\b(?:status\s+breakdown|breakdown\s+by\s+status)\b",
+                template_answer,
+                re.IGNORECASE,
+            ):
+                result["answer"] = LEAVE_STATUS_BREAKDOWN_MESSAGE
+                result["message"] = LEAVE_STATUS_BREAKDOWN_MESSAGE
+        return result
     facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
     logger.warning("facts: %s", facts)
     try:
         answer = write_answer(question, payload)
     except Exception:
         logger.exception("LLM answer failed; using template")
-        return result
-    if "per status" in question.lower() and "groups" not in payload:
         return result
     if passes_answer_check(answer, payload):
         result["answer"] = answer

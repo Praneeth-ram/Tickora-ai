@@ -1,52 +1,52 @@
 [
   {
     "question": "How many days was I present in October?",
-    "answer": "You were present for 14 days in October.",
+    "answer": "You were present for 14 days in October 2026.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many days was I absent in October?",
-    "answer": "No absent attendance records were found in October 2026.",
+    "answer": "No absences in October 2026.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many days was I late in October?",
-    "answer": "You have 2 late attendance records in October 2026.",
+    "answer": "In October 2026, you were late for 2 days.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many half days did I take in October?",
-    "answer": "No half days were taken in the specified period.",
+    "answer": "No half day days were found in October 2026.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many days was I present in September?",
-    "answer": "You were present for 18 days in September.",
+    "answer": "You were present for 18 days in September 2026.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many days was I absent in September?",
-    "answer": "You were absent for 1 day in September.",
+    "answer": "You were absent for 1 day in September 2026.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many days was I late in September?",
-    "answer": "You have 3 late attendance records in September 2026.",
+    "answer": "You have 3 late days in September 2026.",
     "intent": "attendance_summary"
   },
   {
     "question": "Count my present days in October 2026.",
-    "answer": "You have 14 present attendance records in October 2026.",
+    "answer": "You had 14 present days in October 2026.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many late days did I have this month?",
-    "answer": "You had no late days this November 2026 so far.",
+    "answer": "No late days were found in November 2026 so far.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many absences did I have in October?",
-    "answer": "No absent attendance records were found in October 2026.",
+    "answer": "No absent days were found in October 2026.",
     "intent": "attendance_summary"
   },
   {
@@ -56,22 +56,22 @@
   },
   {
     "question": "What is my total worked time in September?",
-    "answer": "You worked 166 hours and 28 minutes in September.",
+    "answer": "Your total worked time in September 2026 was 166 hours and 28 minutes.",
     "intent": "attendance_summary"
   },
   {
     "question": "How much overtime did I do in October?",
-    "answer": "You worked 1 hour and 20 minutes of overtime in October.",
+    "answer": "Your total overtime in October 2026 was 1 hour and 20 minutes.",
     "intent": "attendance_summary"
   },
   {
     "question": "Total overtime in September?",
-    "answer": "You had 1 hour and 42 minutes of overtime in September.",
+    "answer": "Your total overtime in September 2026 was 1 hour and 42 minutes.",
     "intent": "attendance_summary"
   },
   {
     "question": "How many hours did I work in October 2026?",
-    "answer": "Your total worked time in October 2026 was 125 hours and 41 minutes.",
+    "answer": "You worked 125 hours and 41 minutes in October 2026.",
     "intent": "attendance_summary"
   },
   {
@@ -91,7 +91,7 @@
   },
   {
     "question": "How many days per status in October?",
-    "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
+    "answer": "In October, you had 2 days late and 14 days present.",
     "intent": "attendance_summary"
   },
   {
@@ -101,7 +101,7 @@
   },
   {
     "question": "How many leave requests per status?",
-    "answer": "You have 1 leave request.",
+    "answer": "I can show leave requests by status only as a list. Ask for leave requests in October to see them.",
     "intent": "leave_status"
   }
 ]
