@@ -1295,9 +1295,14 @@ def count_response(
         if loan_status_text
         else ([status_text] if status_text else [])
     )
+    if entity == "attendance" and status_text == "half day":
+        qualifiers = []
     description = " ".join(qualifiers + [noun])
 
     where = f" {span}" if span else ""
+
+    if entity == "attendance" and status_text == "half day" and count == 0:
+        return f"No half day attendance records were found{where}."
 
     # Detect manager-scoped Loan Request counts using query metadata.
     managed_by = filters.get("managed_by_employee_id")

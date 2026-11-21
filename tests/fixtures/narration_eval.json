@@ -1,107 +1,416 @@
 [
   {
+    "entity": "attendance",
     "question": "How many days was I present in October?",
-    "answer": "You were present for 14 days in October 2026.",
-    "intent": "attendance_summary"
+    "answer": "You have 14 present days in October 2026.",
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many days was I absent in October?",
-    "answer": "No absences in October 2026.",
-    "intent": "attendance_summary"
+    "answer": "No absent days were found in October 2026.",
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many days was I late in October?",
-    "answer": "In October 2026, you were late for 2 days.",
-    "intent": "attendance_summary"
+    "answer": "You have 2 late days in October 2026.",
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many half days did I take in October?",
-    "answer": "No half day days were found in October 2026.",
-    "intent": "attendance_summary"
+    "answer": "No half day attendance records were found in October 2026.",
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many days was I present in September?",
-    "answer": "You were present for 18 days in September 2026.",
-    "intent": "attendance_summary"
+    "answer": "You have 18 present days in September 2026.",
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many days was I absent in September?",
-    "answer": "You were absent for 1 day in September 2026.",
-    "intent": "attendance_summary"
+    "answer": "You have 1 absent day in September 2026.",
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many days was I late in September?",
     "answer": "You have 3 late days in September 2026.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "Count my present days in October 2026.",
     "answer": "You had 14 present days in October 2026.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many late days did I have this month?",
     "answer": "No late days were found in November 2026 so far.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many absences did I have in October?",
-    "answer": "No absent days were found in October 2026.",
-    "intent": "attendance_summary"
+    "answer": "No half day attendance records were found for October 2026. No absent days were found.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many hours did I work in October?",
-    "answer": "You worked 125 hours and 41 minutes in October.",
-    "intent": "attendance_summary"
+    "answer": "You worked 125 hours in October.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "What is my total worked time in September?",
     "answer": "Your total worked time in September 2026 was 166 hours and 28 minutes.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How much overtime did I do in October?",
     "answer": "Your total overtime in October 2026 was 1 hour and 20 minutes.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "Total overtime in September?",
-    "answer": "Your total overtime in September 2026 was 1 hour and 42 minutes.",
-    "intent": "attendance_summary"
+    "answer": "In September 2026, you had 1 hour and 42 minutes of overtime.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many hours did I work in October 2026?",
-    "answer": "You worked 125 hours and 41 minutes in October 2026.",
-    "intent": "attendance_summary"
+    "answer": "You worked 125 hours in October 2026.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "Show my attendance breakdown for October.",
     "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "Give me my attendance summary for September.",
     "answer": "Your attendance breakdown by status in September 2026: absent: 1 day, late: 3 days, present: 18 days.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "Attendance overview for October.",
     "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "How many days per status in October?",
-    "answer": "In October, you had 2 days late and 14 days present.",
-    "intent": "attendance_summary"
+    "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
+    "entity": "attendance",
     "question": "What is my attendance status breakdown for September?",
     "answer": "Your attendance breakdown by status in September 2026: absent: 1 day, late: 3 days, present: 18 days.",
-    "intent": "attendance_summary"
+    "intent": "attendance_summary",
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null
   },
   {
-    "question": "How many leave requests per status?",
+    "entity": "attendance_punch",
+    "question": "How many clock punches did I have in October 2026?",
+    "answer": "You have 32 records in October 2026.",
+    "intent": "attendance_records",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "attendance_punch",
+    "question": "Show my clock punches for 2 October 2026.",
+    "answer": "No matching records were found.",
+    "intent": "attendance_records",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "attendance_adjustment",
+    "question": "How many attendance adjustments did I make in October 2026?",
+    "answer": "No records were found in October 2026.",
+    "intent": "attendance_records",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "leave_request",
+    "question": "How many leave requests did I have in October 2026?",
+    "answer": "No leave request records were found in October 2026.",
+    "intent": "leave_status",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "leave_request",
+    "question": "Show my leave requests for October 2026.",
+    "answer": "No leave request records were found in October 2026.",
+    "intent": "leave_status",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "leave_request",
+    "question": "How many leave requests per status in 2026?",
     "answer": "I can show leave requests by status only as a list. Ask for leave requests in October to see them.",
-    "intent": "leave_status"
+    "intent": "leave_status",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "leave_balance",
+    "question": "What is my leave balance for 2026?",
+    "answer": "Your leave balance for 2026:\n- Casual Leave: 12 days remaining (12 allocated, 0 used, and 0 pending).\n- Sick Leave: 10 days remaining (10 allocated, 0 used, and 0 pending).\n- Earned Leave: 15 days remaining (15 allocated, 0 used, and 0 pending).\n- Unpaid Leave: 0 days remaining (0 allocated, 0 used, and 0 pending).\nTotal remaining: 37 days.",
+    "intent": "leave_balance",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "leave_balance",
+    "question": "How many leave days do I have left this year?",
+    "answer": "Your leave balance for 2026:\n- Casual Leave: 12 days remaining (12 allocated, 0 used, and 0 pending).\n- Sick Leave: 10 days remaining (10 allocated, 0 used, and 0 pending).\n- Earned Leave: 15 days remaining (15 allocated, 0 used, and 0 pending).\n- Unpaid Leave: 0 days remaining (0 allocated, 0 used, and 0 pending).\nTotal remaining: 37 days.",
+    "intent": "leave_balance",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "leave_balance",
+    "question": "How many leave days did I use in 2026?",
+    "answer": "You have 0 used leave days in 2026.",
+    "intent": "leave_balance",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "leave_type",
+    "question": "What leave types are available?",
+    "answer": "Here are your 4 leave types.",
+    "intent": "leave_type_lookup",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "leave_type",
+    "question": "How many leave types are there?",
+    "answer": "On record, there are 4 leave types.",
+    "intent": "leave_type_lookup",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "wfh_request",
+    "question": "How many work from home requests did I make in October 2026?",
+    "answer": "No work-from-home requests were made in October 2026.",
+    "intent": "wfh_status",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "wfh_request",
+    "question": "Show my work from home requests for September 2026.",
+    "answer": "No work-from-home requests were found in September 2026.",
+    "intent": "wfh_status",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "timesheet",
+    "question": "How many timesheets did I submit in October 2026?",
+    "answer": "You submitted 1 timesheet in October 2026.",
+    "intent": "timesheet_lookup",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "timesheet",
+    "question": "Show my timesheets for September 2026.",
+    "answer": "Your timesheet for September 2026 is approved and submitted.",
+    "intent": "timesheet_lookup",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "holiday",
+    "question": "How many holidays are there in October 2026?",
+    "answer": "In October 2026, there was 1 holiday.",
+    "intent": "holiday_lookup",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "holiday",
+    "question": "List the holidays in November 2026.",
+    "answer": "No holidays were found in November 2026.",
+    "intent": "holiday_lookup",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "task",
+    "question": "How many tasks did I have in October 2026?",
+    "answer": "You had 1 task in October 2026.",
+    "intent": "task_lookup",
+    "route": "llm",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "task",
+    "question": "How many tasks per status in October 2026?",
+    "answer": "There is 1 task in October 2026.",
+    "intent": "task_lookup",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "task",
+    "question": "What is my total performance score in September 2026?",
+    "answer": "I can answer questions about your attendance, leave, work-from-home requests, holidays, timesheets, tasks, payroll, and loans. Please ask about one of these.",
+    "intent": "unsupported",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "work_schedule",
+    "question": "What is my work schedule?",
+    "answer": "Here is your 1 record.",
+    "intent": "schedule_lookup",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "work_schedule",
+    "question": "Show my work schedule.",
+    "answer": "Here is your 1 record.",
+    "intent": "schedule_lookup",
+    "route": "template",
+    "status": "REVIEW",
+    "error": null
+  },
+  {
+    "entity": "loan_request",
+    "question": "How many loans do I have?",
+    "answer": "You have 2 loan requests.",
+    "intent": "loan_lookup",
+    "route": "template",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "loan_request",
+    "question": "What is my remaining loan amount?",
+    "answer": "The remaining amount for Penalty Deduction is 50.00. The remaining amount for Emergency Loan is 8,000.00.",
+    "intent": "loan_lookup",
+    "route": "template",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "payroll_summary",
+    "question": "What was my net pay in September 2026?",
+    "answer": "I can answer questions about your attendance, leave, work-from-home requests, holidays, timesheets, tasks, payroll, and loans. Please ask about one of these.",
+    "intent": "unsupported",
+    "route": "template",
+    "status": "PASS",
+    "error": null
+  },
+  {
+    "entity": "payroll_summary",
+    "question": "How many payslips do I have in 2026?",
+    "answer": "Here are your 10 payroll records for 2026.",
+    "intent": "payroll_lookup",
+    "route": "template",
+    "status": "PASS",
+    "error": null
   }
 ]

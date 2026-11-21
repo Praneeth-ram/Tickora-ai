@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from backend.services.payload.builders import (
@@ -23,6 +23,19 @@ NARRATABLE_ENTITIES = {
     "task",
     "leave_type",
 }
+
+
+def _decimal_value(value: Any) -> Decimal | None:
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return number if number.is_finite() else None
+
+
+def _is_integral(value: Any) -> bool:
+    number = _decimal_value(value)
+    return number is not None and number == number.to_integral_value()
 
 
 def _as_date(value: Any) -> date | None:
@@ -80,14 +93,14 @@ def _minutes_facts(
         if any(
             not isinstance(value, (int, float, Decimal))
             or isinstance(value, bool)
-            or Decimal(str(value)) % 1
+            or not _is_integral(value)
             for value in minutes
         ):
             return None
         total = sum(int(value) for value in minutes)
         found = bool(data)
     elif isinstance(data, dict) and isinstance(data.get("total"), (int, float, Decimal)):
-        if isinstance(data["total"], bool) or Decimal(str(data["total"])) % 1:
+        if isinstance(data["total"], bool) or not _is_integral(data["total"]):
             return None
         total = int(data["total"])
         found = bool(data.get("record_count", total != 0))
@@ -117,13 +130,16 @@ def _sum_facts(
         return None
     if not isinstance(total, (int, float, Decimal)) or isinstance(total, bool):
         return None
+    decimal_total = _decimal_value(total)
+    if decimal_total is None:
+        return None
     if field in MINUTE_FIELDS:
         return _minutes_facts(spec, period, plan, field, data)
 
     facts = _base_facts("sum", spec, period, plan.get("filters") or {})
     facts.update({
         "measure": spec["field_labels"][field],
-        "total": format(Decimal(str(total)), "f"),
+        "total": format(decimal_total, "f"),
         "found": bool(data.get("record_count", True)),
     })
     return facts
@@ -134,6 +150,9 @@ def _groups_facts(
 ) -> dict | None:
     aggregate_function = plan.get("aggregate_function") or "count"
     aggregate_field = plan.get("aggregate_field")
+    group_by_field = plan.get("group_by_field")
+    if group_by_field not in spec["field_labels"]:
+        return None
     if aggregate_function == "sum" and (
         aggregate_field not in spec["field_labels"]
         or aggregate_field not in visible_fields(entity, [aggregate_field], role)
@@ -147,7 +166,8 @@ def _groups_facts(
         count = row.get("record_count", row.get("total", 0))
         if not isinstance(count, (int, float, Decimal)) or isinstance(count, bool):
             continue
-        if not Decimal(str(count)).is_finite():
+        decimal_count = _decimal_value(count)
+        if decimal_count is None:
             continue
         value = row.get("group_value")
         group = {"label": label_value(value) if value is not None else "not recorded"}
@@ -162,7 +182,7 @@ def _groups_facts(
                 })
         else:
             group["count"] = (
-                int(count) if Decimal(str(count)).is_integer() else str(count)
+                int(count) if _is_integral(count) else str(count)
             )
         groups.append(group)
 

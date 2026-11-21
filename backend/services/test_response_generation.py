@@ -244,6 +244,24 @@ def test_count_answers_use_entity_names_and_singular_grammar():
     )
 
 
+def test_half_day_counts_use_half_days_as_the_unit():
+    assert count_response("attendance", 0, "half_day", "in October 2026") == (
+        "No half day attendance records were found in October 2026."
+    )
+    assert count_response("attendance", 1, "half_day", "in October 2026") == (
+        "You have 1 half day in October 2026."
+    )
+    assert count_response("attendance", 2, "half_day", "in October 2026") == (
+        "You have 2 half days in October 2026."
+    )
+
+
+def test_zero_absent_count_uses_template_wording():
+    assert count_response("attendance", 0, "absent", "in October 2026") == (
+        "No absent days were found in October 2026."
+    )
+
+
 def test_loan_count_answers_use_the_requested_loan_status():
     for status in ("active", "approved", "pending"):
         assert count_response(

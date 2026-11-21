@@ -23,7 +23,7 @@ Rules:
 15. Never write minute totals in brackets or otherwise. When hours and minutes are given, use only hours and minutes.
 16. Do not repeat the same figures in more than one sentence.
 17. Write status words plainly, without quotation marks.
-18. For a zero absent-day count, say "no absent days were found", matching the template.
+18. For zero half-day attendance, say "no half day attendance records were found". For absent-day counts, say "no absent days were found".
 19. Write the month and year together with no comma, for example "October 2026". Never write "October, 2026".
 20. Use period_text exactly as given. Do not put "this", "last", or "next" before it.
 21. Name the period from period_text. Never write "the specified period", "the requested period", or "the period".
@@ -131,13 +131,22 @@ def _has_invalid_count_unit(text: str, facts: dict) -> bool:
     if not isinstance(singular, str) or not isinstance(plural, str) or singular == plural:
         return False
 
+    def phrase_pattern(value: str) -> str:
+        return r"[- ]+".join(
+            re.escape(part) for part in re.split(r"[\s-]+", value)
+        )
+
     pattern = re.compile(
-        rf"\b{count}\s+(?:(?:[\w-]+)\s+){{0,2}}"
-        rf"(?P<unit>{re.escape(singular)}|{re.escape(plural)})\b",
+        rf"\b{count}\s+(?:(?:[\w-]+\s+){{0,2}})?"
+        rf"(?:(?P<singular>{phrase_pattern(singular)})|"
+        rf"(?P<plural>{phrase_pattern(plural)}))\b",
         re.IGNORECASE,
     )
-    expected = singular if count == 1 else plural
-    return any(match.group("unit").lower() != expected.lower() for match in pattern.finditer(text))
+    expected_group = "singular" if count == 1 else "plural"
+    return any(
+        match.group(expected_group) is None
+        for match in pattern.finditer(text)
+    )
 
 
 def passes_answer_check(answer: str, facts: dict) -> bool:

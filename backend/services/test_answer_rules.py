@@ -39,6 +39,20 @@ def test_unit_singular_and_plural_must_match():
     assert passes_answer_check("You worked 1 hour and 42 minutes.", facts)
 
 
+def test_entity_count_uses_its_own_singular_and_plural_unit():
+    facts = {
+        "count": 1,
+        "unit_singular": "leave request",
+        "unit": "leave requests",
+        "period_text": "October 2026",
+    }
+    assert passes_answer_check("You have 1 leave request in October 2026.", facts)
+    assert not passes_answer_check(
+        "You have 1 leave requests in October 2026.",
+        facts,
+    )
+
+
 def test_duplicate_month_and_month_comma_year_are_rejected():
     facts = {
         "found": True,
@@ -90,6 +104,7 @@ def test_vague_period_is_rejected_by_rule_only():
 
 def test_per_status_routes_to_template_without_groups():
     from backend.agents import nodes
+    from types import SimpleNamespace
     from unittest.mock import patch
 
     result = {
@@ -100,7 +115,25 @@ def test_per_status_routes_to_template_without_groups():
     }
     with patch.object(nodes, "settings") as settings:
         settings.llm_narration_enabled = True
-        with patch.object(nodes, "write_answer") as write_answer:
+        with (
+            patch.object(nodes, "get_actor", return_value=SimpleNamespace(role="employee")),
+            patch.object(
+                nodes,
+                "_entity_specs",
+                return_value={
+                    "leave_request": {
+                        "label": "leave request",
+                        "unit": "leave requests",
+                        "unit_singular": "leave request",
+                        "field_labels": {"status": "status"},
+                        "narratable": True,
+                        "sensitive": False,
+                        "scope": "employee_id",
+                    }
+                },
+            ),
+            patch.object(nodes, "write_answer") as write_answer,
+        ):
             out = nodes._route_answer(
                 "How many leave requests per status?",
                 result,

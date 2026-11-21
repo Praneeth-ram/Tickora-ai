@@ -1,0 +1,26 @@
+{
+  "leave_request": [
+    "How many leave requests did I submit in October 2026?",
+    "Show my leave requests in October 2026."
+  ],
+  "wfh_request": [
+    "How many work from home requests did I make in October 2026?",
+    "Show my work from home requests in October 2026."
+  ],
+  "timesheet": [
+    "What is my latest timesheet status?",
+    "Show my timesheets for October 2026."
+  ],
+  "holiday": [
+    "Which holidays are in October 2026?",
+    "How many holidays are in October 2026?"
+  ],
+  "leave_balance": [
+    "What is my leave balance for 2026?",
+    "Show my leave balance by type for 2026."
+  ],
+  "task": [
+    "How many tasks are assigned to me?",
+    "Show my task status breakdown."
+  ]
+}
