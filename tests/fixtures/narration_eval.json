@@ -31,8 +31,8 @@
     "question": "How many half days did I take in October?",
     "answer": "No half day attendance records were found in October 2026.",
     "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
+    "route": "llm",
+    "status": "PASS",
     "error": null
   },
   {
@@ -47,10 +47,10 @@
   {
     "entity": "attendance",
     "question": "How many days was I absent in September?",
-    "answer": "You have 1 absent day in September 2026.",
+    "answer": "You were absent for 1 day in September 2026.",
     "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
+    "route": "llm",
+    "status": "PASS",
     "error": null
   },
   {
@@ -74,16 +74,16 @@
   {
     "entity": "attendance",
     "question": "How many late days did I have this month?",
-    "answer": "No late days were found in November 2026 so far.",
+    "answer": "No late day attendance was recorded in November 2026 so far.",
     "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
+    "route": "llm",
+    "status": "PASS",
     "error": null
   },
   {
     "entity": "attendance",
     "question": "How many absences did I have in October?",
-    "answer": "No half day attendance records were found for October 2026. No absent days were found.",
+    "answer": "No absent days were found",
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
@@ -101,10 +101,10 @@
   {
     "entity": "attendance",
     "question": "What is my total worked time in September?",
-    "answer": "Your total worked time in September 2026 was 166 hours and 28 minutes.",
+    "answer": "You worked 166 hours and 28 minutes in September.",
     "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
+    "route": "llm",
+    "status": "PASS",
     "error": null
   },
   {
@@ -119,10 +119,10 @@
   {
     "entity": "attendance",
     "question": "Total overtime in September?",
-    "answer": "In September 2026, you had 1 hour and 42 minutes of overtime.",
+    "answer": "Your total overtime in September 2026 was 1 hour and 42 minutes.",
     "intent": "attendance_summary",
-    "route": "llm",
-    "status": "PASS",
+    "route": "fallback",
+    "status": "REVIEW",
     "error": null
   },
   {
@@ -182,7 +182,7 @@
   {
     "entity": "attendance_punch",
     "question": "How many clock punches did I have in October 2026?",
-    "answer": "You have 32 records in October 2026.",
+    "answer": "You have 32 clock punches in October 2026.",
     "intent": "attendance_records",
     "route": "template",
     "status": "REVIEW",
@@ -191,7 +191,7 @@
   {
     "entity": "attendance_punch",
     "question": "Show my clock punches for 2 October 2026.",
-    "answer": "No matching records were found.",
+    "answer": "No clock punches were found on 2 October 2026.",
     "intent": "attendance_records",
     "route": "template",
     "status": "REVIEW",
@@ -200,7 +200,7 @@
   {
     "entity": "attendance_adjustment",
     "question": "How many attendance adjustments did I make in October 2026?",
-    "answer": "No records were found in October 2026.",
+    "answer": "No attendance adjustments were found in October 2026.",
     "intent": "attendance_records",
     "route": "template",
     "status": "REVIEW",
@@ -227,7 +227,7 @@
   {
     "entity": "leave_request",
     "question": "How many leave requests per status in 2026?",
-    "answer": "I can show leave requests by status only as a list. Ask for leave requests in October to see them.",
+    "answer": "I couldn't provide a leave-request status breakdown in 2026.",
     "intent": "leave_status",
     "route": "template",
     "status": "REVIEW",
@@ -308,7 +308,7 @@
   {
     "entity": "timesheet",
     "question": "Show my timesheets for September 2026.",
-    "answer": "Your timesheet for September 2026 is approved and submitted.",
+    "answer": "Your timesheet for September 2026 is approved and submitted on 2026-10-04.",
     "intent": "timesheet_lookup",
     "route": "llm",
     "status": "PASS",
@@ -344,16 +344,16 @@
   {
     "entity": "task",
     "question": "How many tasks per status in October 2026?",
-    "answer": "There is 1 task in October 2026.",
+    "answer": "Your task breakdown by status in October 2026: completed: 1 task.",
     "intent": "task_lookup",
-    "route": "template",
+    "route": "fallback",
     "status": "REVIEW",
     "error": null
   },
   {
     "entity": "task",
     "question": "What is my total performance score in September 2026?",
-    "answer": "I can answer questions about your attendance, leave, work-from-home requests, holidays, timesheets, tasks, payroll, and loans. Please ask about one of these.",
+    "answer": "I couldn't answer that request from the available HR records. Please try a different question or contact your HR administrator.",
     "intent": "unsupported",
     "route": "template",
     "status": "REVIEW",
@@ -362,7 +362,7 @@
   {
     "entity": "work_schedule",
     "question": "What is my work schedule?",
-    "answer": "Here is your 1 record.",
+    "answer": "Your work schedule:\n- Standard India Weekday Schedule: shift 09:30 AM to 06:30 PM, expected hours: 8.0, workdays: Monday, Tuesday, Wednesday, Thursday, Friday, effective from 31 May 2024",
     "intent": "schedule_lookup",
     "route": "template",
     "status": "REVIEW",
@@ -371,7 +371,7 @@
   {
     "entity": "work_schedule",
     "question": "Show my work schedule.",
-    "answer": "Here is your 1 record.",
+    "answer": "Your work schedule:\n- Standard India Weekday Schedule: shift 09:30 AM to 06:30 PM, expected hours: 8.0, workdays: Monday, Tuesday, Wednesday, Thursday, Friday, effective from 31 May 2024",
     "intent": "schedule_lookup",
     "route": "template",
     "status": "REVIEW",
@@ -398,7 +398,7 @@
   {
     "entity": "payroll_summary",
     "question": "What was my net pay in September 2026?",
-    "answer": "I can answer questions about your attendance, leave, work-from-home requests, holidays, timesheets, tasks, payroll, and loans. Please ask about one of these.",
+    "answer": "I couldn't answer that request from the available HR records. Please try a different question or contact your HR administrator.",
     "intent": "unsupported",
     "route": "template",
     "status": "PASS",

@@ -26,6 +26,9 @@ _DOMAIN_WORDS = {
     "cancelled", "submitted",
     # Timesheet
     "timesheet", "timesheets",
+    # Payroll amounts
+    "payroll", "salary", "salaries", "gross", "net", "pay", "payslip",
+    "payslips", "deduction", "deductions", "deducted", "amount", "earnings",
     # Date words
     "date", "dates", "month", "year", "week", "today", "yesterday",
     "upcoming", "coming", "next", "last", "this", "between",

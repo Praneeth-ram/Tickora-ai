@@ -27,6 +27,8 @@ Rules:
 19. Write the month and year together with no comma, for example "October 2026". Never write "October, 2026".
 20. Use period_text exactly as given. Do not put "this", "last", or "next" before it.
 21. Name the period from period_text. Never write "the specified period", "the requested period", or "the period".
+22. For attendance, mention only statuses present in FACTS. Do not add a different attendance status.
+23. For payroll, reproduce each amount and currency code exactly as shown in FACTS. Do not round, convert, calculate, or add another amount.
 """
 
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
@@ -149,12 +151,53 @@ def _has_invalid_count_unit(text: str, facts: dict) -> bool:
     )
 
 
+ATTENDANCE_STATUS_PATTERNS = {
+    "present": re.compile(r"\bpresent\b", re.IGNORECASE),
+    "late": re.compile(r"\blate\b", re.IGNORECASE),
+    "absent": re.compile(r"\b(?:absent|absences?)\b", re.IGNORECASE),
+    "half_day": re.compile(r"\bhalf[- ]days?\b", re.IGNORECASE),
+    "on_leave": re.compile(r"\bon leave\b", re.IGNORECASE),
+    "work_from_home": re.compile(r"\bwork[- ]from[- ]home\b|\bwfh\b", re.IGNORECASE),
+}
+
+
+def _attendance_status(value: object) -> str:
+    normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {"absence": "absent", "absences": "absent"}
+    return aliases.get(normalized, normalized)
+
+
+def _has_unfounded_attendance_status(text: str, facts: dict) -> bool:
+    if str(facts.get("entity", "")).lower() != "attendance":
+        return False
+
+    allowed: set[str] = set()
+    if facts.get("status") is not None:
+        allowed.add(_attendance_status(facts["status"]))
+    for group in facts.get("groups") or []:
+        if isinstance(group, dict) and group.get("label") is not None:
+            allowed.add(_attendance_status(group["label"]))
+    record = facts.get("record")
+    if isinstance(record, dict) and record.get("status") is not None:
+        allowed.add(_attendance_status(record["status"]))
+    for row in facts.get("rows") or []:
+        if isinstance(row, dict) and row.get("status") is not None:
+            allowed.add(_attendance_status(row["status"]))
+
+    return any(
+        status not in allowed and pattern.search(text)
+        for status, pattern in ATTENDANCE_STATUS_PATTERNS.items()
+    )
+
+
 def passes_answer_check(answer: str, facts: dict) -> bool:
     text = answer.lower()
     # Five words is the shortest complete answer ("You had 2 late days.").
     if not answer or len(answer.split()) < 5:
         return False
     if _has_negated_status(text, facts):
+        return False
+    if _has_unfounded_attendance_status(answer, facts):
         return False
     if _has_invalid_unit_grammar(answer):
         return False

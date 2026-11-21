@@ -33,6 +33,8 @@ from backend.services.request_answer_builder import (
     request_answer,
     status_check_answer,
 )
+from backend.services.response_formatter import format_work_schedules
+from backend.services.payroll_narration import is_payroll_detail_question
 from backend.services.text_normalizer import correct_typos
 from backend.services.operation_registry import build_operation_registry
 from backend.services.leave_balance_answer import (
@@ -62,8 +64,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEZONE = os.getenv("APP_TIMEZONE", os.getenv("TICKORA_TIMEZONE", "Asia/Kolkata"))
 
 UNSUPPORTED_MESSAGE = (
-    "I can answer questions about your attendance, leave, work-from-home requests, "
-    "holidays, timesheets, tasks, payroll, and loans. Please ask about one of these."
+    "I couldn't answer that request from the available HR records. "
+    "Please try a different question or contact your HR administrator."
 )
 
 OPERATION_DATE_FIELDS = {
@@ -200,8 +202,10 @@ def get_query_plan(question: str) -> dict[str, Any]:
 
 _HOLIDAY_RE = re.compile(r"\bholidays?\b")
 _PAYROLL_RE = re.compile(
-    r"\b(?:payroll|salary|salaries|gross\s+pay|net\s+pay|"
-    r"deductions?|deductible|deducted|take[- ]home\s+pay|"
+    r"\b(?:payroll|salary|salaries|"
+    r"gross(?:\s+(?:amount|pay|salary|earnings))?|"
+    r"net(?:\s+(?:amount|pay|salary|income))?|"
+    r"deductions?|deduction\s+amount|deductible|deducted|take[- ]home\s+pay|"
     r"pay\s*slips?|payslips?|"
     r"credited\s+to\s+(?:my\s+)?account|"
     r"amount\s+(?:received|credited)|"
@@ -809,6 +813,11 @@ def normalize_and_correct_plan(
         }
 
     is_task_query = bool(re.search(r"\btasks?\b", q))
+    is_task_status_breakdown = bool(
+        is_task_query
+        and is_count_query
+        and re.search(r"\b(?:per|by)\s+status\b", q)
+    )
     task_statuses = {
         status_value
         for word, status_value in status_keywords.items()
@@ -825,6 +834,8 @@ def normalize_and_correct_plan(
     requested_entity = _registered_entity_mentioned(question, registry)
     if requested_entity:
         grouped_request = is_summary_query or bool(re.search(r"\b(?:breakdown|break\s+down)\b", q)) or bool(
+            re.search(r"\b(?:per|by)\s+status\b", q)
+        ) or bool(
             re.search(
                 r"\b(?:group(?:ed)?|breakdown|break\s+down|"
                 r"categorize|category)\b",
@@ -850,7 +861,7 @@ def normalize_and_correct_plan(
                         reverse=True,
                     )
                     if re.search(
-                        r"\bby\s+"
+                        r"\b(?:by|per)\s+"
                         + re.escape(field.replace("_", " "))
                         .replace(r"\ ", r"\s+")
                         + r"(?!\w)",
@@ -914,7 +925,7 @@ def normalize_and_correct_plan(
     )
 
     if is_task_query:
-        if is_multi_status_task_count:
+        if is_multi_status_task_count or is_task_status_breakdown:
             op_id = "task.group_by"
             normalized.update({
                 "operation_id": op_id,
@@ -1244,7 +1255,6 @@ def format_timesheet_response(data: Any) -> str:
     return "\n".join(lines)
 
 
-
 def count_response(
     entity: str,
     count: int,
@@ -1265,6 +1275,11 @@ def count_response(
         ),
         "timesheet": ("timesheet", "timesheets"),
         "holiday": ("holiday", "holidays"),
+        "attendance_punch": ("clock punch", "clock punches"),
+        "attendance_adjustment": (
+            "attendance adjustment",
+            "attendance adjustments",
+        ),
         "leave_balance": ("leave balance", "leave balances"),
         "leave_type": ("leave type", "leave types"),
         "loan_request": ("loan request", "loan requests"),
@@ -1644,16 +1659,38 @@ def _payroll_response(
     question: str = "",
 ) -> str:
     """Format payroll results as a specific amount, aggregate, extremum, or breakdown."""
+    q = question.lower()
+    asks_payslip_count = (
+        not _is_all_employee_payroll_query(question)
+        and re.search(r"\b(?:how\s+many|count|number\s+of)\b", q)
+        and re.search(r"\b(?:payslips?|payroll\s+records?)\b", q)
+    )
+    count_noun = (
+        "payslip"
+        if re.search(r"\bpayslips?\b", q)
+        else "payroll record"
+    )
     if not isinstance(rows, list) or not rows:
         start = as_date(period.get("start_date"))
         end = as_date(period.get("end_date"))
         span = period_phrase(start, end)
+        if asks_payslip_count:
+            plural = count_noun if count_noun.endswith("s") else f"{count_noun}s"
+            return f"No {plural} were found{f' {span}' if span else ''}."
         return (
             f"No payroll records were found"
             f"{f' {span}' if span else ''}."
         )
 
-    q = question.lower()
+    if asks_payslip_count:
+        start = as_date(period.get("start_date"))
+        end = as_date(period.get("end_date"))
+        span = period_phrase(start, end)
+        plural = count_noun if len(rows) == 1 else f"{count_noun}s"
+        return (
+            f"You have {len(rows)} {plural}"
+            f"{f' {span}' if span else ''}."
+        )
 
     if re.search(
     r"\b(?:deductions?|deductible|deductibles|"
@@ -3840,16 +3877,7 @@ def execute_and_format(
 
     if operation_id == "payroll_summary.list":
         message = _payroll_response(data, period, normalized_question)
-        asks_specific_metric = bool(
-            re.search(
-                r"\b(?:deductions?|deductible|deductibles|tax(?:es)?\s+deducted|"
-                r"deduction\s+amount|deducted(?:\s+(?:amount|from|for))?|"
-                r"net\s+(?:amount|salary|pay|income)|take[- ]home\s+(?:pay|salary|amount)|"
-                r"amount\s+(?:received|credited)|gross\s+(?:amount|salary|pay|earnings)|"
-                r"earnings\s+before\s+deductions)\b",
-                normalized_question.lower(),
-            )
-        )
+        asks_specific_metric = is_payroll_detail_question(normalized_question)
         return _result(
             question,
             message,
@@ -3928,6 +3956,26 @@ def execute_and_format(
     elif operation_id == "leave_type.list":
         message = leave_type_response(data if isinstance(data, list) else [])
 
+    elif operation_id == "work_schedule.list":
+        message = format_work_schedules(
+            data if isinstance(data, list) else []
+        )
+
+    elif operation_id in {"attendance_punch.list", "attendance_adjustment.list"}:
+        noun = (
+            "clock punches"
+            if operation_id == "attendance_punch.list"
+            else "attendance adjustments"
+        )
+        if data:
+            message = f"Your {noun} are listed below."
+        else:
+            span = period_phrase(
+                as_date(period.get("start_date")),
+                as_date(period.get("end_date")),
+            )
+            message = f"No {noun} were found{f' {span}' if span else ''}."
+
     elif isinstance(data, list):
         message = "Your matching records are listed below." if data else "No matching records were found."
     else:
@@ -3938,7 +3986,9 @@ def execute_and_format(
         message,
         intent,
         period,
-        isinstance(data, list) and bool(data),
+        isinstance(data, list)
+        and bool(data)
+        and operation_id != "work_schedule.list",
         data,
         raw_data,
     )

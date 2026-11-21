@@ -35,9 +35,20 @@ from backend.services.llm_chat_service import (
     _HOLIDAY_RE,
     ModelServiceError
 )
-from backend.security.access_policy import AccessDenied, REFUSAL_MESSAGE, get_actor, SUPER_ADMIN
+from backend.security.access_policy import (
+    AccessDenied,
+    REFUSAL_MESSAGE,
+    get_actor,
+    get_subject,
+    SUPER_ADMIN,
+)
 from backend.services.operation_registry import build_operation_registry
 from backend.services.payload.entities import build_specs, narratable_for_role
+from backend.services.payroll_narration import (
+    build_payroll_facts,
+    is_payroll_detail_question,
+    passes_payroll_answer_check,
+)
 from sqlalchemy.exc import SQLAlchemyError
 
 import logging
@@ -118,11 +129,6 @@ PERIOD_WORDS = {
 
 settings = get_settings()
 
-LEAVE_STATUS_BREAKDOWN_MESSAGE = (
-    "I can show leave requests by status only as a list. "
-    "Ask for leave requests in October to see them."
-)
-
 @lru_cache(maxsize=1)
 def _entity_specs() -> dict:
     return build_specs(build_operation_registry(schema_name="public"))
@@ -145,8 +151,33 @@ def _route_answer(question, result, plan, period):
     actor = get_actor()
     if actor is None:
         return result
-    specs = _entity_specs()
     entity = str(plan.get("operation_id") or "").partition(".")[0]
+    if entity == "payroll_summary":
+        subject_id = get_subject()
+        if (
+            not is_payroll_detail_question(question)
+            or (subject_id is not None and subject_id != actor.employee_id)
+            or (actor.role == SUPER_ADMIN and subject_id != actor.employee_id)
+        ):
+            return result
+        payload = build_payroll_facts(
+            question, period, result.get("data")
+        )
+        if payload is None:
+            return result
+        try:
+            answer = write_answer(question, payload)
+        except Exception:
+            logger.exception("Payroll narration failed; template kept")
+            return result
+        if passes_payroll_answer_check(answer, payload):
+            result["answer"] = answer
+            result["message"] = answer
+        else:
+            logger.warning("Payroll narration rejected; template kept")
+        return result
+
+    specs = _entity_specs()
     spec = specs.get(entity)
     if (
         spec is None
@@ -159,17 +190,30 @@ def _route_answer(question, result, plan, period):
     payload = compute_facts(question, plan, period, result, specs, actor.role)
     if payload is None:
         return result
-    if "per status" in question.lower() and "groups" not in payload:
-        if re.search(r"\bleave\s+requests?\b", question, re.IGNORECASE):
-            template_answer = str(result.get("answer") or result.get("message") or "")
-            if not re.search(
-                r"\b(?:status\s+breakdown|breakdown\s+by\s+status)\b",
-                template_answer,
-                re.IGNORECASE,
-            ):
-                result["answer"] = LEAVE_STATUS_BREAKDOWN_MESSAGE
-                result["message"] = LEAVE_STATUS_BREAKDOWN_MESSAGE
-        return result
+    if re.search(r"\b(?:per|by)\s+status\b", question, re.IGNORECASE):
+        is_leave_status_query = bool(
+            re.search(r"\bleave\s+requests?\b", question, re.IGNORECASE)
+        )
+        period_text = str(payload.get("period_text") or "").strip()
+        period_suffix = (
+            f" {period_text}"
+            if period_text and period_text != "on record"
+            else ""
+        )
+        if "groups" not in payload:
+            if is_leave_status_query:
+                message = (
+                    "I couldn't provide a leave-request status breakdown"
+                    f"{period_suffix}."
+                )
+                result["answer"] = message
+                result["message"] = message
+            return result
+        if payload.get("groups") == [] and is_leave_status_query:
+            message = f"No leave request records were found{period_suffix}."
+            result["answer"] = message
+            result["message"] = message
+            return result
     facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
     logger.warning("facts: %s", facts)
     try:

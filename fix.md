@@ -40,7 +40,7 @@ Constraints:
 - `compute_facts` in `backend/services/payload/answer_payload.py` dispatches to named count, sum, group-by, row, and single-record handlers.
 - Entity field labels and singular/plural units come from `backend/services/payload/entities.py`; sensitive fields and role-hidden task scores do not reach the model.
 - Minute totals are split into `hours` and `minutes`; unsupported result shapes fall back to the template.
-- Loan and payroll facts are not narrated until exact amount/currency checks and their evaluations are implemented.
+- Payroll amount questions use a separate minimal-facts path with exact amount/currency validation; payroll tables and loans remain on templates.
 - Multi-aspect single-day questions (clock in, clock out, work location) are answered together. `requested_aspects` and `fields_for_aspects` select only the requested fields, and the template builds one sentence covering all aspects.
 
 ### 3.3 Answer step
@@ -57,6 +57,7 @@ Constraints:
 ### 3.5 Tests and eval sets
 - `backend/services/payload/test_answer_payload.py` covers entity counts, sums, groups, rows, single records, and sensitive-entity fallback.
 - `backend/services/test_answer_rules.py` and `backend/services/test_response_generation.py` cover answer validation and attendance wording.
+- `backend/services/test_payroll_narration.py` covers payroll metric routing, personal scope, exact amounts/currencies, and total-period coverage.
 - `tests/fixtures/narration_entity_questions.json` supplies leave, WFH, timesheet, holiday, leave-balance, and task questions to `scripts/eval_narration.py`.
 - Live flag-off/flag-on evaluations are still required before enabling narration for an entity.
 
@@ -67,7 +68,7 @@ Constraints:
 
 ## 4. What is not implemented
 
-- Exact money/currency validation and narration for loans and payroll. These remain on templates and are intentionally excluded from narration.
+- Exact money/currency validation and narration for loans; they remain on templates and are intentionally excluded from narration.
 - Live per-entity flag-on/flag-off evaluation and test-environment UI checks.
 - Operational credential rotation, which must be performed by an authorized operator outside this code change.
 
@@ -82,8 +83,9 @@ Constraints:
 
 ### 5.3 Generic pipeline for other entities (Option A)
 - Leave requests, WFH requests, timesheets, holidays, leave balances, and tasks use the shared facts pipeline and have per-entity question sets.
+- Explicit personal gross, net, and deduction amount questions use a payroll-only facts path; broad payroll/table requests stay on the existing table/template route. Totals require coverage for every requested month, and accepted replies must preserve every requested metric, amount, and currency exactly.
 - Run each entity's flag-on evaluation and keep the template as fallback for rejected replies.
-- Implement strict exact-amount/currency checks and evaluations for payroll and loans before considering them for narration. They remain disabled.
+- Loans remain excluded until strict amount/currency checks and evaluations are implemented. Payroll narration still requires live flag-on evaluation before production enablement.
 
 Each entity is enabled only after its flag-on eval has no wrong replies.
 

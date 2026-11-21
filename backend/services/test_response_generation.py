@@ -10,6 +10,7 @@ from backend.services.llm_chat_service import (
     _answer_timesheet,
     count_response,
     correct_plan,
+    execute_and_format,
     format_timesheet_response,
     grouped_response,
     leave_type_response,
@@ -22,8 +23,11 @@ from backend.services.llm_chat_service import (
     _result,
     _capture_combined_answers,
     _combine_results,
+    _is_payroll_query,
+    resolve_context,
 )
 from backend.services.request_answer_builder import request_answer
+from backend.services.response_formatter import format_work_schedules
 
 
 def test_payroll_net_pay_response_uses_plain_sentence():
@@ -93,6 +97,20 @@ def test_own_payroll_plan_omits_employee_name_and_code():
 
     assert "employee_code" not in plan["fields"]
     assert "employee_name" not in plan["fields"]
+
+
+def test_payroll_amount_questions_survive_typo_correction_and_route_to_payroll():
+    questions = [
+        "what is my gross amount on augest month",
+        "what is my net amount in july month",
+        "what is my total gross amount from june to october",
+    ]
+
+    normalized = [resolve_context(question) for question in questions]
+
+    assert "august" in normalized[0]
+    assert "net amount" in normalized[1]
+    assert all(_is_payroll_query(question) for question in normalized)
 
 
 def test_result_keeps_structured_and_raw_data_when_table_is_hidden():
@@ -242,6 +260,12 @@ def test_count_answers_use_entity_names_and_singular_grammar():
     assert count_response("holiday", 0, None, "in October 2026") == (
         "No holidays were found in October 2026."
     )
+    assert count_response("attendance_punch", 32, None, "in October 2026") == (
+        "You have 32 clock punches in October 2026."
+    )
+    assert count_response(
+        "attendance_adjustment", 0, None, "in October 2026"
+    ) == "No attendance adjustments were found in October 2026."
 
 
 def test_half_day_counts_use_half_days_as_the_unit():
@@ -565,6 +589,52 @@ def test_multi_status_task_count_groups_by_status_without_status_filter():
     assert single_status_plan["filters"]["status"] == "completed"
 
 
+def test_per_status_requests_normalize_to_group_by():
+    def operation(entity, table, date_field):
+        return {
+            "entity": entity,
+            "table": table,
+            "fields": [],
+            "filters": ["status", date_field],
+            "identity_filters": {},
+            "date_field": date_field,
+            "date_fields": [date_field],
+            "aggregate_fields": [],
+            "group_by_fields": ["status"],
+        }
+
+    task = operation("task", "tasks", "task_date")
+    leave = operation("leave_request", "leave_requests", "start_date")
+    registry = {
+        f"{entity}.{op}": definition
+        for entity, definition in (
+            ("task", task),
+            ("leave_request", leave),
+        )
+        for op in ("list", "count", "group_by")
+    }
+
+    with patch(
+        "backend.services.llm_chat_service.build_operation_registry",
+        return_value=registry,
+    ):
+        task_plan, _ = normalize_and_correct_plan(
+            {"operation_id": "task.count", "filters": {}},
+            "How many tasks per status in October 2026?",
+            date(2026, 10, 30),
+        )
+        leave_plan, _ = normalize_and_correct_plan(
+            {"operation_id": "leave_request.count", "filters": {}},
+            "How many leave requests per status in 2026?",
+            date(2026, 10, 30),
+        )
+
+    assert task_plan["operation_id"] == "task.group_by"
+    assert task_plan["group_by_field"] == "status"
+    assert leave_plan["operation_id"] == "leave_request.group_by"
+    assert leave_plan["group_by_field"] == "status"
+
+
 def test_grouping_explicitly_named_entity_overrides_wrong_model_entity():
     timesheet_definition = {
         "entity": "timesheet",
@@ -884,6 +954,88 @@ def test_timesheet_answer_formats_periods_and_caps_long_lists():
     ]
     assert format_timesheet_response(rows) == (
         "Your timesheet:\n- 5 to 11 October 2026: Approved"
+    )
+
+
+def test_work_schedule_answer_includes_available_schedule_details():
+    assert format_work_schedules(
+        [
+            {
+                "schedule_name": "Day Shift",
+                "shift_start": "09:00",
+                "shift_end": "17:00",
+                "expected_hours": Decimal("8"),
+                "workdays_label": "Monday to Friday",
+                "effective_from": date(2026, 1, 1),
+            }
+        ]
+    ) == (
+        "Your work schedule:\n"
+        "- Day Shift: shift 09:00 to 17:00, expected hours: 8, "
+        "workdays: Monday to Friday, effective from 01 Jan 2026"
+    )
+
+
+def test_work_schedule_query_returns_schedule_details():
+    with patch(
+        "backend.services.llm_chat_service._execute",
+        return_value={
+            "operation": "list",
+            "entity": "work_schedule",
+            "data": [{"schedule_name": "Day Shift", "shift_start": "09:00"}],
+        },
+    ):
+        response = execute_and_format(
+            "What is my work schedule?",
+            "What is my work schedule?",
+            {"operation_id": "work_schedule.list", "filters": {}},
+            {"start_date": None, "end_date": None},
+            employee_id=12,
+            organization_id=7,
+            today=date(2026, 10, 30),
+            status_target=None,
+        )
+
+    assert response["answer"] == (
+        "Your work schedule:\n- Day Shift: shift starts at 09:00"
+    )
+
+
+def test_payslip_count_uses_payslip_unit():
+    assert _payroll_response(
+        [{"period_start": date(2026, 1, 1)}] * 10,
+        {"start_date": date(2026, 1, 1), "end_date": date(2026, 12, 31)},
+        "How many payslips do I have in 2026?",
+    ) == "You have 10 payslips in 2026."
+
+
+def test_zero_payslip_count_uses_payslip_unit():
+    assert _payroll_response(
+        [],
+        {"start_date": date(2026, 1, 1), "end_date": date(2026, 12, 31)},
+        "How many payslips do I have in 2026?",
+    ) == "No payslips were found in 2026."
+
+
+def test_empty_clock_punch_list_names_the_entity_and_period():
+    period = {"start_date": date(2026, 10, 2), "end_date": date(2026, 10, 2)}
+    with patch(
+        "backend.services.llm_chat_service._execute",
+        return_value={"operation": "list", "entity": "attendance_punch", "data": []},
+    ):
+        response = execute_and_format(
+            "Show my clock punches for 2 October 2026.",
+            "Show my clock punches for 2 October 2026.",
+            {"operation_id": "attendance_punch.list", "filters": {}},
+            period,
+            employee_id=12,
+            organization_id=7,
+            today=date(2026, 10, 30),
+            status_target=None,
+        )
+
+    assert response["answer"] == (
+        "No clock punches were found on 2 October 2026."
     )
 
 

@@ -97,6 +97,26 @@ def test_negated_status_is_rejected():
     )
 
 
+def test_unrequested_attendance_status_is_rejected():
+    facts = {
+        "entity": "attendance",
+        "shape": "count",
+        "found": False,
+        "count": 0,
+        "status": "absent",
+        "period_text": "October 2026",
+    }
+    assert not passes_answer_check(
+        "No half day attendance records were found in October 2026. "
+        "No absent days were found.",
+        facts,
+    )
+    assert passes_answer_check(
+        "No absent days were found in October 2026.",
+        facts,
+    )
+
+
 def test_vague_period_is_rejected_by_rule_only():
     # Enforced by the prompt (rule 21), not by passes_answer_check.
     assert "the specified period" in ANSWER_RULES.lower()
@@ -134,15 +154,19 @@ def test_per_status_routes_to_template_without_groups():
             ),
             patch.object(nodes, "write_answer") as write_answer,
         ):
+            from datetime import date
+
             out = nodes._route_answer(
-                "How many leave requests per status?",
+                "How many leave requests per status in 2026?",
                 result,
                 {"operation_id": "leave_request.count", "filters": {}},
-                {"start_date": None, "end_date": None},
+                {"start_date": date(2026, 1, 1), "end_date": date(2026, 12, 31)},
             )
             write_answer.assert_not_called()
-        assert out["answer"] == nodes.LEAVE_STATUS_BREAKDOWN_MESSAGE
-        assert out["message"] == nodes.LEAVE_STATUS_BREAKDOWN_MESSAGE
+        assert out["answer"] == (
+            "I couldn't provide a leave-request status breakdown in 2026."
+        )
+        assert out["message"] == out["answer"]
 
 
 def test_overtime_template_deduplicates_month_and_pluralizes_units():

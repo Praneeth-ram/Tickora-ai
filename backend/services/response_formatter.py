@@ -221,21 +221,41 @@ def format_wfh_requests(data: list[dict], status: str | None = None, question: s
 def format_work_schedules(data: list[dict]) -> str:
     """Format work schedules clearly with shift timings and readable workdays."""
     if not data:
-        return "No work schedule records were found."
+        return "No work schedule was found for you."
 
-    lines = ["Here is your active work schedule:"]
-    for record in data:
+    lines = ["Your work schedule:"]
+    for record in data[:10]:
+        name = str(record.get("schedule_name") or "Schedule").strip()
         shift_start = format_time(record.get("shift_start"))
         shift_end = format_time(record.get("shift_end"))
-        expected_hours = record.get("expected_hours", 8)
-        workdays = format_workdays(record.get("workdays"))
-        effective_from = format_date(record.get("effective_from"))
+        details = []
+        if record.get("shift_start") is not None and record.get("shift_end") is not None:
+            details.append(f"shift {shift_start} to {shift_end}")
+        elif record.get("shift_start") is not None:
+            details.append(f"shift starts at {shift_start}")
+        elif record.get("shift_end") is not None:
+            details.append(f"shift ends at {shift_end}")
 
-        lines.append(
-            f"- Shift Timings: {shift_start} to {shift_end} ({expected_hours} hrs/day)\n"
-            f"- Working Days: {workdays}\n"
-            f"- Effective From: {effective_from}"
-        )
+        expected_hours = record.get("expected_hours")
+        if expected_hours is not None:
+            details.append(f"expected hours: {expected_hours}")
+
+        workdays = record.get("workdays_label")
+        if not workdays:
+            workdays = format_workdays(record.get("workdays"))
+            if workdays == "Not specified":
+                workdays = None
+        if workdays:
+            details.append(f"workdays: {workdays}")
+
+        effective_from = record.get("effective_from")
+        if effective_from is not None:
+            details.append(f"effective from {format_date(effective_from)}")
+
+        lines.append(f"- {name}" + (f": {', '.join(details)}" if details else ""))
+
+    if len(data) > 10:
+        lines.append(f"Showing 10 of {len(data)} work schedules.")
 
     return "\n".join(lines)
 
