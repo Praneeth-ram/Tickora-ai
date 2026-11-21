@@ -9,10 +9,6 @@ STATUS_LABELS = {
     "ON_LEAVE": "on leave",
 }
 
-MINUTE_FIELDS = {"worked_minutes", "overtime_minutes"}
-STATUS_LABELS = {"PRESENT": "present", "LATE": "late", "ABSENT": "absent",
-                 "HALF_DAY": "half day", "ON_LEAVE": "on leave"}
-
 
 def period_text(period: dict) -> str:
     from datetime import date
@@ -31,6 +27,7 @@ def compute_facts(question: str, plan: dict, period: dict, result: dict) -> dict
 
     if field in MINUTE_FIELDS and isinstance(data, list):
         total = sum(int(r.get(field) or 0) for r in data)
+        # Expose hours and minutes only; the raw minute total must not reach the writer.
         facts.update({
             "measure": "overtime" if field == "overtime_minutes" else "worked time",
             "hours": total // 60,

@@ -148,6 +148,8 @@ def _route_answer(question, result, plan, period):
     except Exception:
         logger.exception("LLM answer failed; using template")
         return result
+    if "per status" in question.lower() and "groups" not in payload:
+        return result
     if passes_answer_check(answer, payload):
         result["answer"] = answer
         result["message"] = answer

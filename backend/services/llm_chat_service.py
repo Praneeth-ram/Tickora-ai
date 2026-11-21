@@ -2204,8 +2204,7 @@ def _hours_sentence(rows, span, overtime):
         return f"Your total {name}{where} was 0 hours and 0 minutes."
     return (
         f"Your total {name}{where} was "
-        f"{_plural(hours, 'hour', 'hours')} and {_plural(minutes, 'minute', 'minutes')} "
-        f"({total:,} minutes)."
+        f"{_plural(hours, 'hour', 'hours')} and {_plural(minutes, 'minute', 'minutes')}."
     )
 
 def _work_location_answer(rows, requested_dates=None):
