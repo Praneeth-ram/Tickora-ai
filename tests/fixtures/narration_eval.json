@@ -2,11 +2,12 @@
   {
     "entity": "attendance",
     "question": "How many days was I present in October?",
-    "answer": "You have 14 present days in October 2026.",
+    "answer": "You were present for 14 days in October.",
     "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
-    "error": null
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "attendance",
@@ -15,7 +16,8 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No absent days were found in October, 2026.'"
   },
   {
     "entity": "attendance",
@@ -24,16 +26,18 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No half day attendance records were found in October, 2026. You were late for 2 days.'"
   },
   {
     "entity": "attendance",
     "question": "How many half days did I take in October?",
     "answer": "No half day attendance records were found in October 2026.",
     "intent": "attendance_summary",
-    "route": "llm",
-    "status": "PASS",
-    "error": null
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No half day attendance records were found in October, 2026.'"
   },
   {
     "entity": "attendance",
@@ -42,16 +46,18 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'You were present for 18 days in September, 2026.'"
   },
   {
     "entity": "attendance",
     "question": "How many days was I absent in September?",
-    "answer": "You were absent for 1 day in September 2026.",
+    "answer": "You have 1 absent day in September 2026.",
     "intent": "attendance_summary",
-    "route": "llm",
-    "status": "PASS",
-    "error": null
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No half day attendance records were found but you had 1 absent day in September, 2026.'"
   },
   {
     "entity": "attendance",
@@ -60,7 +66,8 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No half day attendance records were found in September, 2026. You were late for 3 days.'"
   },
   {
     "entity": "attendance",
@@ -69,7 +76,8 @@
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "attendance",
@@ -78,16 +86,18 @@
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "attendance",
     "question": "How many absences did I have in October?",
-    "answer": "No absent days were found",
+    "answer": "No absent days were found in October 2026.",
     "intent": "attendance_summary",
-    "route": "llm",
-    "status": "PASS",
-    "error": null
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No half day attendance records were found in October, 2026. No absent days were found.'"
   },
   {
     "entity": "attendance",
@@ -96,7 +106,8 @@
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "attendance",
@@ -105,7 +116,8 @@
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "attendance",
@@ -114,7 +126,8 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'You worked 1 hour and 20 minutes of overtime in October, October, 2026.'"
   },
   {
     "entity": "attendance",
@@ -123,7 +136,8 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'In September 2026, there were 1 hours and 42 minutes of overtime.'"
   },
   {
     "entity": "attendance",
@@ -132,7 +146,8 @@
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "attendance",
@@ -141,7 +156,8 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'You had 14 present days in October, 2 late days.'"
   },
   {
     "entity": "attendance",
@@ -150,7 +166,8 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'You had 18 present days in September 2026. No absent days were found. No late entries noted.'"
   },
   {
     "entity": "attendance",
@@ -159,7 +176,8 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'In October 2026, you had 2 late days and 14 present days. No half day attendance records were found. No absent days were found.'"
   },
   {
     "entity": "attendance",
@@ -168,7 +186,8 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'In October 2026, you had 2 late days and 14 present days.'"
   },
   {
     "entity": "attendance",
@@ -177,52 +196,58 @@
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'Your attendance status breakdown for September 2026 shows 1 absent day, 3 late days, and 18 present days.'"
   },
   {
     "entity": "attendance_punch",
     "question": "How many clock punches did I have in October 2026?",
-    "answer": "You have 32 clock punches in October 2026.",
+    "answer": "You had 32 clock punches in October 2026.",
     "intent": "attendance_records",
-    "route": "template",
-    "status": "REVIEW",
-    "error": null
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "attendance_punch",
     "question": "Show my clock punches for 2 October 2026.",
     "answer": "No clock punches were found on 2 October 2026.",
     "intent": "attendance_records",
-    "route": "template",
+    "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No clock punches were recorded for you on October 2, 2026.'"
   },
   {
     "entity": "attendance_adjustment",
     "question": "How many attendance adjustments did I make in October 2026?",
     "answer": "No attendance adjustments were found in October 2026.",
     "intent": "attendance_records",
-    "route": "template",
+    "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No attendance adjustment records were found in October 2026.'"
   },
   {
     "entity": "leave_request",
     "question": "How many leave requests did I have in October 2026?",
-    "answer": "No leave request records were found in October 2026.",
+    "answer": "No leave requests were found in October 2026.",
     "intent": "leave_status",
-    "route": "llm",
-    "status": "PASS",
-    "error": null
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No leave request records were found in October 2026.'"
   },
   {
     "entity": "leave_request",
     "question": "Show my leave requests for October 2026.",
-    "answer": "No leave request records were found in October 2026.",
+    "answer": "You have no leave requests in October 2026.",
     "intent": "leave_status",
-    "route": "llm",
-    "status": "PASS",
-    "error": null
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null,
+    "rejected": "answer rejected; template kept: 'No leave request records were found for October 2026.'"
   },
   {
     "entity": "leave_request",
@@ -231,7 +256,8 @@
     "intent": "leave_status",
     "route": "template",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "leave_balance",
@@ -240,7 +266,8 @@
     "intent": "leave_balance",
     "route": "template",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "leave_balance",
@@ -249,7 +276,8 @@
     "intent": "leave_balance",
     "route": "template",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "leave_balance",
@@ -258,7 +286,8 @@
     "intent": "leave_balance",
     "route": "template",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "leave_type",
@@ -267,16 +296,18 @@
     "intent": "leave_type_lookup",
     "route": "template",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "leave_type",
     "question": "How many leave types are there?",
-    "answer": "On record, there are 4 leave types.",
+    "answer": "There are 4 leave types.",
     "intent": "leave_type_lookup",
-    "route": "llm",
-    "status": "PASS",
-    "error": null
+    "route": "fallback",
+    "status": "REVIEW",
+    "error": null,
+    "rejected": "answer rejected; template kept: 'On record are 4 leave types.'"
   },
   {
     "entity": "wfh_request",
@@ -285,7 +316,8 @@
     "intent": "wfh_status",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "wfh_request",
@@ -294,7 +326,8 @@
     "intent": "wfh_status",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "timesheet",
@@ -303,16 +336,18 @@
     "intent": "timesheet_lookup",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "timesheet",
     "question": "Show my timesheets for September 2026.",
-    "answer": "Your timesheet for September 2026 is approved and submitted on 2026-10-04.",
+    "answer": "Here are your 4 timesheets for September 2026.",
     "intent": "timesheet_lookup",
-    "route": "llm",
-    "status": "PASS",
-    "error": null
+    "route": "no_facts",
+    "status": "REVIEW",
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "holiday",
@@ -321,7 +356,8 @@
     "intent": "holiday_lookup",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "holiday",
@@ -330,7 +366,8 @@
     "intent": "holiday_lookup",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "task",
@@ -339,7 +376,8 @@
     "intent": "task_lookup",
     "route": "llm",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "task",
@@ -348,7 +386,8 @@
     "intent": "task_lookup",
     "route": "fallback",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": "answer rejected; template kept: '1 task completed in October 2026'"
   },
   {
     "entity": "task",
@@ -357,52 +396,58 @@
     "intent": "unsupported",
     "route": "template",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "work_schedule",
     "question": "What is my work schedule?",
     "answer": "Your work schedule:\n- Standard India Weekday Schedule: shift 09:30 AM to 06:30 PM, expected hours: 8.0, workdays: Monday, Tuesday, Wednesday, Thursday, Friday, effective from 31 May 2024",
     "intent": "schedule_lookup",
-    "route": "template",
+    "route": "no_facts",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "work_schedule",
     "question": "Show my work schedule.",
     "answer": "Your work schedule:\n- Standard India Weekday Schedule: shift 09:30 AM to 06:30 PM, expected hours: 8.0, workdays: Monday, Tuesday, Wednesday, Thursday, Friday, effective from 31 May 2024",
     "intent": "schedule_lookup",
-    "route": "template",
+    "route": "no_facts",
     "status": "REVIEW",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "loan_request",
     "question": "How many loans do I have?",
     "answer": "You have 2 loan requests.",
     "intent": "loan_lookup",
-    "route": "template",
+    "route": "gate",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "loan_request",
     "question": "What is my remaining loan amount?",
     "answer": "The remaining amount for Penalty Deduction is 50.00. The remaining amount for Emergency Loan is 8,000.00.",
     "intent": "loan_lookup",
-    "route": "template",
+    "route": "gate",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   },
   {
     "entity": "payroll_summary",
     "question": "What was my net pay in September 2026?",
-    "answer": "I couldn't answer that request from the available HR records. Please try a different question or contact your HR administrator.",
-    "intent": "unsupported",
-    "route": "template",
+    "answer": "Your net amount for September 2026 was INR 64,680.00.",
+    "intent": "payroll_lookup",
+    "route": "fallback",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": "Payroll narration rejected; template kept. facts={'entity': 'payroll', 'shape': 'amount', 'period_text': 'in September 2026', 'metrics': [{'field': 'net_amount', 'label': 'net amount', 'amounts': [{'value': '64680.00', 'currency': 'INR'}]}], 'found': True} answer='Your net pay in September 2026 was 64680.00 INR.'"
   },
   {
     "entity": "payroll_summary",
@@ -411,6 +456,7 @@
     "intent": "payroll_lookup",
     "route": "template",
     "status": "PASS",
-    "error": null
+    "error": null,
+    "rejected": null
   }
 ]

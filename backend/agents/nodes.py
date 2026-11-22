@@ -139,6 +139,12 @@ from backend.services.answer_writer import write_answer, passes_answer_check
 import json
 
 def _route_answer(question, result, plan, period):
+    logger.warning(
+        "Narration entry: intent=%s op=%s rows=%s show_table=%s choose_route=%s",
+        result.get("intent"), plan.get("operation_id"),
+        len(result.get("data") or []), result.get("show_table"),
+        choose_route(result),
+    )
     if not settings.llm_narration_enabled:
         return result
     if (
@@ -179,6 +185,7 @@ def _route_answer(question, result, plan, period):
         if passes_payroll_answer_check(answer, payload):
             result["answer"] = answer
             result["message"] = answer
+            logger.warning("Payroll narration accepted: %s", answer)
         else:
             logger.warning(
                 "Payroll narration rejected; template kept. facts=%s answer=%r",
@@ -194,11 +201,21 @@ def _route_answer(question, result, plan, period):
         or spec.get("sensitive")
         or not narratable_for_role(specs, entity, actor.role)
     ):
+        logger.warning(
+            "Narration skipped: entity=%s spec=%s narratable=%s role=%s",
+            entity, spec is not None,
+            spec.get("narratable") if spec else None, actor.role,
+        )
         return result
 
     payload = compute_facts(question, plan, period, result, specs, actor.role)
     if payload is None:
-        return result
+            logger.warning(
+            "Narration gate: entity=%s narratable=%s role=%s",
+            entity, spec.get("narratable"), actor.role,
+        )
+            return result
+    
     if re.search(r"\b(?:per|by)\s+status\b", question, re.IGNORECASE):
         is_leave_status_query = bool(
             re.search(r"\bleave\s+requests?\b", question, re.IGNORECASE)

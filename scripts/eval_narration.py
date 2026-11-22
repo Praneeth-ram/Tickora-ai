@@ -129,12 +129,30 @@ class _Capture(logging.Handler):
 
 
 def _route(messages: list[str]) -> str:
+    if any(m.startswith("Payroll narration accepted") for m in messages):
+        return "llm"
+    if any(m.startswith("Payroll narration rejected") for m in messages):
+        return "fallback"
     if any(m.startswith("answer rejected") for m in messages):
         return "fallback"
+    if any(m.startswith("Facts not built") for m in messages):
+        return "no_facts"
     if any(m.startswith("facts:") for m in messages):
         return "llm"
+    if any(m.startswith("Narration skipped") for m in messages):
+        return "gate"
+    if any(m.startswith("Narration gate") for m in messages):
+        return "no_facts"
+    if any(m.startswith("Payroll facts not built") for m in messages):
+        return "no_facts"
     return "template"
 
+
+def _rejected_text(messages: list[str]) -> str | None:
+    for m in messages:
+        if m.startswith("answer rejected") or m.startswith("Payroll narration rejected"):
+            return m
+    return None
 
 def _status(entity: str, route: str, answer: str) -> str:
     if not answer or SUSPICIOUS_RE.search(answer):
@@ -170,9 +188,11 @@ def main() -> None:
                 answer, intent, error = "", None, repr(exc)
             route = "error" if error else _route(capture.messages)
             status = "FAIL" if error else _status(entity, route, answer)
+            rejected = _rejected_text(capture.messages)
             rows.append({
                 "entity": entity, "question": question, "answer": answer,
-                "intent": intent, "route": route, "status": status, "error": error,
+                "intent": intent, "route": route, "status": status,
+                "error": error, "rejected": rejected,
             })
     finally:
         reset_actor(token)
@@ -186,6 +206,8 @@ def main() -> None:
         print(f"[{r['status']}] {r['entity']} | route={r['route']}")
         print("Q:", r["question"])
         print("A:", r["answer"] or r["error"])
+        if r.get("rejected"):
+            print("REJECTED:", r["rejected"])
         print("-" * 60)
 
     print("\nSUMMARY")

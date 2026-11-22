@@ -15,15 +15,18 @@ from backend.services.request_answer_builder import period_phrase
 MAX_FACT_ROWS = 5
 NARRATABLE_ENTITIES = {
     "attendance",
+    "attendance_punch",
+    "attendance_adjustment",
     "leave_request",
+    "leave_balance",
+    "leave_type",
     "wfh_request",
     "timesheet",
     "holiday",
-    "leave_balance",
     "task",
-    "leave_type",
+    "loan_request",
+    "payroll_summary",
 }
-
 
 def _decimal_value(value: Any) -> Decimal | None:
     try:
@@ -266,6 +269,8 @@ def compute_facts(
 
     if operation == "count" and isinstance(data, dict):
         return _count_facts(spec, period, plan, data)
+    if operation == "list" and entity == "timesheet":
+        return None
     if operation == "sum":
         field = plan.get("aggregate_field")
         if field in MINUTE_FIELDS:

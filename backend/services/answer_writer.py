@@ -2,6 +2,12 @@ import json
 import re
 from backend.services.model_inference import generate_text
 
+UNIT_RULE = (
+    'Use the unit from FACTS exactly. For leave requests write "leave requests". '
+    'For attendance adjustments write "attendance adjustments". For clock punches '
+    'write "clock punches". Never write "records" or "on record".'
+)
+
 ANSWER_RULES = """\
 You answer an HR question using only the FACTS (JSON).
 
@@ -63,7 +69,26 @@ NUMBERED_UNIT_RE = re.compile(
 INSTANCE_RE = re.compile(r"\binstances?\b|\btimes\b", re.IGNORECASE)
 QUOTED_LABEL_RE = re.compile(r"['\"](?:late|present|absent|half day)['\"]", re.IGNORECASE)
 BARE_NUMBER_RE = re.compile(r"\b\d+\b(?!\s*(?:day|days|hour|hours|minute|minutes|leave|request|requests|record|records|%))")
+ON_RECORD_RE = re.compile(r"\bon record\b", re.IGNORECASE)
+RECORDS_WORD_RE = re.compile(r"\brecords?\b", re.IGNORECASE)
+STATUS_ATTENDANCE_RE = re.compile(
+    r"\b(?:late|present|absent|half day)\s+attendance\b", re.IGNORECASE
+)
 
+MONTHS = (
+    "January|February|March|April|May|June|July|August|"
+    "September|October|November|December"
+)
+MONTH_YEAR_COMMA_RE = re.compile(rf"\b({MONTHS})(?:,\s*\1)?,\s*(\d{{4}})\b")
+
+
+def normalize_answer(answer: str) -> str:
+    """Remove the comma between month and year, and a repeated month.
+
+    "October, 2026" -> "October 2026"
+    "October, October, 2026" -> "October 2026"
+    """
+    return MONTH_YEAR_COMMA_RE.sub(r"\1 \2", answer)
 
 def write_answer(question: str, payload: dict) -> str:
     facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
@@ -233,5 +258,11 @@ def passes_answer_check(answer: str, facts: dict) -> bool:
     if QUOTED_LABEL_RE.search(answer):
         return False
     if facts.get("groups") and BARE_NUMBER_RE.search(answer):
+        return False
+    if ON_RECORD_RE.search(answer):
+        return False
+    if RECORDS_WORD_RE.search(answer) and "record" not in str(facts.get("unit") or "").lower():
+        return False
+    if STATUS_ATTENDANCE_RE.search(answer):
         return False
     return True
