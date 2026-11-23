@@ -2,41 +2,63 @@ import json
 import re
 from backend.services.model_inference import generate_text
 
-UNIT_RULE = (
-    'Use the unit from FACTS exactly. For leave requests write "leave requests". '
-    'For attendance adjustments write "attendance adjustments". For clock punches '
-    'write "clock punches". Never write "records" or "on record".'
-)
-
-ANSWER_RULES = """\
+BASE_RULES = """\
 You answer an HR question using only the FACTS (JSON).
 
 Rules:
-1. Write one complete sentence, or two at most. Never reply with bare numbers.
-2. Answer the question that was asked.
-3. Use only the values in FACTS. Do not add, subtract, or convert any value.
-4. Use period_text exactly as given for the period.
-5. If found is false, say no matching items were found for period_text. Use the entity's unit from FACTS.
-6. Refer to the user as "you".
-7. Do not mention databases, queries, JSON, or the system.
-8. The user is the person being described. Always say "you" or "your". Never say "employees".
-9. Use unit_singular and unit from FACTS for singular and plural counts. Do not call another entity's items attendance days.
-10. Never put a space before a comma or full stop.
-11. Never say "days" for hours or minutes. Use "hours" and "minutes" only for time totals.
-12. Use singular and plural correctly: "1 hour", "2 hours", "1 day", "2 days".
-13. Do not use "I" as the subject. Use "you".
-14. Never write "no", "none", or "zero" about a status whose count is above zero.
-15. Never write minute totals in brackets or otherwise. When hours and minutes are given, use only hours and minutes.
-16. Do not repeat the same figures in more than one sentence.
-17. Write status words plainly, without quotation marks.
-18. For zero half-day attendance, say "no half day attendance records were found". For absent-day counts, say "no absent days were found".
-19. Write the month and year together with no comma, for example "October 2026". Never write "October, 2026".
-20. Use period_text exactly as given. Do not put "this", "last", or "next" before it.
-21. Name the period from period_text. Never write "the specified period", "the requested period", or "the period".
-22. For attendance, mention only statuses present in FACTS. Do not add a different attendance status.
-23. For payroll, reproduce each amount and currency code exactly as shown in FACTS. Do not round, convert, calculate, or add another amount.
-24. If FACTS lists more than one metric, state every metric in FACTS. Never leave one out.
+1. Write one or two complete sentences. Never reply with bare numbers.
+2. Answer only the question that was asked.
+3. Use only values in FACTS. Do not add, subtract, convert, or round any value.
+4. Use period_text exactly as given. Write the month and year together with no comma, for example "October 2026".
+5. Refer to the user as "you". Do not mention databases, queries, JSON, or the system.
+6. Use the unit from FACTS exactly. Never write "records" or "on record".
+7. Use "1 day" and "2 days", "1 hour" and "2 hours". Use the singular only for a count of 1.
+8. If the count is 0, write "No" followed by the unit from FACTS, then "were found" and period_text. For example: "No leave requests were found in October 2026."
+9. Do not repeat the same figure in more than one sentence.
+10. Never write "the specified period", "the requested period", or "the period".
 """
+
+ENTITY_RULES = {
+    "attendance": (
+        "Mention only statuses that appear in FACTS. Mention half days only if "
+        "FACTS has a half_day status or the question asks about half days. "
+        "Use hours and minutes only for time totals, never days."
+    ),
+    "leave_request": 'Use the unit "leave requests".',
+    "leave_balance": (
+        "Answer the leave type or total the question asks for, using the "
+        "remaining, allocated, used, and pending figures exactly as in FACTS."
+    ),
+    "leave_type": "When asked which leave types exist, name them from FACTS.",
+    "wfh_request": 'Use the unit "work-from-home requests".',
+    "timesheet": "State the count or status from FACTS. Do not list dates unless asked.",
+    "task": "Use the task status labels exactly as in FACTS.",
+    "holiday": 'Use the unit "holidays".',
+    "attendance_punch": 'Use the unit "clock punches". Give times exactly as in FACTS.',
+    "attendance_adjustment": 'Use the unit "attendance adjustments".',
+    "payroll": (
+        "Write each amount with its currency code exactly as in FACTS. "
+        "Do not round, convert, or add another amount."
+    ),
+}
+
+
+def build_rules(payload: dict) -> str:
+    entity = str(payload.get("entity") or "").lower()
+    extra = ENTITY_RULES.get(entity, "")
+    return BASE_RULES + (f"\nEntity rule: {extra}\n" if extra else "")
+
+
+def write_answer(question: str, payload: dict) -> str:
+    facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
+    return generate_text(
+        build_rules(payload),
+        f"Question: {question}\nFACTS: {facts}",
+        max_new_tokens=150,
+    ).strip()
+
+# Backward-compatible name for callers and tests that import the base prompt.
+ANSWER_RULES = BASE_RULES
 
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 PAREN_MINUTES_RE = re.compile(r"\([^)]*\b\d[\d,]*\s*minutes?\b[^)]*\)", re.IGNORECASE)
@@ -68,7 +90,9 @@ NUMBERED_UNIT_RE = re.compile(
 )
 INSTANCE_RE = re.compile(r"\binstances?\b|\btimes\b", re.IGNORECASE)
 QUOTED_LABEL_RE = re.compile(r"['\"](?:late|present|absent|half day)['\"]", re.IGNORECASE)
-BARE_NUMBER_RE = re.compile(r"\b\d+\b(?!\s*(?:day|days|hour|hours|minute|minutes|leave|request|requests|record|records|%))")
+BARE_NUMBER_RE = re.compile(
+    r"(?<![\w.,])(?!(?:19|20)\d{2}\b)\d+(?:\.\d+)?\b(?!\s*[A-Za-z%])"
+)
 ON_RECORD_RE = re.compile(r"\bon record\b", re.IGNORECASE)
 RECORDS_WORD_RE = re.compile(r"\brecords?\b", re.IGNORECASE)
 STATUS_ATTENDANCE_RE = re.compile(
@@ -89,10 +113,6 @@ def normalize_answer(answer: str) -> str:
     "October, October, 2026" -> "October 2026"
     """
     return MONTH_YEAR_COMMA_RE.sub(r"\1 \2", answer)
-
-def write_answer(question: str, payload: dict) -> str:
-    facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
-    return generate_text(ANSWER_RULES, f"Question: {question}\nFACTS: {facts}", max_new_tokens=150).strip()
 
 def _numbers(text: str) -> set[str]:
     out = set()

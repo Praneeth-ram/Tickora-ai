@@ -44,3 +44,10 @@ def test_comma_between_month_and_year_fails():
 
 def test_correct_time_reply_passes():
     assert passes_answer_check("You worked 166 hours and 28 minutes.", WORKED_FACTS)
+
+def test_year_and_status_numbers_are_not_bare():
+    from backend.services.answer_writer import BARE_NUMBER_RE
+
+    assert not BARE_NUMBER_RE.search("In October 2026, you had 2 late days and 14 present days.")
+    assert not BARE_NUMBER_RE.search("1 task completed in October 2026")
+    assert BARE_NUMBER_RE.search("You had 14.")

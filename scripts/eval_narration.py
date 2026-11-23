@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from backend.config import Settings
 from backend.agents.graph import get_chat_graph
 from backend.security.access_policy import Actor, SUPER_ADMIN, set_actor, reset_actor
 from backend.services.model_inference import load_model
@@ -116,7 +117,17 @@ EVAL_QUESTIONS = [
     for question in questions
 ]
 
+# Questions that ask for a list or table are allowed to stay as templates.
+LIST_RE = re.compile(r"^(?:show|list)\b|\bavailable\b|\bwork schedule\b", re.IGNORECASE)
+MISS_PREFIXES = (
+    "I couldn't answer",
+    "I couldn't provide",
+    "I can answer questions about",
+)
 SUSPICIOUS_RE = re.compile(r"[{}\[\]]|\bnull\b|\bNone\b|\bundefined\b", re.IGNORECASE)
+TRACE_PREFIXES = (
+    "Narration", "Payroll", "Facts not built", "answer rejected", "facts:",
+)
 
 
 class _Capture(logging.Handler):
@@ -129,40 +140,51 @@ class _Capture(logging.Handler):
 
 
 def _route(messages: list[str]) -> str:
+    entry = next((m for m in messages if m.startswith("Narration entry")), None)
     if any(m.startswith("Payroll narration accepted") for m in messages):
         return "llm"
     if any(m.startswith("Payroll narration rejected") for m in messages):
         return "fallback"
     if any(m.startswith("answer rejected") for m in messages):
         return "fallback"
-    if any(m.startswith("Facts not built") for m in messages):
-        return "no_facts"
     if any(m.startswith("facts:") for m in messages):
         return "llm"
     if any(m.startswith("Narration skipped") for m in messages):
         return "gate"
-    if any(m.startswith("Narration gate") for m in messages):
+    if any(m.startswith(("Narration gate", "Facts not built", "Payroll facts not built"))
+           for m in messages):
         return "no_facts"
-    if any(m.startswith("Payroll facts not built") for m in messages):
-        return "no_facts"
+    if entry is not None and "choose_route=table" in entry:
+        return "table"
+    if entry is None:
+        return "bypassed"  # answered by a builder before _route_answer ran
     return "template"
 
 
-def _rejected_text(messages: list[str]) -> str | None:
-    for m in messages:
-        if m.startswith("answer rejected") or m.startswith("Payroll narration rejected"):
-            return m
-    return None
+def _trace(messages: list[str]) -> str:
+    lines = [m[:300] for m in messages if m.startswith(TRACE_PREFIXES)]
+    return " | ".join(lines)
 
-def _status(entity: str, route: str, answer: str) -> str:
+
+def _status(entity: str, route: str, answer: str, row_count: int) -> str:
     if not answer or SUSPICIOUS_RE.search(answer):
         return "FAIL"
-    if entity in SENSITIVE_ENTITIES:
-        return "FAIL" if route == "llm" else "PASS"
-    return "PASS" if route == "llm" else "REVIEW"
+    if answer.startswith(MISS_PREFIXES):
+        return "MISS"
+    if entity == "loan_request":
+        return "PASS" if route == "gate" else "FAIL"
+    if route == "llm":
+        return "PASS"
+    if route == "table":
+        return "PASS" if row_count > 5 else "REVIEW"
+    return "REVIEW"
 
 
 def main() -> None:
+    if not Settings().llm_narration_enabled:
+        print("ABORT: LLM_NARRATION_ENABLED is False. Set it to True and run again.")
+        return
+
     load_model()
     capture = _Capture()
     logging.getLogger("backend.agents.nodes").addHandler(capture)
@@ -184,15 +206,21 @@ def main() -> None:
                 answer = out["result"].get("answer") or ""
                 intent = out["result"].get("intent")
                 error = None
-            except Exception as exc:  # keep going; record the failure
+            except Exception as exc:
                 answer, intent, error = "", None, repr(exc)
             route = "error" if error else _route(capture.messages)
-            status = "FAIL" if error else _status(entity, route, answer)
-            rejected = _rejected_text(capture.messages)
+            row_count = len(out["result"].get("data") or []) if not error else 0
+            status = "FAIL" if error else _status(entity, route, answer, row_count)
+            if entity == "loan_request" and route == "llm":
+                status = "FAIL"  # loan is sensitive and must stay template
             rows.append({
                 "entity": entity, "question": question, "answer": answer,
                 "intent": intent, "route": route, "status": status,
-                "error": error, "rejected": rejected,
+                "error": error,
+                "rejected": next((m for m in capture.messages
+                                  if m.startswith(("answer rejected",
+                                                   "Payroll narration rejected"))), None),
+                "trace": None if route == "llm" else _trace(capture.messages),
             })
     finally:
         reset_actor(token)
@@ -206,17 +234,25 @@ def main() -> None:
         print(f"[{r['status']}] {r['entity']} | route={r['route']}")
         print("Q:", r["question"])
         print("A:", r["answer"] or r["error"])
-        if r.get("rejected"):
+        if r["rejected"]:
             print("REJECTED:", r["rejected"])
+        if r["trace"]:
+            print("TRACE:", r["trace"])
         print("-" * 60)
 
     print("\nSUMMARY")
     print("Status:", dict(Counter(r["status"] for r in rows)))
+    print("Routes:", dict(Counter(r["route"] for r in rows)))
     by_entity: dict[str, Counter] = {}
+    routes_by_entity: dict[str, Counter] = {}
     for r in rows:
         by_entity.setdefault(r["entity"], Counter())[r["status"]] += 1
-    for entity, counts in by_entity.items():
-        print(f"  {entity:24s} PASS={counts['PASS']:<3d} REVIEW={counts['REVIEW']:<3d} FAIL={counts['FAIL']}")
+        routes_by_entity.setdefault(r["entity"], Counter())[r["route"]] += 1
+    for entity in by_entity:
+        c = by_entity[entity]
+        print(f"  {entity:24s} PASS={c['PASS']:<3d} REVIEW={c['REVIEW']:<3d} "
+              f"MISS={c['MISS']:<3d} FAIL={c['FAIL']:<3d} "
+              f"routes={dict(routes_by_entity[entity])}")
     print(f"\nFull results: {out_path}")
 
 

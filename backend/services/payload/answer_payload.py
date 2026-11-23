@@ -235,6 +235,13 @@ def _single_record_facts(
 ) -> dict | None:
     if row is not None and not isinstance(row, dict):
         return None
+    if entity == "work_schedule":
+        import logging
+        logging.getLogger(__name__).warning(
+            "single_record debug: keys=%s types=%s",
+            list(row.keys()) if isinstance(row, dict) else type(row).__name__,
+            {k: type(v).__name__ for k, v in row.items()} if isinstance(row, dict) else None,
+        )
     record = _safe_row(spec, entity, row, role) if row is not None else {}
     if row is not None and not record:
         return None

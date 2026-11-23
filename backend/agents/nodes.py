@@ -139,7 +139,7 @@ from backend.services.answer_writer import write_answer, passes_answer_check
 import json
 
 def _route_answer(question, result, plan, period):
-    route = choose_route(question)
+    route = choose_route(question, len(result.get("data") or []))
     logger.warning(
         "Narration entry: intent=%s op=%s rows=%s show_table=%s choose_route=%s",
         result.get("intent"), plan.get("operation_id"),
@@ -321,6 +321,10 @@ def greeting_node(state: ChatState) -> dict[str, Any]:
     }
     return {"result": get_greeting_response(state["question"], current_employee)}
 
+DIRECT_PLANS = {
+    "leave_type_lookup": {"operation_id": "leave_type.list"},
+    "leave_balance": {"operation_id": "leave_balance.list"},
+}
 
 def context_node(state: ChatState) -> dict[str, Any]:
     normalized = resolve_context(state["question"])
@@ -330,6 +334,10 @@ def context_node(state: ChatState) -> dict[str, Any]:
         state["organization_id"], get_current_date(),
     )
     if direct is not None:
+        plan = DIRECT_PLANS.get(direct.get("intent"), {})
+        direct = _route_answer(
+            state["question"], direct, plan, direct.get("period") or {}
+        )
         update["result"] = direct
         return update
     last_operation = state.get("last_operation")
