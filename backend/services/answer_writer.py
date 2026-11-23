@@ -21,9 +21,10 @@ Rules:
 
 ENTITY_RULES = {
     "attendance": (
-        "Mention only statuses that appear in FACTS. Mention half days only if "
-        "FACTS has a half_day status or the question asks about half days. "
-        "Use hours and minutes only for time totals, never days."
+        "Mention only statuses listed in FACTS. "
+        "Use hours and minutes only for time totals, never days. "
+        "For a single record, write one full sentence that starts with 'Your' "
+        "and states the value of the field asked. Do not repeat the date more than once."
     ),
     "leave_request": 'Use the unit "leave requests".',
     "leave_balance": (
@@ -47,7 +48,12 @@ ENTITY_RULES = {
 def build_rules(payload: dict) -> str:
     entity = str(payload.get("entity") or "").lower()
     extra = ENTITY_RULES.get(entity, "")
-    return BASE_RULES + (f"\nEntity rule: {extra}\n" if extra else "")
+    fields = [str(f) for f in (payload.get("requested_fields") or []) if str(f).strip()]
+    field_line = (
+        f"\nAnswer only about: {', '.join(fields)}. Do not answer with other fields.\n"
+        if fields else ""
+    )
+    return BASE_RULES + (f"\nEntity rule: {extra}\n" if extra else "") + field_line
 
 
 def write_answer(question: str, payload: dict) -> str:
@@ -108,10 +114,9 @@ MONTH_YEAR_COMMA_RE = re.compile(rf"\b({MONTHS})(?:,\s*\1)?,\s*(\d{{4}})\b")
 
 COUNT_VERB_RE = re.compile(
     r"\b(?:1|one)\s+\w+(?:\s+\w+)?\s+(?:were|are)\b|"
-    r"\b(?:0|[2-9]\d*|\d{2,})\s+\w+(?:\s+\w+)?\s+(?:was|is)\b",
+    r"\b(?:0|[2-9]\d*|\d{2,})(?!\d)(?!\s*(?:October|November|September|August|July|June|May|April|March|February|January|December)\b)\s+\w+(?:\s+\w+)?\s+(?:was|is)\b",
     re.IGNORECASE,
 )
-
 
 def normalize_answer(answer: str) -> str:
     """Remove the comma between month and year, and a repeated month.

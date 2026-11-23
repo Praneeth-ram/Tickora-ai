@@ -26,7 +26,7 @@ FUNCTION_WORDS = {
     "they", "them", "their", "we", "our", "no", "none", "zero", "nothing",
 }
 # Time words are always allowed; they describe the unit of a time total.
-TIME_WORDS = {"hour", "hours", "minute", "minutes", "time"}
+TIME_WORDS = {"hour", "hours", "minute", "minutes", "time", "am", "pm"}
 NEGATIONS = {"no", "none", "zero", "nothing"}
 BE_VERBS = {"was", "is", "were", "are"}
 SINGULAR_BE = {"was", "is"}
@@ -36,7 +36,16 @@ NUMBER_WORDS = {
     "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
     "eleven": "11", "twelve": "12",
 }
-
+STRUCTURAL_KEYS = {
+    "shape", "entity", "unit", "unit_singular", "period_text", "filters",
+    "found", "total", "truncated", "rows", "groups", "count", "status",
+    "measure", "hours", "minutes", "label", "amounts", "currency", "value",
+    "field", "metrics", "record",
+}
+MONTH_NAMES = {
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+}
 
 def _norm(text: str) -> str:
     """Normalize a number so 64680.00, 64,680 and 64680 compare equal."""
@@ -51,7 +60,9 @@ def _walk(value: Any, words: set[str], numbers: set[str]) -> None:
     if value is None or isinstance(value, bool):
         return
     if isinstance(value, dict):
-        for item in value.values():
+        for key, item in value.items():
+            if key not in STRUCTURAL_KEYS:
+                words.update(WORD_RE.findall(key.lower()))
             _walk(item, words, numbers)
     elif isinstance(value, (list, tuple, set)):
         for item in value:
@@ -109,6 +120,11 @@ def verify_against_facts(answer: str, facts: dict) -> str | None:
     if "0" in tokens:
         return "zero_digit"
 
+    lowered = answer.lower().replace("-", " ")
+    for field in facts.get("requested_fields") or []:
+        if field.lower().replace("-", " ") not in lowered:
+            return f"requested_field_missing:{field}"
+
     words: set[str] = set()
     numbers: set[str] = set()
     _walk(facts, words, numbers)
@@ -140,6 +156,8 @@ def verify_against_facts(answer: str, facts: dict) -> str | None:
                         return "unit_singular_for_many"
                 # Verb agreement: "1 task was", "2 days were", within the next three words.
                 for word in following[:3]:
+                    if word in MONTH_NAMES:
+                        break
                     if word in BE_VERBS:
                         if count == 1 and word in PLURAL_BE:
                             return "verb_plural_for_one"

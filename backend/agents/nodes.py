@@ -2,7 +2,7 @@ import re
 from datetime import date
 from functools import lru_cache
 from typing import Any
-
+from backend.services.followup_context import apply_context_period, inherit_fields, flatten_fields
 from backend.config import get_settings
 # from sqlalchemy import exc
 from backend.agents.state import ChatState
@@ -220,6 +220,8 @@ def _route_answer(question, result, plan, period):
             entity, spec.get("narratable"), actor.role,
         )
             return result
+    if payload.get("found") is False:
+        return result
     
     if re.search(r"\b(?:per|by)\s+status\b", question, re.IGNORECASE):
         is_leave_status_query = bool(
@@ -402,6 +404,13 @@ def correction_node(state: ChatState) -> dict[str, Any]:
                 "attendance_records",
             ),
         }
+    has_explicit_date = resolve_date_spec(state["question"], get_current_date()) is not None
+    period, reused = apply_context_period(
+        state["question"], period, state.get("last_context"), has_explicit_date,
+    )
+    plan["fields"] = inherit_fields(state["question"], state.get("last_context"), plan.get("operation_id"))
+    if reused:
+        logger.info("Follow-up reused the period of the previous answer.")
     status, reason = validate_plan(plan)
     return {"plan": plan, "period": period, "status": status, "clarification": reason}
 

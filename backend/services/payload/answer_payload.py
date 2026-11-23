@@ -221,6 +221,9 @@ def _safe_row(spec: dict, entity: str, row: dict, role: str) -> dict:
             value = value.isoformat()
         elif isinstance(value, Decimal):
             value = format(value, "f")
+        if field in MINUTE_FIELDS and isinstance(value, (int, float, Decimal)):
+            minutes = int(value)
+            value = f"{minutes // 60} hours and {minutes % 60} minutes"
         result[field_labels[field]] = label_value(value)
     if entity == "leave_balance":
         values = _leave_balance_values(row)

@@ -15,3 +15,4 @@ class ChatState(TypedDict, total=False):
     status: str
     clarification: str | None
     result: dict[str, Any]
+    last_context: dict | None

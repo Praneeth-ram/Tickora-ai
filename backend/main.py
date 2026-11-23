@@ -6,6 +6,8 @@ from backend.config import get_settings
 from backend.dependencies.auth import get_current_employee
 from sqlalchemy import text
 from backend.db import engine
+from sqlalchemy.exc import SQLAlchemyError
+from backend.services.followup_context import flatten_fields
 from backend.security.access_policy import load_actor, set_actor, reset_actor
 from backend.repositories.attendance_repository import (
     get_attendance_records,
@@ -35,11 +37,12 @@ from backend.services.llm_chat_service import (
     ModelServiceError,
 )
 import re
+import json
 from typing import Literal
 from uuid import uuid4
 from backend.services.date_resolver import validate_date_range
 import logging
-from backend.services.chat_memory import load_last_topic, save_last_topic
+from backend.services.chat_memory import load_last_context, load_last_topic, save_last_context, save_last_topic
 from backend.services import answer_cache
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 from backend.security.input_screen import screen_question
@@ -65,10 +68,30 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-def _remember_operation(operation_id: str | None, employee_id: int, session_id: str) -> None:
-    """Save the operation that answered, so a follow-up can reuse it."""
-    if operation_id and session_id:
-        save_last_topic(engine, employee_id, session_id, operation_id)
+def _iso(value):
+    return value.isoformat() if hasattr(value, "isoformat") else value
+
+
+def _remember_operation(
+    operation_id: str | None,
+    employee_id: int,
+    session_id: str,
+    period: dict | None = None,
+    plan: dict | None = None,
+) -> None:
+    """Save the operation, period, and fields so a follow-up can reuse them. Never fail the answer."""
+    if not (operation_id and session_id):
+        return
+    period = period or {}
+    fields = flatten_fields((plan or {}).get("fields"))
+    try:
+        save_last_context(
+            engine, employee_id, session_id, operation_id,
+            _iso(period.get("start_date")), _iso(period.get("end_date")),
+            fields,
+        )
+    except SQLAlchemyError:
+        logger.warning("Could not save chat memory; answer still returned.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -555,13 +578,21 @@ def _chat(
         from backend.agents.graph import get_chat_graph
 
         started = perf_counter()
-        last_operation = load_last_topic(engine, employee_id, body.session_id)
+        last_context = load_last_context(engine, employee_id, body.session_id)
+        last_operation = (
+            last_context.get("operation_id") if last_context
+            else load_last_topic(engine, employee_id, body.session_id)
+        )
+        context_key = (
+            json.dumps(last_context, sort_keys=True, default=str)
+            if last_context else (last_operation or "")
+        )
         answer_key = answer_cache.answer_key(
             employee_id,
             current_employee.get("role", "employee"),
             body.question.strip().lower(),
             get_current_date().isoformat(),
-            last_operation,
+            context_key,
         )
         cached = answer_cache.get_answer(answer_key)
         if cached is not None:
@@ -576,13 +607,20 @@ def _chat(
             "employee_code": current_employee["employee_code"],
             "organization_id": organization_id,
             "last_operation": last_operation,
+            "last_context": last_context,
         })
         operation_id = state["result"].get("operation_id")
         result = jsonable_encoder(_localize(state["result"]))
         if result.get("intent") not in {"access_denied", "unsupported"}:
             answer_cache.set_answer(answer_key, {**result, "operation_id": operation_id})
         result.pop("operation_id", None)
-        _remember_operation(operation_id, employee_id, body.session_id)
+        _remember_operation(
+            operation_id,
+            employee_id,
+            body.session_id,
+            period=state.get("period"),
+            plan=state.get("plan"),
+        )
         logger.info("answer_cache=miss elapsed=%.3fs", perf_counter() - started)
         return result
 
