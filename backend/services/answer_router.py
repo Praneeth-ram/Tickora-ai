@@ -1,11 +1,16 @@
-TABLE_ROW_THRESHOLD = 5
-BREAKDOWN_GROUP_LIMIT = 4
+import re
 
 
-def choose_route(result: dict) -> str:
-    rows = result.get("data") or []
-    if result.get("show_table") and len(rows) > TABLE_ROW_THRESHOLD:
-        return "table"
-    if result.get("operation") == "group_by" and len(rows) > BREAKDOWN_GROUP_LIMIT:
+TABLE_REQUEST_RE = re.compile(r"\b(?:table|tabular|spreadsheet)\b", re.IGNORECASE)
+LIST_REQUEST_RE = re.compile(
+    r"^\s*(?:(?:please|can you|could you|would you|i want to|i need you to)\s+)*"
+    r"(?:show|list|display)\b",
+    re.IGNORECASE,
+)
+
+
+def choose_route(question: str) -> str:
+    """Skip narration only when the user explicitly asks for a table or list."""
+    if TABLE_REQUEST_RE.search(question) or LIST_REQUEST_RE.search(question):
         return "table"
     return "llm"

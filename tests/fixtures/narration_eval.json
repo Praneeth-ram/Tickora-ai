@@ -154,10 +154,10 @@
     "question": "Show my attendance breakdown for October.",
     "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
     "intent": "attendance_summary",
-    "route": "fallback",
+    "route": "template",
     "status": "REVIEW",
     "error": null,
-    "rejected": "answer rejected; template kept: 'You had 14 present days in October, 2 late days.'"
+    "rejected": null
   },
   {
     "entity": "attendance",
@@ -214,10 +214,10 @@
     "question": "Show my clock punches for 2 October 2026.",
     "answer": "No clock punches were found on 2 October 2026.",
     "intent": "attendance_records",
-    "route": "fallback",
+    "route": "template",
     "status": "REVIEW",
     "error": null,
-    "rejected": "answer rejected; template kept: 'No clock punches were recorded for you on October 2, 2026.'"
+    "rejected": null
   },
   {
     "entity": "attendance_adjustment",
@@ -244,10 +244,10 @@
     "question": "Show my leave requests for October 2026.",
     "answer": "You have no leave requests in October 2026.",
     "intent": "leave_status",
-    "route": "fallback",
+    "route": "template",
     "status": "REVIEW",
     "error": null,
-    "rejected": "answer rejected; template kept: 'No leave request records were found for October 2026.'"
+    "rejected": null
   },
   {
     "entity": "leave_request",
@@ -322,10 +322,10 @@
   {
     "entity": "wfh_request",
     "question": "Show my work from home requests for September 2026.",
-    "answer": "No work-from-home requests were found in September 2026.",
+    "answer": "You have no work-from-home requests in September 2026.",
     "intent": "wfh_status",
-    "route": "llm",
-    "status": "PASS",
+    "route": "template",
+    "status": "REVIEW",
     "error": null,
     "rejected": null
   },
@@ -344,7 +344,7 @@
     "question": "Show my timesheets for September 2026.",
     "answer": "Here are your 4 timesheets for September 2026.",
     "intent": "timesheet_lookup",
-    "route": "no_facts",
+    "route": "template",
     "status": "REVIEW",
     "error": null,
     "rejected": null
@@ -362,10 +362,10 @@
   {
     "entity": "holiday",
     "question": "List the holidays in November 2026.",
-    "answer": "No holidays were found in November 2026.",
+    "answer": "There are no holidays in November 2026.",
     "intent": "holiday_lookup",
-    "route": "llm",
-    "status": "PASS",
+    "route": "template",
+    "status": "REVIEW",
     "error": null,
     "rejected": null
   },
@@ -414,7 +414,7 @@
     "question": "Show my work schedule.",
     "answer": "Your work schedule:\n- Standard India Weekday Schedule: shift 09:30 AM to 06:30 PM, expected hours: 8.0, workdays: Monday, Tuesday, Wednesday, Thursday, Friday, effective from 31 May 2024",
     "intent": "schedule_lookup",
-    "route": "no_facts",
+    "route": "template",
     "status": "REVIEW",
     "error": null,
     "rejected": null

@@ -159,6 +159,91 @@ def test_list_facts_only_include_fields_from_the_entity_map():
     }
 
 
+def test_timesheet_list_facts_are_supported():
+    facts = compute_facts(
+        "What are my timesheet details?",
+        {"operation_id": "timesheet.list", "filters": {}},
+        PERIOD,
+        {
+            "data": [{
+                "period_start": date(2026, 10, 5),
+                "period_end": date(2026, 10, 11),
+                "status": "APPROVED",
+            }]
+        },
+        {
+            "timesheet": spec(
+                "timesheet",
+                "timesheets",
+                "timesheet",
+                {
+                    "period_start": "period start",
+                    "period_end": "period end",
+                    "status": "status",
+                },
+            )
+        },
+    )
+
+    assert facts["shape"] == "single_record"
+    assert facts["record"] == {
+        "period start": "2026-10-05",
+        "period end": "2026-10-11",
+        "status": "approved",
+    }
+
+
+def test_leave_balance_facts_include_safe_derived_remaining_totals():
+    facts = compute_facts(
+        "What is my leave balance?",
+        {"operation_id": "leave_balance.list", "filters": {}},
+        PERIOD,
+        {
+            "data": [
+                {
+                    "year": 2026,
+                    "leave_type_id": 1,
+                    "leave_type": "casual leave",
+                    "allocated_days": Decimal("12"),
+                    "used_days": Decimal("3"),
+                    "pending_days": Decimal("2"),
+                },
+                {
+                    "year": 2026,
+                    "leave_type_id": 2,
+                    "leave_type": "sick leave",
+                    "allocated_days": Decimal("8"),
+                    "used_days": Decimal("1"),
+                    "pending_days": Decimal("0"),
+                },
+            ]
+        },
+        {
+            "leave_balance": spec(
+                "leave balance",
+                "days",
+                "day",
+                {
+                    "year": "year",
+                    "leave_type_id": "leave type ID",
+                    "allocated_days": "allocated",
+                    "used_days": "used",
+                    "pending_days": "pending",
+                },
+            )
+        },
+    )
+
+    assert facts["rows"][0]["leave type"] == "casual leave"
+    assert facts["rows"][0]["remaining"] == "7"
+    assert facts["totals"] == {
+        "allocated": "20",
+        "used": "4",
+        "pending": "2",
+        "remaining": "14",
+    }
+
+
 def test_attendance_minutes_are_split_without_raw_total():
     facts = compute_facts(
         "How much overtime?",

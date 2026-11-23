@@ -139,11 +139,12 @@ from backend.services.answer_writer import write_answer, passes_answer_check
 import json
 
 def _route_answer(question, result, plan, period):
+    route = choose_route(question)
     logger.warning(
         "Narration entry: intent=%s op=%s rows=%s show_table=%s choose_route=%s",
         result.get("intent"), plan.get("operation_id"),
         len(result.get("data") or []), result.get("show_table"),
-        choose_route(result),
+        route,
     )
     if not settings.llm_narration_enabled:
         return result
@@ -152,7 +153,7 @@ def _route_answer(question, result, plan, period):
         and len(requested_aspects(question)) > 1
     ):
         return result
-    if choose_route(result) == "table":
+    if route == "table":
         return result
     actor = get_actor()
     if actor is None:
@@ -208,7 +209,10 @@ def _route_answer(question, result, plan, period):
         )
         return result
 
-    payload = compute_facts(question, plan, period, result, specs, actor.role)
+    facts_result = result
+    if entity == "timesheet" and isinstance(result.get("raw_data"), list):
+        facts_result = {**result, "data": result["raw_data"]}
+    payload = compute_facts(question, plan, period, facts_result, specs, actor.role)
     if payload is None:
             logger.warning(
             "Narration gate: entity=%s narratable=%s role=%s",

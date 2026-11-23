@@ -13,9 +13,8 @@ User question
   → correction (code: dates, status, identity, fields)
   → execute (SQLAlchemy, scoped, parameterised)
   → result shape
-      ├─ table route (no LLM): show_table and more than 5 rows
-      └─ detail route (LLM):   counts, specific details, breakdowns
-                              with 4 or fewer groups, lists of 5 rows or fewer
+      ├─ explicit table/list request: no narration
+      └─ other data question:         LLM narration, even when a UI table is shown
   → facts handler (code builds labelled JSON for this shape)
   → write_answer (base model, LoRA off, rules applied)
   → passes_answer_check (number, unit, wording rules)
@@ -32,14 +31,15 @@ Constraints:
 ## 3. What is implemented
 
 ### 3.1 Routing and wiring
-- `choose_route` in `backend/services/answer_router.py`: table or LLM.
-- `_route_answer` in `backend/agents/nodes.py`: called from `execution_node` for every entity. Returns the template when the flag is off, when the route is table, or when the question is a "per status" question with no groups.
+- `choose_route` in `backend/services/answer_router.py`: chooses table-only for explicit table/list requests; other questions can be narrated regardless of result size.
+- `_route_answer` in `backend/agents/nodes.py`: called from `execution_node` for every entity. Returns the template when the flag is off, when the user explicitly requests a table/list, or when the question is a "per status" question with no groups.
 - Flag `LLM_NARRATION_ENABLED` in `config.py` (default `False`) and `.env`.
 
 ### 3.2 Facts
 - `compute_facts` in `backend/services/payload/answer_payload.py` dispatches to named count, sum, group-by, row, and single-record handlers.
 - Entity field labels and singular/plural units come from `backend/services/payload/entities.py`; sensitive fields and role-hidden task scores do not reach the model.
 - Minute totals are split into `hours` and `minutes`; unsupported result shapes fall back to the template.
+- Timesheet narration uses the original query rows, not display aliases; leave-balance facts include code-computed remaining totals and leave-type labels.
 - Payroll amount questions use a separate minimal-facts path with exact amount/currency validation; payroll tables and loans remain on templates.
 - Multi-aspect single-day questions (clock in, clock out, work location) are answered together. `requested_aspects` and `fields_for_aspects` select only the requested fields, and the template builds one sentence covering all aspects.
 

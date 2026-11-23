@@ -36,6 +36,17 @@ def _decimal_value(value: Any) -> Decimal | None:
     return number if number.is_finite() else None
 
 
+def _leave_balance_values(
+    row: dict,
+) -> tuple[Decimal, Decimal, Decimal] | None:
+    allocated = _decimal_value(row.get("allocated_days") or 0)
+    used = _decimal_value(row.get("used_days") or 0)
+    pending = _decimal_value(row.get("pending_days") or 0)
+    if allocated is None or used is None or pending is None:
+        return None
+    return allocated, used, pending
+
+
 def _is_integral(value: Any) -> bool:
     number = _decimal_value(value)
     return number is not None and number == number.to_integral_value()
@@ -195,7 +206,10 @@ def _groups_facts(
 
 
 def _safe_row(spec: dict, entity: str, row: dict, role: str) -> dict:
-    allowed = visible_fields(entity, list(spec["field_labels"]), role)
+    field_labels = spec["field_labels"]
+    if entity == "leave_balance":
+        field_labels = {**field_labels, "leave_type": "leave type"}
+    allowed = visible_fields(entity, list(field_labels), role)
     result = {}
     for field in allowed:
         if field not in row:
@@ -207,7 +221,12 @@ def _safe_row(spec: dict, entity: str, row: dict, role: str) -> dict:
             value = value.isoformat()
         elif isinstance(value, Decimal):
             value = format(value, "f")
-        result[spec["field_labels"][field]] = label_value(value)
+        result[field_labels[field]] = label_value(value)
+    if entity == "leave_balance":
+        values = _leave_balance_values(row)
+        if values is not None:
+            allocated, used, pending = values
+            result["remaining"] = format(allocated - used - pending, "f")
     return result
 
 
@@ -243,6 +262,28 @@ def _rows_facts(
         "truncated": len(rows) > len(shown_rows),
         "found": bool(rows),
     })
+    if entity == "leave_balance":
+        values = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            balance = _leave_balance_values(row)
+            if balance is None:
+                return None
+            values.append(balance)
+        if len(values) != len(rows):
+            return None
+        totals = [
+            sum((balance[index] for balance in values), Decimal(0))
+            for index in range(3)
+        ]
+        allocated, used, pending = totals
+        facts["totals"] = {
+            "allocated": format(allocated, "f"),
+            "used": format(used, "f"),
+            "pending": format(pending, "f"),
+            "remaining": format(allocated - used - pending, "f"),
+        }
     return facts
 
 
@@ -269,8 +310,6 @@ def compute_facts(
 
     if operation == "count" and isinstance(data, dict):
         return _count_facts(spec, period, plan, data)
-    if operation == "list" and entity == "timesheet":
-        return None
     if operation == "sum":
         field = plan.get("aggregate_field")
         if field in MINUTE_FIELDS:
