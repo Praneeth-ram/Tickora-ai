@@ -4,7 +4,7 @@ import re
 from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any
@@ -2046,6 +2046,63 @@ _TABLE_RECORD_NAMES = {
 }
 
 
+def _attendance_table_clock(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        hour, minute = value.hour, value.minute
+    elif isinstance(value, time):
+        hour, minute = value.hour, value.minute
+    elif isinstance(value, str):
+        text = value.strip()
+        match = re.search(
+            r"(?:[T\s])([01]?\d|2[0-3]):([0-5]\d)"
+            r"(?::[0-5]\d(?:[.,]\d+)?)?"
+            r"(?:Z|[+-]\d{2}:?\d{2})?$",
+            text,
+        )
+        if not match:
+            match = re.fullmatch(
+                r"([01]?\d|2[0-3]):([0-5]\d)"
+                r"(?:[ ]?([AaPp][Mm]))?",
+                text,
+            )
+        if not match:
+            return text
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        meridiem = match.lastindex and match.group(3)
+        if meridiem:
+            if meridiem.lower() == "pm" and hour < 12:
+                hour += 12
+            elif meridiem.lower() == "am" and hour == 12:
+                hour = 0
+    else:
+        return str(value)
+
+    return f"{(hour % 12) or 12}:{minute:02d} {'AM' if hour < 12 else 'PM'}"
+
+
+def _attendance_table_data(data: Any) -> Any:
+    if not isinstance(data, list):
+        return data
+
+    display_rows = []
+    for row in data:
+        if not isinstance(row, dict):
+            display_rows.append(row)
+            continue
+        display_row = dict(row)
+        display_row.pop("work_date", None)
+        if "clock_in" in display_row:
+            display_row["clock_in"] = _attendance_table_clock(display_row["clock_in"])
+        if "clock_out" in display_row:
+            display_row["clock_out"] = _attendance_table_clock(display_row["clock_out"])
+        display_rows.append(display_row)
+    return display_rows
+
+
 def _table_intro(
     intent: str,
     data: Any,
@@ -2100,6 +2157,11 @@ def _result(
                 loan_component or _loan_component_phrase(question, metric_field),
             )
             show_table = False
+
+    if raw_data is None:
+        raw_data = data
+    if show_table and intent == "attendance_records":
+        data = _attendance_table_data(data)
 
     response_text = answer
     if show_table and intent not in {"employee_directory", "payroll_employees"}:

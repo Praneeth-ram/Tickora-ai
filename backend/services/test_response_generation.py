@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -130,6 +130,46 @@ def test_result_keeps_structured_and_raw_data_when_table_is_hidden():
     assert response["show_table"] is False
     assert response["data"] == structured
     assert response["raw_data"] == raw
+
+
+def test_attendance_table_removes_work_date_and_formats_clock_times_only():
+    structured = [{
+        "attendance_date": date(2026, 10, 5),
+        "work_date": date(2026, 10, 5),
+        "status": "PRESENT",
+        "clock_in": datetime(2026, 10, 5, 9, 20),
+        "clock_out": "2026-10-05T18:05:00",
+    }]
+    raw = [dict(structured[0])]
+
+    response = _result(
+        "Show my attendance details",
+        "Here are your attendance records.",
+        "attendance_records",
+        {"start_date": "2026-10-01", "end_date": "2026-10-31"},
+        True,
+        structured,
+        raw,
+    )
+
+    assert "work_date" not in response["data"][0]
+    assert response["data"][0]["attendance_date"] == date(2026, 10, 5)
+    assert response["data"][0]["clock_in"] == "9:20 AM"
+    assert response["data"][0]["clock_out"] == "6:05 PM"
+    assert response["raw_data"] == raw
+
+
+def test_attendance_table_change_does_not_remove_other_entity_work_date():
+    response = _result(
+        "Show my timesheets",
+        "Here are your timesheets.",
+        "timesheet_lookup",
+        {"start_date": "2026-10-01", "end_date": "2026-10-31"},
+        True,
+        [{"work_date": date(2026, 10, 5), "submission_status": "approved"}],
+    )
+
+    assert response["data"][0]["work_date"] == date(2026, 10, 5)
 
 
 def test_combine_results_keeps_table_answer_and_separates_parts():

@@ -2,79 +2,86 @@
   {
     "entity": "attendance",
     "question": "How many days was I present in October?",
-    "answer": "In October 2026, 14 days were present.",
+    "answer": "October 2026 had 14 days were present.",
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='October 2026 had 14 days were present.'"
   },
   {
     "entity": "attendance",
     "question": "How many days was I absent in October?",
-    "answer": "No leave requests were found in October 2026.",
+    "answer": "No days were found absent in October 2026.",
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='No days were found absent in October 2026.'"
   },
   {
     "entity": "attendance",
     "question": "How many days was I late in October?",
-    "answer": "In October 2026, 2 days were found where you were late.",
+    "answer": "2 days were late in October 2026.",
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='2 days were late in October 2026.'"
   },
   {
     "entity": "attendance",
     "question": "How many half days did I take in October?",
-    "answer": "No half days were taken in October 2026.",
+    "answer": "No half days were found in October 2026.",
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='No half days were found in October 2026.'"
   },
   {
     "entity": "attendance",
     "question": "How many days was I present in September?",
-    "answer": "In September 2026, 18 days were found that you were present.",
+    "answer": "You have 18 present days in September 2026.",
     "intent": "attendance_summary",
-    "route": "llm",
-    "status": "PASS",
+    "route": "fallback",
+    "status": "REVIEW",
     "error": null,
-    "rejected": null,
-    "trace": null
+    "rejected": "answer rejected (first_person_I); template kept: 'In September 2026, 18 days were found that I was present.'",
+    "trace": "Narration entry: intent=attendance_summary op=attendance.count rows=1 show_table=False choose_route=llm | facts: {\"shape\":\"count\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in September 2026\",\"filters\":{\"status\":\"present\"},\"count\":18,\"found\":true,\"status\":\"present\"} | verifier compare: old=first_person_I new=first_person_I answer='In September 2026, 18 days were found that I was present.' | answer rejected (first_person_I); template kept: 'In September 2026, 18 days were found that I was present.'",
+    "verifier": "verifier compare: old=first_person_I new=first_person_I answer='In September 2026, 18 days were found that I was present.'"
   },
   {
     "entity": "attendance",
     "question": "How many days was I absent in September?",
-    "answer": "In September 2026, 1 day was absent.",
+    "answer": "You have 1 absent day in September 2026.",
     "intent": "attendance_summary",
-    "route": "llm",
-    "status": "PASS",
+    "route": "fallback",
+    "status": "REVIEW",
     "error": null,
-    "rejected": null,
-    "trace": null
+    "rejected": "answer rejected (first_person_I); template kept: 'I was absent for 1 day in September 2026.'",
+    "trace": "Narration entry: intent=attendance_summary op=attendance.count rows=1 show_table=False choose_route=llm | facts: {\"shape\":\"count\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in September 2026\",\"filters\":{\"status\":\"absent\"},\"count\":1,\"found\":true,\"status\":\"absent\"} | verifier compare: old=first_person_I new=first_person_I answer='I was absent for 1 day in September 2026.' | answer rejected (first_person_I); template kept: 'I was absent for 1 day in September 2026.'",
+    "verifier": "verifier compare: old=first_person_I new=first_person_I answer='I was absent for 1 day in September 2026.'"
   },
   {
     "entity": "attendance",
     "question": "How many days was I late in September?",
-    "answer": "In September 2026, 3 days were found where you were late.",
+    "answer": "You have 3 late days in September 2026.",
     "intent": "attendance_summary",
-    "route": "llm",
-    "status": "PASS",
+    "route": "fallback",
+    "status": "REVIEW",
     "error": null,
-    "rejected": null,
-    "trace": null
+    "rejected": "answer rejected (first_person_I); template kept: 'In September 2026, 3 days were found were I was late.'",
+    "trace": "Narration entry: intent=attendance_summary op=attendance.count rows=1 show_table=False choose_route=llm | facts: {\"shape\":\"count\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in September 2026\",\"filters\":{\"status\":\"late\"},\"count\":3,\"found\":true,\"status\":\"late\"} | verifier compare: old=first_person_I new=first_person_I answer='In September 2026, 3 days were found were I was late.' | answer rejected (first_person_I); template kept: 'In September 2026, 3 days were found were I was late.'",
+    "verifier": "verifier compare: old=first_person_I new=first_person_I answer='In September 2026, 3 days were found were I was late.'"
   },
   {
     "entity": "attendance",
@@ -85,7 +92,8 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='In October 2026, 14 present days were found.'"
   },
   {
     "entity": "attendance",
@@ -96,7 +104,8 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='No late days were found in November 2026 so far.'"
   },
   {
     "entity": "attendance",
@@ -107,161 +116,176 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=unsupported_word:absences answer='No absences were found in October 2026.'"
   },
   {
     "entity": "attendance",
     "question": "How many hours did I work in October?",
-    "answer": "You worked 125 hours in October 2026.",
+    "answer": "In October 2026, you worked 125 hours and 41 minutes.",
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='In October 2026, you worked 125 hours and 41 minutes.'"
   },
   {
     "entity": "attendance",
     "question": "What is my total worked time in September?",
-    "answer": "Your total worked time in September 2026 was 166 hours and 28 minutes.",
+    "answer": "Your total worked time in September was 166 hours and 28 minutes.",
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='Your total worked time in September was 166 hours and 28 minutes.'"
   },
   {
     "entity": "attendance",
     "question": "How much overtime did I do in October?",
-    "answer": "Your total overtime in October 2026 was 1 hour and 20 minutes.",
-    "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
-    "error": null,
-    "rejected": "answer rejected; template kept: 'In October 2026, you worked 1 day and 20 minutes of overtime.'",
-    "trace": "Narration entry: intent=attendance_summary op=attendance.list rows=16 show_table=False choose_route=llm | facts: {\"shape\":\"sum\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in October 2026\",\"filters\":{},\"measure\":\"overtime\",\"hours\":1,\"minutes\":20,\"found\":true} | answer rejected; template kept: 'In October 2026, you worked 1 day and 20 minutes of overtime.'"
-  },
-  {
-    "entity": "attendance",
-    "question": "Total overtime in September?",
-    "answer": "Your total overtime in September 2026 was 1 hour and 42 minutes.",
-    "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
-    "error": null,
-    "rejected": "answer rejected; template kept: 'In September 2026, 1 day and 42 minutes of overtime were found.'",
-    "trace": "Narration entry: intent=attendance_summary op=attendance.list rows=22 show_table=False choose_route=llm | facts: {\"shape\":\"sum\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in September 2026\",\"filters\":{},\"measure\":\"overtime\",\"hours\":1,\"minutes\":42,\"found\":true} | answer rejected; template kept: 'In September 2026, 1 day and 42 minutes of overtime were found.'"
-  },
-  {
-    "entity": "attendance",
-    "question": "How many hours did I work in October 2026?",
-    "answer": "In October 2026, you worked for 125 hours and 41 minutes.",
+    "answer": "In October 2026, you worked 1 hour and 20 minutes of overtime.",
     "intent": "attendance_summary",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='In October 2026, you worked 1 hour and 20 minutes of overtime.'"
+  },
+  {
+    "entity": "attendance",
+    "question": "Total overtime in September?",
+    "answer": "In September 2026, there were 1 hour and 42 minutes of overtime.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='In September 2026, there were 1 hour and 42 minutes of overtime.'"
+  },
+  {
+    "entity": "attendance",
+    "question": "How many hours did I work in October 2026?",
+    "answer": "In October 2026, you worked 125 hours and 41 minutes.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='In October 2026, you worked 125 hours and 41 minutes.'"
   },
   {
     "entity": "attendance",
     "question": "Show my attendance breakdown for October.",
-    "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
+    "answer": "In October 2026, you were present for 14 days and late on 2 days.",
     "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
+    "route": "llm",
+    "status": "PASS",
     "error": null,
-    "rejected": "answer rejected; template kept: 'In October 2026, 2 days were marked as late and 14 days were present.'",
-    "trace": "Narration entry: intent=attendance_summary op=attendance.group_by rows=2 show_table=False choose_route=llm | facts: {\"shape\":\"group_by\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in October 2026\",\"filters\":{},\"groups\":[{\"label\":\"late\",\"count\":2},{\"label\":\"present\",\"count\":14}],\"found\":true} | answer rejected; template kept: 'In October 2026, 2 days were marked as late and 14 days were present.'"
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='In October 2026, you were present for 14 days and late on 2 days.'"
   },
   {
     "entity": "attendance",
     "question": "Give me my attendance summary for September.",
+    "answer": "In September 2026, you were present for 18 days, absent once, and had 3 late entries.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=unsupported_word:once answer='In September 2026, you were present for 18 days, absent once, and had 3 late entries.'"
+  },
+  {
+    "entity": "attendance",
+    "question": "Attendance overview for October.",
+    "answer": "In October 2026, 14 days were present and 2 days were late.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='In October 2026, 14 days were present and 2 days were late.'"
+  },
+  {
+    "entity": "attendance",
+    "question": "How many days per status in October?",
+    "answer": "2 days were late in October 2026. 14 days were present in October 2026.",
+    "intent": "attendance_summary",
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='2 days were late in October 2026. 14 days were present in October 2026.'"
+  },
+  {
+    "entity": "attendance",
+    "question": "What is my attendance status breakdown for September?",
     "answer": "Your attendance breakdown by status in September 2026: absent: 1 day, late: 3 days, present: 18 days.",
     "intent": "attendance_summary",
     "route": "fallback",
     "status": "REVIEW",
     "error": null,
-    "rejected": "answer rejected; template kept: 'In September 2026, 1 day was absent, and 3 half days were late. Otherwise, it was all present.'",
-    "trace": "Narration entry: intent=attendance_summary op=attendance.group_by rows=3 show_table=False choose_route=llm | facts: {\"shape\":\"group_by\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in September 2026\",\"filters\":{},\"groups\":[{\"label\":\"absent\",\"count\":1},{\"label\":\"late\",\"count\":3},{\"label\":\"present\",\"count\":18}],\"found\":true} | answer rejected; template kept: 'In September 2026, 1 day was absent, and 3 half days were late. Otherwise, it was all present.'"
-  },
-  {
-    "entity": "attendance",
-    "question": "Attendance overview for October.",
-    "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
-    "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
-    "error": null,
-    "rejected": "answer rejected; template kept: 'In October 2026, 2 days were marked as late and 14 days were present.'",
-    "trace": "Narration entry: intent=attendance_summary op=attendance.group_by rows=2 show_table=False choose_route=llm | facts: {\"shape\":\"group_by\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in October 2026\",\"filters\":{},\"groups\":[{\"label\":\"late\",\"count\":2},{\"label\":\"present\",\"count\":14}],\"found\":true} | answer rejected; template kept: 'In October 2026, 2 days were marked as late and 14 days were present.'"
-  },
-  {
-    "entity": "attendance",
-    "question": "How many days per status in October?",
-    "answer": "Your attendance breakdown by status in October 2026: late: 2 days, present: 14 days.",
-    "intent": "attendance_summary",
-    "route": "fallback",
-    "status": "REVIEW",
-    "error": null,
-    "rejected": "answer rejected; template kept: 'In October 2026, 2 days were marked as late and 14 days were marked as present.'",
-    "trace": "Narration entry: intent=attendance_summary op=attendance.group_by rows=2 show_table=False choose_route=llm | facts: {\"shape\":\"group_by\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in October 2026\",\"filters\":{},\"groups\":[{\"label\":\"late\",\"count\":2},{\"label\":\"present\",\"count\":14}],\"found\":true} | answer rejected; template kept: 'In October 2026, 2 days were marked as late and 14 days were marked as present.'"
-  },
-  {
-    "entity": "attendance",
-    "question": "What is my attendance status breakdown for September?",
-    "answer": "In September 2026, 1 day was absent, 3 days were late, and 18 days were present.",
-    "intent": "attendance_summary",
-    "route": "llm",
-    "status": "PASS",
-    "error": null,
-    "rejected": null,
-    "trace": null
+    "rejected": "answer rejected (unfounded_status); template kept: 'In September 2026, 1 day was absent, 3 half days were late, and 18 days were present.'",
+    "trace": "Narration entry: intent=attendance_summary op=attendance.group_by rows=3 show_table=False choose_route=llm | facts: {\"shape\":\"group_by\",\"entity\":\"attendance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in September 2026\",\"filters\":{},\"groups\":[{\"label\":\"absent\",\"count\":1},{\"label\":\"late\",\"count\":3},{\"label\":\"present\",\"count\":18}],\"found\":true} | verifier compare: old=unfounded_status new=unsupported_word:half answer='In September 2026, 1 day was absent, 3 half days were late, and 18 days were present.' | answer rejected (unfounded_status); template kept: 'In September 2026, 1 day was absent, 3 half days were late, and 18 days were present.'",
+    "verifier": "verifier compare: old=unfounded_status new=unsupported_word:half answer='In September 2026, 1 day was absent, 3 half days were late, and 18 days were present.'"
   },
   {
     "entity": "attendance_punch",
     "question": "How many clock punches did I have in October 2026?",
-    "answer": "In October 2026, you had 32 clock punches.",
+    "answer": "32 clock punches were found in October 2026.",
     "intent": "attendance_records",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='32 clock punches were found in October 2026.'"
   },
   {
     "entity": "attendance_punch",
     "question": "Show my clock punches for 2 October 2026.",
-    "answer": "No clock punches were found on 2 October 2026.",
+    "answer": "No punches were found on 2 October 2026.",
     "intent": "attendance_records",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='No punches were found on 2 October 2026.'"
   },
   {
     "entity": "attendance_adjustment",
     "question": "How many attendance adjustments did I make in October 2026?",
-    "answer": "No attendance adjustments were found in October 2026.",
+    "answer": "0 attendance adjustments were found in October 2026.",
     "intent": "attendance_records",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=zero_digit answer='0 attendance adjustments were found in October 2026.'"
   },
   {
     "entity": "leave_request",
     "question": "How many leave requests did I have in October 2026?",
-    "answer": "No leave requests were found in October 2026.",
+    "answer": "0 leave requests were found in October 2026.",
     "intent": "leave_status",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=zero_digit answer='0 leave requests were found in October 2026.'"
   },
   {
     "entity": "leave_request",
@@ -272,7 +296,8 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='No leave requests were found in October 2026.'"
   },
   {
     "entity": "leave_request",
@@ -283,40 +308,44 @@
     "status": "MISS",
     "error": null,
     "rejected": null,
-    "trace": "Narration entry: intent=leave_status op=leave_request.count rows=1 show_table=False choose_route=llm"
+    "trace": "Narration entry: intent=leave_status op=leave_request.count rows=1 show_table=False choose_route=llm",
+    "verifier": null
   },
   {
     "entity": "leave_balance",
     "question": "What is my leave balance for 2026?",
-    "answer": "Your leave balance for 2026:\n- Casual Leave: 12 days remaining (12 allocated, 0 used, and 0 pending).\n- Sick Leave: 10 days remaining (10 allocated, 0 used, and 0 pending).\n- Earned Leave: 15 days remaining (15 allocated, 0 used, and 0 pending).\n- Unpaid Leave: 0 days remaining (0 allocated, 0 used, and 0 pending).\nTotal remaining: 37 days.",
-    "intent": "leave_balance",
-    "route": "fallback",
-    "status": "REVIEW",
-    "error": null,
-    "rejected": "answer rejected; template kept: 'In 2026, your total leave balance remaining is 37 days were found in October 2026.'",
-    "trace": "Narration entry: intent=leave_balance op=leave_balance.list rows=4 show_table=False choose_route=llm | facts: {\"shape\":\"rows\",\"entity\":\"leave balance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in 2026\",\"filters\":{},\"total\":4,\"rows\":[{\"year\":\"2026\",\"leave type ID\":1,\"allocated\":\"12.00\",\"used\":\"0.00\",\"pending\":\"0.00\",\"leave type\":\"Casual Leave\",\"remaining\":\"12.00\"},{\"year\":\"2026\",\"leave type I | answer rejected; template kept: 'In 2026, your total leave balance remaining is 37 days were found in October 2026.'"
-  },
-  {
-    "entity": "leave_balance",
-    "question": "How many leave days do I have left this year?",
-    "answer": "Your leave balance for 2026:\n- Casual Leave: 12 days remaining (12 allocated, 0 used, and 0 pending).\n- Sick Leave: 10 days remaining (10 allocated, 0 used, and 0 pending).\n- Earned Leave: 15 days remaining (15 allocated, 0 used, and 0 pending).\n- Unpaid Leave: 0 days remaining (0 allocated, 0 used, and 0 pending).\nTotal remaining: 37 days.",
-    "intent": "leave_balance",
-    "route": "fallback",
-    "status": "REVIEW",
-    "error": null,
-    "rejected": "answer rejected; template kept: 'You have 37 days remaining in allocated leave this year, in 2026. No leave requests were found in October 2026.'",
-    "trace": "Narration entry: intent=leave_balance op=leave_balance.list rows=4 show_table=False choose_route=llm | facts: {\"shape\":\"rows\",\"entity\":\"leave balance\",\"unit\":\"days\",\"unit_singular\":\"day\",\"period_text\":\"in 2026\",\"filters\":{},\"total\":4,\"rows\":[{\"year\":\"2026\",\"leave type ID\":1,\"allocated\":\"12.00\",\"used\":\"0.00\",\"pending\":\"0.00\",\"leave type\":\"Casual Leave\",\"remaining\":\"12.00\"},{\"year\":\"2026\",\"leave type I | answer rejected; template kept: 'You have 37 days remaining in allocated leave this year, in 2026. No leave requests were found in October 2026.'"
-  },
-  {
-    "entity": "leave_balance",
-    "question": "How many leave days did I use in 2026?",
-    "answer": "No leave requests were found in 2026.",
+    "answer": "In 2026, your leave balance was 37 days were found to be remaining.",
     "intent": "leave_balance",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='In 2026, your leave balance was 37 days were found to be remaining.'"
+  },
+  {
+    "entity": "leave_balance",
+    "question": "How many leave days do I have left this year?",
+    "answer": "You have 37 days remaining in total across all leave types this year.",
+    "intent": "leave_balance",
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=unsupported_word:across answer='You have 37 days remaining in total across all leave types this year.'"
+  },
+  {
+    "entity": "leave_balance",
+    "question": "How many leave days did I use in 2026?",
+    "answer": "In 2026, 0 leave days were used.",
+    "intent": "leave_balance",
+    "route": "llm",
+    "status": "PASS",
+    "error": null,
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=zero_digit answer='In 2026, 0 leave days were used.'"
   },
   {
     "entity": "leave_type",
@@ -326,19 +355,21 @@
     "route": "fallback",
     "status": "REVIEW",
     "error": null,
-    "rejected": "answer rejected; template kept: 'Four leave types are available on record. They are Casual Leave, Earned Leave, Sickle Leave, and Unpaid Leave.'",
-    "trace": "Narration entry: intent=leave_type_lookup op=leave_type.list rows=4 show_table=True choose_route=llm | facts: {\"shape\":\"rows\",\"entity\":\"leave type\",\"unit\":\"leave types\",\"unit_singular\":\"leave type\",\"period_text\":\"on record\",\"filters\":{},\"total\":4,\"rows\":[{\"code\":\"CASUAL\",\"name\":\"Casual Leave\",\"paid\":true},{\"code\":\"EARNED\",\"name\":\"Earned Leave\",\"paid\":true},{\"code\":\"SICK\",\"name\":\"Sick Leave\",\"paid\":tr | answer rejected; template kept: 'Four leave types are available on record. They are Casual Leave, Earned Leave, Sickle Leave, and Unpaid Leave.'"
+    "rejected": "answer rejected (unknown_leave_name); template kept: 'Four leave types are available on record. They are Casual Leave, Earned Leave, Sickle Leave, and Unpaid Leave.'",
+    "trace": "Narration entry: intent=leave_type_lookup op=leave_type.list rows=4 show_table=True choose_route=llm | facts: {\"shape\":\"rows\",\"entity\":\"leave type\",\"unit\":\"leave types\",\"unit_singular\":\"leave type\",\"period_text\":\"on record\",\"filters\":{},\"total\":4,\"rows\":[{\"code\":\"CASUAL\",\"name\":\"Casual Leave\",\"paid\":true},{\"code\":\"EARNED\",\"name\":\"Earned Leave\",\"paid\":true},{\"code\":\"SICK\",\"name\":\"Sick Leave\",\"paid\":tr | verifier compare: old=unknown_leave_name new=unsupported_word:available answer='Four leave types are available on record. They are Casual Leave, Earned Leave, Sickle Leave, and Unpaid Leave.' | answer rejected (unknown_leave_name); template kept: 'Four leave types are available on record. They are Casual Leave, Earned Leave, Sickle Leave, and Unpaid Leave.'",
+    "verifier": "verifier compare: old=unknown_leave_name new=unsupported_word:available answer='Four leave types are available on record. They are Casual Leave, Earned Leave, Sickle Leave, and Unpaid Leave.'"
   },
   {
     "entity": "leave_type",
     "question": "How many leave types are there?",
-    "answer": "There are 4 leave types.",
+    "answer": "There were 4 leave types on record.",
     "intent": "leave_type_lookup",
-    "route": "fallback",
-    "status": "REVIEW",
+    "route": "llm",
+    "status": "PASS",
     "error": null,
-    "rejected": "answer rejected; template kept: 'There are 4 leave types on record.'",
-    "trace": "Narration entry: intent=leave_type_lookup op=leave_type.count rows=1 show_table=False choose_route=llm | facts: {\"shape\":\"count\",\"entity\":\"leave type\",\"unit\":\"leave types\",\"unit_singular\":\"leave type\",\"period_text\":\"on record\",\"filters\":{},\"count\":4,\"found\":true} | answer rejected; template kept: 'There are 4 leave types on record.'"
+    "rejected": null,
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='There were 4 leave types on record.'"
   },
   {
     "entity": "wfh_request",
@@ -349,7 +380,8 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='No work-from-home requests were found in October 2026.'"
   },
   {
     "entity": "wfh_request",
@@ -360,40 +392,44 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='No work-from-home requests were found in September 2026.'"
   },
   {
     "entity": "timesheet",
     "question": "How many timesheets did I submit in October 2026?",
-    "answer": "1 timesheet was submitted in October 2026.",
+    "answer": "You have 1 submitted timesheet in October 2026.",
     "intent": "timesheet_lookup",
-    "route": "llm",
-    "status": "PASS",
+    "route": "fallback",
+    "status": "REVIEW",
     "error": null,
-    "rejected": null,
-    "trace": null
+    "rejected": "answer rejected (count_verb_agreement); template kept: '1 timesheet were submitted in October 2026.'",
+    "trace": "Narration entry: intent=timesheet_lookup op=timesheet.count rows=1 show_table=False choose_route=llm | facts: {\"shape\":\"count\",\"entity\":\"timesheet\",\"unit\":\"timesheets\",\"unit_singular\":\"timesheet\",\"period_text\":\"in October 2026\",\"filters\":{\"status\":\"submitted\"},\"count\":1,\"found\":true,\"status\":\"submitted\"} | verifier compare: old=count_verb_agreement new=verb_plural_for_one answer='1 timesheet were submitted in October 2026.' | answer rejected (count_verb_agreement); template kept: '1 timesheet were submitted in October 2026.'",
+    "verifier": "verifier compare: old=count_verb_agreement new=verb_plural_for_one answer='1 timesheet were submitted in October 2026.'"
   },
   {
     "entity": "timesheet",
     "question": "Show my timesheets for September 2026.",
-    "answer": "Four timesheets were found in September 2026.",
+    "answer": "Here are your 4 timesheets for September 2026.",
     "intent": "timesheet_lookup",
-    "route": "llm",
-    "status": "PASS",
+    "route": "fallback",
+    "status": "REVIEW",
     "error": null,
-    "rejected": null,
-    "trace": null
+    "rejected": "answer rejected (month_not_in_period); template kept: 'In September 2026, 4 timesheets were found. The first timesheet was approved from September 28 to October 4, the second from September 21 to September 27, the third from September 14 to September 20, and the fourth was a draft from September 7 to September 13.'",
+    "trace": "Narration entry: intent=timesheet_lookup op=timesheet.list rows=4 show_table=True choose_route=llm | facts: {\"shape\":\"rows\",\"entity\":\"timesheet\",\"unit\":\"timesheets\",\"unit_singular\":\"timesheet\",\"period_text\":\"in September 2026\",\"filters\":{},\"total\":4,\"rows\":[{\"period start\":\"2026-09-28\",\"period end\":\"2026-10-04\",\"status\":\"approved\",\"submitted on\":\"2026-10-04T18:00:00+05:30\",\"approved on\":\"2026-10-04 | verifier compare: old=month_not_in_period new=unsupported_word:first answer='In September 2026, 4 timesheets were found. The first timesheet was approved from September 28 to October 4, the second from September 21 to September 27, the third from September 14 to September 20, and the fourth was a dr | answer rejected (month_not_in_period); template kept: 'In September 2026, 4 timesheets were found. The first timesheet was approved from September 28 to October 4, the second from September 21 to September 27, the third from September 14 to September 20, and the fourth was a draft from September 7 t",
+    "verifier": "verifier compare: old=month_not_in_period new=unsupported_word:first answer='In September 2026, 4 timesheets were found. The first timesheet was approved from September 28 to October 4, the second from September 21 to September 27, the third from September 14 to September 20, and the fourth was a draft from September 7 to September 13.'"
   },
   {
     "entity": "holiday",
     "question": "How many holidays are there in October 2026?",
-    "answer": "In October 2026, 1 holiday was found.",
+    "answer": "There were 1 holiday found in October 2026.",
     "intent": "holiday_lookup",
     "route": "llm",
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='There were 1 holiday found in October 2026.'"
   },
   {
     "entity": "holiday",
@@ -404,29 +440,32 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": null
+    "trace": null,
+    "verifier": "verifier compare: old=None new=None answer='No holidays were found in November 2026.'"
   },
   {
     "entity": "task",
     "question": "How many tasks did I have in October 2026?",
-    "answer": "1 task was found in October 2026.",
+    "answer": "There is 1 task in October 2026.",
     "intent": "task_lookup",
-    "route": "llm",
-    "status": "PASS",
+    "route": "fallback",
+    "status": "REVIEW",
     "error": null,
-    "rejected": null,
-    "trace": null
+    "rejected": "answer rejected (count_verb_agreement); template kept: '1 task were found in October 2026 were not completed.'",
+    "trace": "Narration entry: intent=task_lookup op=task.count rows=1 show_table=False choose_route=llm | facts: {\"shape\":\"count\",\"entity\":\"task\",\"unit\":\"tasks\",\"unit_singular\":\"task\",\"period_text\":\"in October 2026\",\"filters\":{},\"count\":1,\"found\":true} | verifier compare: old=count_verb_agreement new=verb_plural_for_one answer='1 task were found in October 2026 were not completed.' | answer rejected (count_verb_agreement); template kept: '1 task were found in October 2026 were not completed.'",
+    "verifier": "verifier compare: old=count_verb_agreement new=verb_plural_for_one answer='1 task were found in October 2026 were not completed.'"
   },
   {
     "entity": "task",
     "question": "How many tasks per status in October 2026?",
-    "answer": "In October 2026, 1 task was found with the status \"completed\". No other statuses were found in this period.",
+    "answer": "Your task breakdown by status in October 2026: completed: 1 task.",
     "intent": "task_lookup",
-    "route": "llm",
-    "status": "PASS",
+    "route": "fallback",
+    "status": "REVIEW",
     "error": null,
-    "rejected": null,
-    "trace": null
+    "rejected": "answer rejected (count_verb_agreement); template kept: '1 task were completed in October 2026.'",
+    "trace": "Narration entry: intent=task_lookup op=task.group_by rows=1 show_table=False choose_route=llm | facts: {\"shape\":\"group_by\",\"entity\":\"task\",\"unit\":\"tasks\",\"unit_singular\":\"task\",\"period_text\":\"in October 2026\",\"filters\":{},\"groups\":[{\"label\":\"completed\",\"count\":1}],\"found\":true} | verifier compare: old=count_verb_agreement new=verb_plural_for_one answer='1 task were completed in October 2026.' | answer rejected (count_verb_agreement); template kept: '1 task were completed in October 2026.'",
+    "verifier": "verifier compare: old=count_verb_agreement new=verb_plural_for_one answer='1 task were completed in October 2026.'"
   },
   {
     "entity": "task",
@@ -437,7 +476,8 @@
     "status": "MISS",
     "error": null,
     "rejected": null,
-    "trace": ""
+    "trace": "",
+    "verifier": null
   },
   {
     "entity": "work_schedule",
@@ -448,7 +488,8 @@
     "status": "REVIEW",
     "error": null,
     "rejected": null,
-    "trace": "Narration entry: intent=schedule_lookup op=work_schedule.list rows=1 show_table=False choose_route=llm | Narration gate: entity=work_schedule narratable=True role=super_admin"
+    "trace": "Narration entry: intent=schedule_lookup op=work_schedule.list rows=1 show_table=False choose_route=llm | Narration gate: entity=work_schedule narratable=True role=super_admin",
+    "verifier": null
   },
   {
     "entity": "work_schedule",
@@ -459,7 +500,8 @@
     "status": "REVIEW",
     "error": null,
     "rejected": null,
-    "trace": "Narration entry: intent=schedule_lookup op=work_schedule.list rows=1 show_table=False choose_route=llm | Narration gate: entity=work_schedule narratable=True role=super_admin"
+    "trace": "Narration entry: intent=schedule_lookup op=work_schedule.list rows=1 show_table=False choose_route=llm | Narration gate: entity=work_schedule narratable=True role=super_admin",
+    "verifier": null
   },
   {
     "entity": "loan_request",
@@ -470,7 +512,8 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": "Narration entry: intent=loan_lookup op=loan_request.count rows=1 show_table=False choose_route=llm | Narration skipped: entity=loan_request spec=True narratable=False role=super_admin"
+    "trace": "Narration entry: intent=loan_lookup op=loan_request.count rows=1 show_table=False choose_route=llm | Narration skipped: entity=loan_request spec=True narratable=False role=super_admin",
+    "verifier": null
   },
   {
     "entity": "loan_request",
@@ -481,7 +524,8 @@
     "status": "PASS",
     "error": null,
     "rejected": null,
-    "trace": "Narration entry: intent=loan_lookup op=loan_request.list rows=2 show_table=False choose_route=llm | Narration skipped: entity=loan_request spec=True narratable=False role=super_admin"
+    "trace": "Narration entry: intent=loan_lookup op=loan_request.list rows=2 show_table=False choose_route=llm | Narration skipped: entity=loan_request spec=True narratable=False role=super_admin",
+    "verifier": null
   },
   {
     "entity": "payroll_summary",
@@ -492,7 +536,8 @@
     "status": "REVIEW",
     "error": null,
     "rejected": "Payroll narration rejected; template kept. facts={'entity': 'payroll', 'shape': 'amount', 'period_text': 'in September 2026', 'metrics': [{'field': 'net_amount', 'label': 'net amount', 'amounts': [{'value': '64680.00', 'currency': 'INR'}]}], 'found': True} answer='Your net pay in September 2026 was 64680.00 INR.'",
-    "trace": "Narration entry: intent=payroll_lookup op=payroll_summary.list rows=1 show_table=False choose_route=llm | Payroll gate: role=super_admin actor=1 subject=None detail=True | Payroll narration rejected; template kept. facts={'entity': 'payroll', 'shape': 'amount', 'period_text': 'in September 2026', 'metrics': [{'field': 'net_amount', 'label': 'net amount', 'amounts': [{'value': '64680.00', 'currency': 'INR'}]}], 'found': True} answer='Your net pay in September 2026 was "
+    "trace": "Narration entry: intent=payroll_lookup op=payroll_summary.list rows=1 show_table=False choose_route=llm | Payroll gate: role=super_admin actor=1 subject=None detail=True | Payroll narration rejected; template kept. facts={'entity': 'payroll', 'shape': 'amount', 'period_text': 'in September 2026', 'metrics': [{'field': 'net_amount', 'label': 'net amount', 'amounts': [{'value': '64680.00', 'currency': 'INR'}]}], 'found': True} answer='Your net pay in September 2026 was ",
+    "verifier": null
   },
   {
     "entity": "payroll_summary",
@@ -503,6 +548,7 @@
     "status": "REVIEW",
     "error": null,
     "rejected": null,
-    "trace": "Narration entry: intent=payroll_lookup op=payroll_summary.list rows=10 show_table=True choose_route=llm | Payroll gate: role=super_admin actor=1 subject=None detail=False"
+    "trace": "Narration entry: intent=payroll_lookup op=payroll_summary.list rows=10 show_table=True choose_route=llm | Payroll gate: role=super_admin actor=1 subject=None detail=False",
+    "verifier": null
   }
 ]

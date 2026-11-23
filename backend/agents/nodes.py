@@ -135,7 +135,8 @@ def _entity_specs() -> dict:
 
 from backend.services.answer_router import choose_route
 from backend.services.payload.answer_payload import compute_facts
-from backend.services.answer_writer import write_answer, passes_answer_check
+from backend.services.answer_writer import write_answer, passes_answer_check, answer_check_failure
+from backend.services.fact_verifier import verify_against_facts
 import json
 
 def _route_answer(question, result, plan, period):
@@ -251,11 +252,17 @@ def _route_answer(question, result, plan, period):
     except Exception:
         logger.exception("LLM answer failed; using template")
         return result
-    if passes_answer_check(answer, payload):
+    failure = answer_check_failure(answer, payload)
+    verifier_failure = verify_against_facts(answer, payload)
+    logger.warning(
+        "verifier compare: old=%s new=%s answer=%r",
+        failure, verifier_failure, answer,
+    )
+    if failure is None:
         result["answer"] = answer
         result["message"] = answer
     else:
-        logger.warning("answer rejected; template kept: %r", answer)
+        logger.warning("answer rejected (%s); template kept: %r", failure, answer)
     return result
 
 

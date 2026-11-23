@@ -127,6 +127,7 @@ MISS_PREFIXES = (
 SUSPICIOUS_RE = re.compile(r"[{}\[\]]|\bnull\b|\bNone\b|\bundefined\b", re.IGNORECASE)
 TRACE_PREFIXES = (
     "Narration", "Payroll", "Facts not built", "answer rejected", "facts:",
+    "verifier compare",
 )
 
 
@@ -164,6 +165,15 @@ def _route(messages: list[str]) -> str:
 def _trace(messages: list[str]) -> str:
     lines = [m[:300] for m in messages if m.startswith(TRACE_PREFIXES)]
     return " | ".join(lines)
+
+
+def _verifier_reasons(line: str) -> tuple[str | None, str | None]:
+    match = re.search(r"\bold=(.*?)\s+new=(.*?)\s+answer=", line)
+    if not match:
+        return None, None
+    old = match.group(1).strip()
+    new = match.group(2).strip()
+    return (None if old == "None" else old, None if new == "None" else new)
 
 
 def _status(entity: str, route: str, answer: str, row_count: int) -> str:
@@ -221,6 +231,7 @@ def main() -> None:
                                   if m.startswith(("answer rejected",
                                                    "Payroll narration rejected"))), None),
                 "trace": None if route == "llm" else _trace(capture.messages),
+                "verifier": next((m for m in capture.messages if m.startswith("verifier compare")), None),
             })
     finally:
         reset_actor(token)
@@ -236,6 +247,8 @@ def main() -> None:
         print("A:", r["answer"] or r["error"])
         if r["rejected"]:
             print("REJECTED:", r["rejected"])
+        if r.get("verifier"):
+            print("VERIFY:", r["verifier"])
         if r["trace"]:
             print("TRACE:", r["trace"])
         print("-" * 60)
@@ -253,6 +266,40 @@ def main() -> None:
         print(f"  {entity:24s} PASS={c['PASS']:<3d} REVIEW={c['REVIEW']:<3d} "
               f"MISS={c['MISS']:<3d} FAIL={c['FAIL']:<3d} "
               f"routes={dict(routes_by_entity[entity])}")
+
+    comparison_counts = {
+        "pass/pass": 0,
+        "pass/fail": 0,
+        "fail/pass": 0,
+        "fail/fail": 0,
+    }
+    verifier_lines = []
+    for r in rows:
+        verifier = r.get("verifier")
+        if not verifier:
+            continue
+        old_reason, new_reason = _verifier_reasons(verifier)
+        group = (
+            ("pass" if old_reason is None else "fail")
+            + "/"
+            + ("pass" if new_reason is None else "fail")
+        )
+        comparison_counts[group] += 1
+        verifier_lines.append(
+            f"{group} | {r['entity']} | Q: {r['question']} | A: {r['answer']}"
+        )
+
+    print("\nVERIFIER COMPARISON")
+    for group in ("pass/pass", "pass/fail", "fail/pass", "fail/fail"):
+        print(f"{group}: {comparison_counts[group]}")
+
+    verifier_path = ROOT / "tests" / "fixtures" / "verifier_compare.txt"
+    verifier_path.parent.mkdir(parents=True, exist_ok=True)
+    verifier_path.write_text(
+        "\n".join(verifier_lines) + ("\n" if verifier_lines else ""),
+        encoding="utf-8",
+    )
+
     print(f"\nFull results: {out_path}")
 
 

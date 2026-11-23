@@ -9,13 +9,14 @@ Rules:
 1. Write one or two complete sentences. Never reply with bare numbers.
 2. Answer only the question that was asked.
 3. Use only values in FACTS. Do not add, subtract, convert, or round any value.
-4. Use period_text exactly as given. Write the month and year together with no comma, for example "October 2026".
+4. Use period_text exactly as given. Never put a comma between a month and a year.
 5. Refer to the user as "you". Do not mention databases, queries, JSON, or the system.
 6. Use the unit from FACTS exactly. Never write "records" or "on record".
 7. Use "1 day" and "2 days", "1 hour" and "2 hours". Use the singular only for a count of 1.
-8. If the count is 0, write "No" followed by the unit from FACTS, then "were found" and period_text. For example: "No leave requests were found in October 2026."
+8. If the count is 0, write "No" followed by the unit from FACTS, then "were found" and period_text. Do not use any month or year that is not in period_text.
 9. Do not repeat the same figure in more than one sentence.
 10. Never write "the specified period", "the requested period", or "the period".
+11. Use only names and statuses that appear in FACTS. Never write "otherwise", "all", or "other statuses".
 """
 
 ENTITY_RULES = {
@@ -89,7 +90,7 @@ NUMBERED_UNIT_RE = re.compile(
     re.IGNORECASE,
 )
 INSTANCE_RE = re.compile(r"\binstances?\b|\btimes\b", re.IGNORECASE)
-QUOTED_LABEL_RE = re.compile(r"['\"](?:late|present|absent|half day)['\"]", re.IGNORECASE)
+QUOTED_LABEL_RE = re.compile(r"['\"][A-Za-z][A-Za-z ]{1,30}['\"]")
 BARE_NUMBER_RE = re.compile(
     r"(?<![\w.,])(?!(?:19|20)\d{2}\b)\d+(?:\.\d+)?\b(?!\s*[A-Za-z%])"
 )
@@ -105,10 +106,15 @@ MONTHS = (
 )
 MONTH_YEAR_COMMA_RE = re.compile(rf"\b({MONTHS})(?:,\s*\1)?,\s*(\d{{4}})\b")
 
+COUNT_VERB_RE = re.compile(
+    r"\b(?:1|one)\s+\w+(?:\s+\w+)?\s+(?:were|are)\b|"
+    r"\b(?:0|[2-9]\d*|\d{2,})\s+\w+(?:\s+\w+)?\s+(?:was|is)\b",
+    re.IGNORECASE,
+)
+
 
 def normalize_answer(answer: str) -> str:
     """Remove the comma between month and year, and a repeated month.
-
     "October, 2026" -> "October 2026"
     "October, October, 2026" -> "October 2026"
     """
@@ -235,54 +241,104 @@ def _has_unfounded_attendance_status(text: str, facts: dict) -> bool:
         for status, pattern in ATTENDANCE_STATUS_PATTERNS.items()
     )
 
+FOREIGN_NOUNS = (
+    "leave requests", "leave request", "work-from-home requests",
+    "work from home requests", "timesheets", "timesheet", "holidays",
+    "holiday", "tasks", "task", "clock punches", "attendance adjustments",
+    "payslips", "payslip",
+)
 
-def passes_answer_check(answer: str, facts: dict) -> bool:
+def _stem_phrase(value: str) -> str:
+    return re.sub(r"(?:es|s)\b", "", value.lower().strip())
+
+
+def _has_foreign_noun(answer: str, facts: dict) -> bool:
     text = answer.lower()
-    # Five words is the shortest complete answer ("You had 2 late days.").
+    allowed = _stem_phrase(
+        " ".join(str(facts.get(k) or "") for k in ("unit", "unit_singular", "entity"))
+    )
+    for noun in FOREIGN_NOUNS:
+        if re.search(rf"\b{re.escape(noun)}\b", text) and _stem_phrase(noun) not in allowed:
+            return True
+    return False
+
+LEAVE_NAME_RE = re.compile(r"\b[A-Z][a-z]+ Leave\b")
+NEG_STATUS_RE = re.compile(
+    r"\bno\s+(?:\w+\s+){0,3}were\s+(?:present|late|absent)\b", re.IGNORECASE
+)
+NOT_STATUS_RE = re.compile(r"\bnot\s+(\w+)\b", re.IGNORECASE)
+
+def _has_unknown_leave_name(answer: str, facts: dict) -> bool:
+    known = str(facts).lower()
+    return any(name.lower() not in known for name in LEAVE_NAME_RE.findall(answer))
+
+def answer_check_failure(answer: str, facts: dict) -> str | None:
+    """Return the name of the first failed check, or None when the answer passes."""
+    text = answer.lower()
     if not answer or len(answer.split()) < 5:
-        return False
+        return "too_short"
     if _has_negated_status(text, facts):
-        return False
+        return "negated_status"
     if _has_unfounded_attendance_status(answer, facts):
-        return False
+        return "unfounded_status"
     if _has_invalid_unit_grammar(answer):
-        return False
+        return "unit_grammar"
     if _has_invalid_count_unit(answer, facts):
-        return False
+        return "count_unit"
     if PAREN_MINUTES_RE.search(answer):
-        return False
-    if facts.get("measure") in {"worked time", "overtime"}:
-        if DAY_WORD_RE.search(text) or "hour" not in text:
-            return False
+        return "paren_minutes"
+    if facts.get("measure") in {"worked time", "overtime"} and (
+        DAY_WORD_RE.search(text) or "hour" not in text
+    ):
+        return "time_measure_unit"
     if MONTH_YEAR_COMMA_RE.search(answer):
-        return False
+        return "month_year_comma"
     if RELATIVE_MONTH_RE.search(answer):
-        return False
-    months = [match.group().lower()[:3] for match in re.finditer(MONTH_NAME_RE, answer, re.IGNORECASE)]
-    if len(months) != len(set(months)):
-        return False
+        return "relative_month"
+    if COUNT_VERB_RE.search(answer):
+        return "count_verb_agreement"
+    if _has_foreign_noun(answer, facts):
+        return "foreign_noun"
+    months = [m.group().lower()[:3] for m in re.finditer(MONTH_NAME_RE, answer, re.IGNORECASE)]
+    if len(months) > 2 and len(set(months)) == 1:
+        return "repeated_month"
     allowed_months = {
-        match.group().lower()[:3]
-        for match in re.finditer(MONTH_NAME_RE, str(facts.get("period_text") or ""), re.IGNORECASE)
+        m.group().lower()[:3]
+        for m in re.finditer(MONTH_NAME_RE, str(facts.get("period_text") or ""), re.IGNORECASE)
     }
     if any(month not in allowed_months for month in months):
-        return False
+        return "month_not_in_period"
     if re.search(r"\bin\s+the\s+specified\s+period\b", text):
-        return False
+        return "specified_period"
     if facts.get("found") and any(p in text for p in NO_RECORDS_PHRASES):
-        return False
+        return "no_records_phrase"
     if not _numbers(answer) <= _numbers(str(facts)):
-        return False
+        return "number_not_in_facts"
     if INSTANCE_RE.search(text):
-        return False
+        return "instance_word"
     if QUOTED_LABEL_RE.search(answer):
-        return False
+        return "quoted_label"
     if facts.get("groups") and BARE_NUMBER_RE.search(answer):
-        return False
-    if ON_RECORD_RE.search(answer):
-        return False
-    if RECORDS_WORD_RE.search(answer) and "record" not in str(facts.get("unit") or "").lower():
-        return False
+        return "bare_number"
+    if str(facts.get("period_text") or "").lower() != "on record" and ON_RECORD_RE.search(answer):
+        return "on_record"
+    if RECORDS_WORD_RE.search(ON_RECORD_RE.sub("", answer)) and "record" not in str(facts.get("unit") or "").lower():
+        return "records_word"
     if STATUS_ATTENDANCE_RE.search(answer):
-        return False
-    return True
+        return "status_attendance"
+    if _has_unknown_leave_name(answer, facts):
+        return "unknown_leave_name"
+    if NEG_STATUS_RE.search(answer):
+        return "negated_status_phrase"
+    if re.search(r"\bI\b", answer):
+        return "first_person_I"
+    for m in NOT_STATUS_RE.finditer(answer):
+        word = m.group(1).lower()
+        if word in str(facts).lower():
+            return "negated_fact_status"
+    return None
+
+
+
+def passes_answer_check(answer: str, facts: dict) -> bool:
+    return answer_check_failure(answer, facts) is None

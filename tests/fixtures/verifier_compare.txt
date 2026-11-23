@@ -1,0 +1,38 @@
+pass/pass | attendance | Q: How many days was I present in October? | A: October 2026 had 14 days were present.
+pass/pass | attendance | Q: How many days was I absent in October? | A: No days were found absent in October 2026.
+pass/pass | attendance | Q: How many days was I late in October? | A: 2 days were late in October 2026.
+pass/pass | attendance | Q: How many half days did I take in October? | A: No half days were found in October 2026.
+fail/fail | attendance | Q: How many days was I present in September? | A: You have 18 present days in September 2026.
+fail/fail | attendance | Q: How many days was I absent in September? | A: You have 1 absent day in September 2026.
+fail/fail | attendance | Q: How many days was I late in September? | A: You have 3 late days in September 2026.
+pass/pass | attendance | Q: Count my present days in October 2026. | A: In October 2026, 14 present days were found.
+pass/pass | attendance | Q: How many late days did I have this month? | A: No late days were found in November 2026 so far.
+pass/fail | attendance | Q: How many absences did I have in October? | A: No absences were found in October 2026.
+pass/pass | attendance | Q: How many hours did I work in October? | A: In October 2026, you worked 125 hours and 41 minutes.
+pass/pass | attendance | Q: What is my total worked time in September? | A: Your total worked time in September was 166 hours and 28 minutes.
+pass/pass | attendance | Q: How much overtime did I do in October? | A: In October 2026, you worked 1 hour and 20 minutes of overtime.
+pass/pass | attendance | Q: Total overtime in September? | A: In September 2026, there were 1 hour and 42 minutes of overtime.
+pass/pass | attendance | Q: How many hours did I work in October 2026? | A: In October 2026, you worked 125 hours and 41 minutes.
+pass/pass | attendance | Q: Show my attendance breakdown for October. | A: In October 2026, you were present for 14 days and late on 2 days.
+pass/fail | attendance | Q: Give me my attendance summary for September. | A: In September 2026, you were present for 18 days, absent once, and had 3 late entries.
+pass/pass | attendance | Q: Attendance overview for October. | A: In October 2026, 14 days were present and 2 days were late.
+pass/pass | attendance | Q: How many days per status in October? | A: 2 days were late in October 2026. 14 days were present in October 2026.
+fail/fail | attendance | Q: What is my attendance status breakdown for September? | A: Your attendance breakdown by status in September 2026: absent: 1 day, late: 3 days, present: 18 days.
+pass/pass | attendance_punch | Q: How many clock punches did I have in October 2026? | A: 32 clock punches were found in October 2026.
+pass/pass | attendance_punch | Q: Show my clock punches for 2 October 2026. | A: No punches were found on 2 October 2026.
+pass/fail | attendance_adjustment | Q: How many attendance adjustments did I make in October 2026? | A: 0 attendance adjustments were found in October 2026.
+pass/fail | leave_request | Q: How many leave requests did I have in October 2026? | A: 0 leave requests were found in October 2026.
+pass/pass | leave_request | Q: Show my leave requests for October 2026. | A: No leave requests were found in October 2026.
+pass/pass | leave_balance | Q: What is my leave balance for 2026? | A: In 2026, your leave balance was 37 days were found to be remaining.
+pass/fail | leave_balance | Q: How many leave days do I have left this year? | A: You have 37 days remaining in total across all leave types this year.
+pass/fail | leave_balance | Q: How many leave days did I use in 2026? | A: In 2026, 0 leave days were used.
+fail/fail | leave_type | Q: What leave types are available? | A: Here are your 4 leave types.
+pass/pass | leave_type | Q: How many leave types are there? | A: There were 4 leave types on record.
+pass/pass | wfh_request | Q: How many work from home requests did I make in October 2026? | A: No work-from-home requests were found in October 2026.
+pass/pass | wfh_request | Q: Show my work from home requests for September 2026. | A: No work-from-home requests were found in September 2026.
+fail/fail | timesheet | Q: How many timesheets did I submit in October 2026? | A: You have 1 submitted timesheet in October 2026.
+fail/fail | timesheet | Q: Show my timesheets for September 2026. | A: Here are your 4 timesheets for September 2026.
+pass/pass | holiday | Q: How many holidays are there in October 2026? | A: There were 1 holiday found in October 2026.
+pass/pass | holiday | Q: List the holidays in November 2026. | A: No holidays were found in November 2026.
+fail/fail | task | Q: How many tasks did I have in October 2026? | A: There is 1 task in October 2026.
+fail/fail | task | Q: How many tasks per status in October 2026? | A: Your task breakdown by status in October 2026: completed: 1 task.
