@@ -364,3 +364,49 @@ def answer_check_failure(answer: str, facts: dict) -> str | None:
 
 def passes_answer_check(answer: str, facts: dict) -> bool:
     return answer_check_failure(answer, facts) is None
+
+def compound_answer_check_failure(
+    answer: str, facts: dict, part_facts: list[dict]
+) -> str | None:
+    if not answer or len(answer.split()) < 5:
+        return "too_short"
+
+    all_part_numbers: set[str] = set()
+    all_part_months: set[str] = set()
+    for pf in part_facts:
+        all_part_numbers |= _numbers(str(pf))
+        all_part_months |= {
+            m.group().lower()[:3]
+            for m in re.finditer(MONTH_NAME_RE, str(pf.get("period_text") or ""), re.IGNORECASE)
+        }
+
+    text = answer.lower()
+    if _has_negated_status(text, facts):
+        return "negated_status"
+    if _has_invalid_unit_grammar(answer):
+        return "unit_grammar"
+    if PAREN_MINUTES_RE.search(answer):
+        return "paren_minutes"
+    if MONTH_YEAR_COMMA_RE.search(answer):
+        return "month_year_comma"
+    if RELATIVE_MONTH_RE.search(answer):
+        return "relative_month"
+    if re.search(r"\bin\s+the\s+specified\s+period\b", text):
+        return "specified_period"
+    if INSTANCE_RE.search(text):
+        return "instance_word"
+    if QUOTED_LABEL_RE.search(answer):
+        return "quoted_label"
+    if re.search(r"\bI\b", answer):
+        return "first_person_I"
+    if not _numbers(answer) <= all_part_numbers:
+        return "number_not_in_facts"
+    answer_months = [
+        m.group().lower()[:3]
+        for m in re.finditer(MONTH_NAME_RE, answer, re.IGNORECASE)
+    ]
+    if any(m not in all_part_months for m in answer_months):
+        return "month_not_in_period"
+    if not all_parts_covered(answer, part_facts):
+        return "parts_not_covered"
+    return None

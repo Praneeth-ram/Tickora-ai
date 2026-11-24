@@ -133,7 +133,7 @@ def _entity_specs() -> dict:
 
 from backend.services.answer_router import choose_route
 from backend.services.payload.answer_payload import compute_facts
-from backend.services.answer_writer import write_answer, answer_check_failure
+from backend.services.answer_writer import write_answer, answer_check_failure, compound_answer_check_failure
 from backend.services.fact_verifier import verify_against_facts
 import json
 
@@ -150,8 +150,6 @@ def _route_answer(question, result, plan, period):
         and not specs.get(entity, {}).get("sensitive")
         and narratable_for_role(specs, entity, actor.role)
     ):
-        result["facts"] = compute_facts(question, plan, period, result, specs, actor.role)
-    if actor is not None and route != "table" and entity != "payroll_summary":
         result["facts"] = compute_facts(question, plan, period, result, specs, actor.role)
     route = choose_route(question, len(result.get("data") or []))
     if settings.narration_debug_logging:
@@ -491,11 +489,15 @@ def route_request(state: ChatState) -> str:
 def route_validation(state: ChatState) -> str:
     return state["status"]
 
+
+def get_chat_graph():
+    from backend.agents.graph import get_chat_graph as _get_chat_graph
+    return _get_chat_graph()
+
+
 def compound_node(state: ChatState) -> dict[str, Any]:
-    from backend.agents.graph import get_chat_graph
     from backend.services.llm_chat_service import _combine_periods
     from backend.services.payload.answer_payload import merge_compound_facts
-    from backend.services.answer_writer import write_answer, passes_answer_check, all_parts_covered
 
     graph = get_chat_graph()
     base = {k: state[k] for k in ("session_id", "employee_id", "employee_code", "organization_id")}
@@ -527,9 +529,10 @@ def compound_node(state: ChatState) -> dict[str, Any]:
         logger.exception("Compound LLM answer failed; using joined template")
         return {"result": combined}
 
-    if passes_answer_check(answer, facts) and all_parts_covered(answer, part_facts):
+    failure = compound_answer_check_failure(answer, facts, part_facts)
+    if failure is None:
         combined["answer"] = answer
         combined["message"] = answer
     else:
-        logger.warning("compound answer rejected; joined template kept: %r", answer)
+        logger.warning("compound answer rejected (%s); joined template kept: %r", failure, answer)
     return {"result": combined}
