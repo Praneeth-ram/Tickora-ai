@@ -42,7 +42,7 @@ from typing import Literal
 from uuid import uuid4
 from backend.services.date_resolver import validate_date_range
 import logging
-from backend.services.chat_memory import load_last_context, load_last_topic, save_last_context, save_last_topic
+from backend.services.chat_memory import load_last_context, load_last_topic, save_last_context
 from backend.services import answer_cache
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 from backend.security.input_screen import screen_question

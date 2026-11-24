@@ -7,7 +7,8 @@ from backend.services.answer_router import choose_route
 
 
 def test_only_explicit_table_and_list_requests_skip_narration():
-    assert choose_route("Show my leave requests") == "table"
+    assert choose_route("Show my leave requests", 6) == "table"
+    assert choose_route("Show my leave requests", 3) == "llm"
     assert choose_route("Could you create a table of my tasks?") == "table"
     assert choose_route("What are the details of my leave requests?") == "llm"
     assert choose_route("What is my timesheet status?") == "llm"

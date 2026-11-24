@@ -10,7 +10,6 @@ import logging
 from contextvars import ContextVar
 from dataclasses import dataclass
 from sqlalchemy import text
-from backend.exceptions import ForbiddenError
 
 audit = logging.getLogger("audit")
 _model_fingerprint = "not_loaded"
@@ -58,7 +57,7 @@ ENTITY_RULES = {
 OWNER_COLUMNS = {"task": "assigned_to_employee_id"}
 
 # Fields only a super admin may read.
-SUPER_ADMIN_ONLY_FIELDS = frozenset({"remarks"})
+SUPER_ADMIN_ONLY_FIELDS = frozenset({"remarks", "performance_score"})
 
 class AccessDenied(Exception):
     """The actor's role does not allow the requested data."""
@@ -72,7 +71,7 @@ class Actor:
     organization_id: int
     department_id: int | None
     role: str
-    employee_code: str
+    employee_code: str | None = None
 
     def __post_init__(self) -> None:
         if self.role not in ROLES:
@@ -103,7 +102,7 @@ def load_actor(connection, employee_id: int, employee_code: str) -> Actor:
         {"employee_id": employee_id, "employee_code": employee_code},
     ).mappings().one_or_none()
     if row is None:
-        raise ForbiddenError(REFUSAL_MESSAGE)
+        raise AccessDenied()
     return Actor(
         employee_id=row["id"],
         organization_id=row["organization_id"],
@@ -139,15 +138,16 @@ def visible_fields(actor: Actor, fields) -> list[str]:
 def owner_column(entity: str) -> str:
     return OWNER_COLUMNS.get(entity, "employee_id")
 
-def scope_clause(actor: Actor, entity: str, owner_sql: str) -> tuple[str, dict]:
+def scope_clause(actor: Actor, entity: str, owner_sql: str = "") -> tuple[str, dict]:
     """Return the SQL row filter and its parameters for this actor and entity."""
     scope = authorize_entity(actor, entity)
     if not ENTITY_RULES[entity]["owned"]:
         return "", {}
+    owner = owner_sql or owner_column(entity)
 
     if scope == "self":
         return (
-            f"{owner_sql} = :actor_employee_id",
+            f"{owner} = :actor_employee_id",
             {"actor_employee_id": actor.employee_id},
         )
 
@@ -155,7 +155,7 @@ def scope_clause(actor: Actor, entity: str, owner_sql: str) -> tuple[str, dict]:
         if actor.department_id is None:
             return "FALSE", {}
         return (
-            f"{owner_sql} IN (SELECT e.id FROM public.employees e "
+            f"{owner} IN (SELECT e.id FROM public.employees e "
             "WHERE e.department_id = :actor_department_id "
             "AND e.organization_id = :actor_organization_id)",
             {

@@ -22,6 +22,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+import os
+os.environ.setdefault("NARRATION_DEBUG_LOGGING", "True")  # the eval needs the detailed lines
 
 from backend.config import Settings
 from backend.agents.graph import get_chat_graph

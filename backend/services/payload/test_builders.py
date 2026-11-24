@@ -55,12 +55,14 @@ def test_list_drops_fields_not_in_spec():
     assert "reason" not in p["rows"][0]
 
 
-def test_performance_score_hidden_from_employee_shown_to_admin():
+def test_performance_score_hidden_from_employee_and_admin():
     rows = [{"title": "Report", "performance_score": 4}]
     employee = build_list_short(TASK, "task", rows, 1, START, END, role="employee")
     admin = build_list_short(TASK, "task", rows, 1, START, END, role="admin")
+    super_admin = build_list_short(TASK, "task", rows, 1, START, END, role="super_admin")
     assert "performance_score" not in employee["rows"][0]
-    assert "performance_score" in admin["rows"][0]
+    assert "performance_score" not in admin["rows"][0]
+    assert "performance_score" in super_admin["rows"][0]
 
 
 def test_single_not_found():

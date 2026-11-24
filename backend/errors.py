@@ -20,7 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.services.date_resolver import InvalidDateError
 from backend.services.dynamic_query_service import QueryPlanError
-from backend.services.llm_chat_service import ModelServiceError, PlanRejectedError
+from backend.services.model_errors import ModelServiceError, PlanRejectedError
 from backend.exceptions import AppError, NotFoundError, ServiceUnavailableError
 
 __all__ = [

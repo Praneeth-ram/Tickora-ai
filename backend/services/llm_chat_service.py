@@ -24,8 +24,7 @@ from backend.services.answer_builder import (
 )
 from backend.services.date_resolver import InvalidDateError, resolve_date_spec, resolve_discrete_dates
 from backend.services.dynamic_query_service import QueryPlanError, execute_query_plan
-from backend.services.model_inference import fingerprint
-from backend.services.model_errors import ModelServiceError, ModelUnavailableError, PlanRejectedError
+from backend.services.model_errors import ModelServiceError, ModelUnavailableError
 from backend.services.request_answer_builder import (
     as_date,
     holiday_answer,
@@ -113,8 +112,6 @@ _SELF_REFERENCE_RE = re.compile(
 PAYROLL_IDENTIFIED_FIELDS = [
     "employee_code",
     "employee_name",
-    "period_start",
-    "period_end",
     "gross_amount",
     "deduction_amount",
     "net_amount",
@@ -175,15 +172,6 @@ OTHER_ENTITY_RE = re.compile(
     r"payroll|salary|holidays?|performance)\b",
     re.IGNORECASE,
 )
-
-def is_team_question(question: str) -> bool:
-    if _HOLIDAY_RE.search(question.lower()):
-        return False
-    if _PAYROLL_RE.search(question):
-        return False
-    if OTHER_ENTITY_RE.search(question):
-        return False
-    return bool(TEAM_RE.search(question))
 
 def get_current_date() -> date:
     try:
@@ -376,18 +364,6 @@ def _inherit_dates(parts: list[str]) -> list[str]:
             part = f"{part} on {topic_date[topic]}"
         result.append(part)
     return result
-
-FOLLOW_UP_PREFIX_RE = re.compile(r"^\s*(?:and|also|what\s+about|how\s+about|same|for)\b", re.IGNORECASE)
-
-def apply_session_topic(question: str, last_topic: str | None) -> str:
-    """Append the previous topic to a follow-up that names no topic of its own."""
-    if not last_topic or _primary_topic(question) is not None:
-        return question
-    words = question.split()
-    if len(words) <= 6 or FOLLOW_UP_PREFIX_RE.search(question):
-        return f"{question.rstrip('?.! ')} {last_topic}"
-    return question
-
 
 def split_compound_question(question: str) -> list[str]:
     """Split only when the parts are about different topics, e.g. leave and holidays.
@@ -1751,32 +1727,13 @@ def _payroll_response(
             ]
             for row in rows
         ]
-        widths = [
-            max(len(column), *(len(row[index]) for row in table_rows))
-            for index, column in enumerate(columns)
-        ]
-        header = "| " + " | ".join(
-            column.ljust(widths[index])
-            for index, column in enumerate(columns)
-        ) + " |"
-        separator = "| " + " | ".join(
-            "-" * (widths[index] - 1) + ":"
-            if index in {2, 3, 4}
-            else "-" * widths[index]
-            for index in range(len(columns))
-        ) + " |"
         lines = [
             f"Here are {len(rows)} payroll records{f' {span}' if span else ''}:",
-            header,
-            separator,
+            "| " + " | ".join(columns) + " |",
+            "|---|---|---:|---:|---:|---|",
         ]
         for values in table_rows:
-            lines.append("| " + " | ".join(
-                value.rjust(widths[index])
-                if index in {2, 3, 4}
-                else value.ljust(widths[index])
-                for index, value in enumerate(values)
-            ) + " |")
+            lines.append("| " + " | ".join(values) + " |")
         return "\n".join(lines)
 
     def period_label(row: dict[str, Any]) -> str:
@@ -1991,12 +1948,17 @@ def _payroll_response(
         return "\n".join(lines)
 
     if metric:
+        metric_phrases = {
+            "gross_amount": "gross amount",
+            "deduction_amount": "deduction amount",
+            "net_amount": "net amount",
+        }
         lines = []
         for row in rows[:20]:
             currency = str(row.get("currency") or "").strip()
             prefix = f"{currency} " if currency else ""
             lines.append(
-                f"Your {metric_names[metric]} for {period_label(row)} was "
+                f"Your {metric_phrases[metric]} for {period_label(row)} was "
                 f"{prefix}{money(row.get(metric))}."
             )
         return "\n".join(lines)
@@ -2072,7 +2034,7 @@ def _attendance_table_clock(value: Any) -> str | None:
             return text
         hour = int(match.group(1))
         minute = int(match.group(2))
-        meridiem = match.lastindex and match.group(3)
+        meridiem = match.group(3) if (match.lastindex or 0) >= 3 else None
         if meridiem:
             if meridiem.lower() == "pm" and hour < 12:
                 hour += 12
@@ -3446,7 +3408,6 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
     """
     from backend.services import answer_cache as cache
     from backend.services.model_inference import fingerprint
-
     model_error: ModelServiceError | None = None
     actor = get_actor()
     role = actor.role if actor else "anonymous"
@@ -3504,8 +3465,6 @@ def plan_question(normalized_question: str) -> dict[str, Any]:
 
     logger.debug("operation=%s", raw_plan.get("operation_id"))
     return raw_plan
-
-from backend.services.date_resolver import resolve_date_spec
 
 def _normalize_single_date(plan, question, today):
     filters = plan.get("filters", {})

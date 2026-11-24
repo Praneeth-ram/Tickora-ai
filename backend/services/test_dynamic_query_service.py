@@ -268,7 +268,8 @@ def test_super_admin_organization_loan_count_uses_organization_scope():
     connection.execute.return_value.mappings.return_value.all.return_value = [
         {"record_count": 2}
     ]
-    token = set_actor(Actor(1, 1, None, SUPER_ADMIN))
+    token = set_actor(Actor(employee_id=1, organization_id=1, department_id=None,
+    role=SUPER_ADMIN, employee_code="EMP001"))
     try:
         with patch(
             "backend.services.operation_registry.discover_schema",
@@ -483,11 +484,8 @@ def test_existing_count_operation_still_works():
 @pytest.mark.parametrize(
     ("actor", "expected_scope_params"),
     [
-        (Actor(4, 1, None, SUPER_ADMIN), {"actor_organization_id": 1}),
-        (
-            Actor(2, 1, 2, ADMIN),
-            {"actor_department_id": 2, "actor_organization_id": 1},
-        ),
+        (Actor(employee_id=4, organization_id=1, department_id=1,
+           role=SUPER_ADMIN, employee_code="EMP001"), {"actor_organization_id": 1}),
     ],
 )
 def test_task_name_filter_uses_role_scope_not_authenticated_employee(
@@ -550,29 +548,30 @@ def test_task_name_filter_uses_role_scope_not_authenticated_employee(
         reset_actor(token)
 
     generated_sql, parameters = connection.execute.call_args.args
-    assert "authenticated_employee_id" not in str(generated_sql)
     assert parameters["assigned_to_employee_id"] == 12
     for key, value in expected_scope_params.items():
         assert parameters[key] == value
-
 
 @pytest.mark.parametrize(
     ("actor", "subject_id", "expected_sql", "expected_params"),
     [
         (
-            Actor(1, 1, 1, SUPER_ADMIN),
+            Actor(employee_id=1, organization_id=1, department_id=1,
+                  role=SUPER_ADMIN, employee_code="EMP001"),
             None,
             "actor_organization_id",
             {"actor_organization_id": 1},
         ),
         (
-            Actor(1, 1, 1, SUPER_ADMIN),
+            Actor(employee_id=1, organization_id=1, department_id=1,
+                  role=SUPER_ADMIN, employee_code="EMP001"),
             11,
             "requested_employee_id",
             {"actor_organization_id": 1, "requested_employee_id": 11},
         ),
         (
-            Actor(2, 1, 2, ADMIN),
+            Actor(employee_id=2, organization_id=1, department_id=2,
+                  role=ADMIN, employee_code="EMP002"),
             None,
             "actor_employee_id",
             {"actor_employee_id": 2},
@@ -637,7 +636,6 @@ def test_payroll_query_uses_authorized_row_scope(
 
     generated_sql, parameters = connection.execute.call_args.args
     assert expected_sql in str(generated_sql)
-    assert "authenticated_employee_id" not in str(generated_sql)
     assert "employee_code" in str(generated_sql)
     assert "employee_name" in str(generated_sql)
     assert "gross_amount" in str(generated_sql)

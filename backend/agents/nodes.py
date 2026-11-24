@@ -1,10 +1,8 @@
 import re
-from datetime import date
 from functools import lru_cache
 from typing import Any
-from backend.services.followup_context import apply_context_period, inherit_fields, flatten_fields
+from backend.services.followup_context import apply_context_period, inherit_fields
 from backend.config import get_settings
-# from sqlalchemy import exc
 from backend.agents.state import ChatState
 from backend.services.date_resolver import (
     InvalidDateError,
@@ -135,13 +133,14 @@ def _entity_specs() -> dict:
 
 from backend.services.answer_router import choose_route
 from backend.services.payload.answer_payload import compute_facts
-from backend.services.answer_writer import write_answer, passes_answer_check, answer_check_failure
+from backend.services.answer_writer import write_answer, answer_check_failure
 from backend.services.fact_verifier import verify_against_facts
 import json
 
 def _route_answer(question, result, plan, period):
     route = choose_route(question, len(result.get("data") or []))
-    logger.warning(
+    if settings.narration_debug_logging:
+        logger.warning(
         "Narration entry: intent=%s op=%s rows=%s show_table=%s choose_route=%s",
         result.get("intent"), plan.get("operation_id"),
         len(result.get("data") or []), result.get("show_table"),
@@ -162,7 +161,8 @@ def _route_answer(question, result, plan, period):
     entity = str(plan.get("operation_id") or "").partition(".")[0]
     if entity == "payroll_summary":
         subject_id = get_subject()
-        logger.warning(
+        if settings.narration_debug_logging:
+            logger.warning(
             "Payroll gate: role=%s actor=%s subject=%s detail=%s",
             actor.role, actor.employee_id, subject_id,
             is_payroll_detail_question(question),
@@ -170,29 +170,32 @@ def _route_answer(question, result, plan, period):
         if (
             not is_payroll_detail_question(question)
             or (subject_id is not None and subject_id != actor.employee_id)
-            # or (actor.role == SUPER_ADMIN and subject_id != actor.employee_id)
         ):
             return result
         payload = build_payroll_facts(
             question, period, result.get("data")
         )
         if payload is None:
-            logger.warning("Payroll facts not built; template kept. rows=%s", result.get("data"))
+            logger.warning("Payroll facts not built; template kept.")
             return result
         try:
             answer = write_answer(question, payload)
-        except Exception:
-            logger.exception("Payroll narration failed; template kept")
+        except Exception as exc:
+            logger.error("Payroll narration failed; template kept (%s)", type(exc).__name__)
             return result
         if passes_payroll_answer_check(answer, payload):
             result["answer"] = answer
             result["message"] = answer
-            logger.warning("Payroll narration accepted: %s", answer)
+            if settings.narration_debug_logging:
+                logger.warning("Payroll narration accepted: %s", answer)
         else:
-            logger.warning(
-                "Payroll narration rejected; template kept. facts=%s answer=%r",
-                payload, answer,
-            )
+            if settings.narration_debug_logging:
+                logger.warning(
+                    "Payroll narration rejected; template kept. facts=%s answer=%r",
+                    payload, answer,
+                )
+            else:
+                logger.warning("Payroll narration rejected; template kept.")
         return result
 
     specs = _entity_specs()
@@ -203,11 +206,12 @@ def _route_answer(question, result, plan, period):
         or spec.get("sensitive")
         or not narratable_for_role(specs, entity, actor.role)
     ):
-        logger.warning(
-            "Narration skipped: entity=%s spec=%s narratable=%s role=%s",
-            entity, spec is not None,
-            spec.get("narratable") if spec else None, actor.role,
-        )
+        if settings.narration_debug_logging:
+            logger.warning(
+                "Narration skipped: entity=%s spec=%s narratable=%s role=%s",
+                entity, spec is not None,
+                spec.get("narratable") if spec else None, actor.role,
+            )
         return result
 
     facts_result = result
@@ -248,23 +252,30 @@ def _route_answer(question, result, plan, period):
             result["message"] = message
             return result
     facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
-    logger.warning("facts: %s", facts)
+    if settings.narration_debug_logging:
+        logger.warning("facts: %s", facts)
     try:
         answer = write_answer(question, payload)
     except Exception:
         logger.exception("LLM answer failed; using template")
         return result
     failure = answer_check_failure(answer, payload)
-    verifier_failure = verify_against_facts(answer, payload)
-    logger.warning(
-        "verifier compare: old=%s new=%s answer=%r",
-        failure, verifier_failure, answer,
-    )
+    verifier_failure = None
+    if settings.narration_debug_logging:
+        verifier_failure = verify_against_facts(answer, payload)
+    if settings.narration_debug_logging:
+        logger.warning(
+            "verifier compare: old=%s new=%s answer=%r",
+            failure, verifier_failure, answer,
+        )
     if failure is None:
         result["answer"] = answer
         result["message"] = answer
     else:
-        logger.warning("answer rejected (%s); template kept: %r", failure, answer)
+        if settings.narration_debug_logging:
+            logger.warning("answer rejected (%s); template kept: %r", failure, answer)
+        else:
+            logger.warning("answer rejected (%s); template kept.", failure)
     return result
 
 
@@ -289,10 +300,11 @@ def _is_followup(question: str, last_operation: str | None) -> bool:
 
 def supervisor_node(state: ChatState) -> dict[str, Any]:
     logger.debug("GRAPH PATH: %s", state["question"])
-    question = resolve_context(state["question"])
+    original = state["question"]
+    question = resolve_context(original)
     if GREETING_RE.fullmatch(question) or GREETING_EXTRA_RE.fullmatch(question):
         return {"request_type": "greeting"}
-    if WRITE_RE.search(question):
+    if WRITE_RE.search(original):
         return {"request_type": "write_request"}
     if CREATIVE_RE.search(question):
         return {"request_type": "out_of_scope"}
@@ -430,8 +442,8 @@ def execution_node(state: ChatState) -> dict[str, Any]:
         result = _text_result(state["question"], REFUSAL_MESSAGE, "access_denied")
     except ModelServiceError:
         result = _text_result(state["question"], UNSUPPORTED_MESSAGE, "unsupported")
-    except SQLAlchemyError:
-        logger.exception("Query failed for plan operation")
+    except SQLAlchemyError as exc:
+        logger.error("Query failed for plan operation: %s", type(exc).__name__)
         result = _text_result(
             state["question"],
             "I couldn't read that information right now. Please try again or rephrase the question.",

@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     # Chat pipeline
     llm_chat_enabled: bool = False
     llm_narration_enabled: bool = False
+    # Writes answer text and facts to the logs. Off in production; the eval script turns it on.
+    narration_debug_logging: bool = False
     model_timeout_seconds: float = 60.0
     model_checkpoint_path: str = "data/artifacts/tickora_intent_model.pt"
 

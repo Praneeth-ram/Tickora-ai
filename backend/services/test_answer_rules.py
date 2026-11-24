@@ -1,6 +1,4 @@
 from backend.services.answer_writer import passes_answer_check, ANSWER_RULES
-from backend.services.payload.answer_payload import period_text
-
 
 def test_comma_before_year_is_rejected():
     assert not passes_answer_check(
@@ -53,20 +51,10 @@ def test_entity_count_uses_its_own_singular_and_plural_unit():
     )
 
 
-def test_duplicate_month_and_month_comma_year_are_rejected():
-    facts = {
-        "found": True,
-        "count": 14,
-        "period_text": "October 2026",
-    }
-    assert not passes_answer_check(
-        "You had 14 days in October, October 2026.",
-        facts,
-    )
-    assert not passes_answer_check(
-        "You had 14 days in October, for the year 2026.",
-        facts,
-    )
+def test_duplicate_month_is_allowed_but_comma_between_month_and_year_is_rejected():
+    facts = {"found": True, "count": 14, "period_text": "October 2026"}
+    assert passes_answer_check("You had 14 days in October, October 2026.", facts) is True
+    assert not passes_answer_check("You had 14 days in October, 2026.", facts)
 
 
 def test_relative_and_unmatched_months_are_rejected():

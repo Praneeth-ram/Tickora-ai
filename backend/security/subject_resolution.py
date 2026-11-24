@@ -62,13 +62,25 @@ def resolve_subject(connection, actor: Actor, question: str) -> int | None:
     return None
 
 NOT_A_NAME = {
+    # grammar and question words
     "is", "are", "was", "were", "what", "when", "where", "which", "who", "how",
-    "show", "list", "do", "does", "did", "can", "tell", "give", "the", "my", "your", "our",
-    "it", "that", "there", "here", "today", "week", "month", "year",
-    "employee", "manager", "task", "project", "team", "company", "organization",
+    "show", "list", "do", "does", "did", "can", "tell", "give", "the", "my", "your",
+    "our", "it", "that", "there", "here", "a", "an", "of", "in", "on", "for", "to",
+    "and", "or", "as", "at", "by", "with", "from", "any", "all", "each", "every",
+    # calendar
+    "today", "tomorrow", "yesterday", "week", "month", "year", "months", "years",
     "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december",
+    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    # HR nouns
+    "attendance", "leave", "leaves", "holiday", "holidays", "timesheet", "timesheets",
+    "payroll", "payslip", "payslips", "task", "tasks", "loan", "loans", "wfh",
+    "summary", "overview", "breakdown", "status", "schedule", "balance", "clock",
+    "overtime", "present", "absent", "late", "half", "day", "days", "hours", "minutes",
+    "total", "salary", "net", "gross", "deduction", "deductions", "performance", "score",
+    "team", "department", "company", "organization", "organisation",
+    "employee", "employees",
 }
 
 def _normalize_apostrophes(text: str) -> str:

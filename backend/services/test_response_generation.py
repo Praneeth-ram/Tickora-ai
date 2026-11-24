@@ -28,7 +28,7 @@ from backend.services.llm_chat_service import (
 )
 from backend.services.request_answer_builder import request_answer
 from backend.services.response_formatter import format_work_schedules
-
+from backend.security.access_policy import Actor, SUPER_ADMIN, set_actor, reset_actor
 
 def test_payroll_net_pay_response_uses_plain_sentence():
     response = _payroll_response(
@@ -42,7 +42,7 @@ def test_payroll_net_pay_response_uses_plain_sentence():
         "What is my net salary?",
     )
 
-    assert response == "Your net pay for October 2026 was INR 4,250.00."
+    assert response == "Your net amount for October 2026 was INR 4,250.00."
 
 
 def test_all_employee_payroll_response_shows_payroll_details_and_identity():
@@ -70,13 +70,34 @@ def test_all_employee_payroll_response_shows_payroll_details_and_identity():
         "| EMP011 | Employee One | 5,000.00 | 750.00 | 4,250.00 | INR |"
     )
 
+def test_all_employee_payroll_plan_gives_employee_only_own_fields():
+    actor = Actor(employee_id=2, organization_id=1, department_id=None,
+                  role="employee", employee_code="EMP002")
+    token = set_actor(actor)
+    try:
+        plan, _period = normalize_and_correct_plan(
+            {"operation_id": "payroll_summary.list", "filters": {}},
+            "Show all employees' payroll for September",
+            date(2026, 11, 16),
+        )
+    finally:
+        reset_actor(token)
+
+    assert "employee_code" not in plan["fields"]
+    assert "employee_name" not in plan["fields"]
 
 def test_all_employee_payroll_plan_selects_payroll_details_and_identity():
-    plan, _period = normalize_and_correct_plan(
-        {"operation_id": "payroll_summary.list", "filters": {}},
-        "Show all employees' payroll for September",
-        date(2026, 11, 16),
-    )
+    actor = Actor(employee_id=1, organization_id=1, department_id=None,
+                  role=SUPER_ADMIN, employee_code="EMP001")
+    token = set_actor(actor)
+    try:
+        plan, _period = normalize_and_correct_plan(
+            {"operation_id": "payroll_summary.list", "filters": {}},
+            "Show all employees' payroll for September",
+            date(2026, 11, 16),
+        )
+    finally:
+        reset_actor(token)
 
     assert plan["fields"] == [
         "employee_code",

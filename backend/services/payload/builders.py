@@ -24,7 +24,7 @@ STATUS_LABELS = {
 # Field-level visibility beyond entity access. Performance score: managers and
 # above only. Change here if the decision changes.
 HIDDEN_FROM_ROLES: dict[tuple[str, str], set[str]] = {
-    ("task", "performance_score"): {"employee"},
+    ("task", "performance_score"): {"employee", "admin"},
 }
 
 

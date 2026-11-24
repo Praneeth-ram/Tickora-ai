@@ -3,10 +3,12 @@ from unittest.mock import MagicMock
 from backend.security.access_policy import Actor, SUPER_ADMIN
 from backend.security.subject_resolution import names_a_person, resolve_subject
 
+
 class _Actor:
     employee_id = 1
+    employee_code = "EMP001"
 
-# Real values from tickora_ai_dev, with the curly-apostrophe case included.
+
 KNOWN = frozenset({
     "Casual Leave", "Sick Leave", "Earned Leave", "Unpaid Leave",
     "Christmas Day", "Gandhi Jayanti", "Independence Day", "Labour Day",
@@ -14,23 +16,19 @@ KNOWN = frozenset({
     "Salary Advance", "Emergency Loan", "Penalty Deduction",
 })
 
+
 class TestSubjectResolution(unittest.TestCase):
     def test_super_admin_self_reference_resolves_to_actor(self):
         connection = MagicMock()
         connection.execute.return_value.mappings.return_value.all.return_value = [
-            {
-                "id": 1,
-                "employee_code": "EMP001",
-                "full_name": "Admin User",
-            }
+            {"id": 1, "employee_code": "EMP001", "full_name": "Admin User"}
         ]
-
         subject_id = resolve_subject(
             connection,
-            Actor(1, 1, 1, SUPER_ADMIN),
+            Actor(employee_id=1, organization_id=1, department_id=1,
+                  role=SUPER_ADMIN, employee_code="EMP001"),
             "Show my payroll for September",
         )
-
         self.assertEqual(subject_id, 1)
 
     def test_known_terms_and_calendar_questions_do_not_name_a_person(self):
@@ -43,6 +41,8 @@ class TestSubjectResolution(unittest.TestCase):
             "What is my Emergency Loan remaining amount?",
             "What amount has been deducted from my Penalty Deduction?",
             "Is October 31 a holiday?",
+            "Is October a leave month?",
+            "Show attendance for October",
             "Show my leave balance",
         ]
         for question in questions:
@@ -54,6 +54,7 @@ class TestSubjectResolution(unittest.TestCase):
             "Show Ravi Patel's attendance for October",
             "Show Myra Krishnan\u2019s attendance for October",
             "What is the Casual Leave balance for Myra Krishnan?",
+            "What is Ravi Kumar's salary?",
         ]
         for question in questions:
             with self.subTest(question=question):
@@ -66,17 +67,15 @@ class TestSubjectResolution(unittest.TestCase):
         self.assertFalse(names_a_person("Show EMP001 attendance", _Actor(), KNOWN))
 
     def test_single_name_possessives_are_detected(self):
-        for question in [
-            "Show the meera's assigned task",
-            "Show Meera's assigned task",
-        ]:
+        for question in ["Show Meera's assigned task", "Show the meera's assigned task"]:
             with self.subTest(question=question):
                 self.assertTrue(names_a_person(question, _Actor(), KNOWN))
 
     def test_common_possessives_are_not_mistaken_for_people(self):
-        for question in [
-            "What is today's attendance?",
-            "Show my employee's assigned task",
-        ]:
+        for question in ["What is today's attendance?", "Show my employee's assigned task"]:
             with self.subTest(question=question):
                 self.assertFalse(names_a_person(question, _Actor(), KNOWN))
+
+
+if __name__ == "__main__":
+    unittest.main()

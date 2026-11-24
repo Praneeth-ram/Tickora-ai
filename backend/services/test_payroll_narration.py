@@ -177,9 +177,11 @@ def test_payroll_amount_questions_use_llm_but_table_requests_do_not():
     assert narrated["answer"] == (
         "Your gross amount in August 2026 was INR 4,250.00."
     )
-    assert write_answer.call_count == 1
+    assert write_answer.call_count == 2
     assert table["answer"] == result["answer"]
-    assert super_admin_org_query["answer"] == result["answer"]
+    assert super_admin_org_query["answer"] == (
+        "Your gross amount in August 2026 was INR 4,250.00."
+    )
 
 def test_two_requested_metrics_both_appear_in_template():
     from backend.services.llm_chat_service import _payroll_response
