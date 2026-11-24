@@ -343,7 +343,7 @@ def _primary_topic(part: str) -> str | None:
 
 DATE_PHRASE_RE = re.compile(
     r"(?:january|february|march|april|may|june|july|august|september|october|november|december)"
-    r"\s+\d{1,2}(?:st|nd|rd|th)?\b",
+    r"(?:\s+\d{1,2}(?:st|nd|rd|th)?)?\b",
     re.IGNORECASE,
 )
 
@@ -366,10 +366,6 @@ def _inherit_dates(parts: list[str]) -> list[str]:
     return result
 
 def split_compound_question(question: str) -> list[str]:
-    """Split only when the parts are about different topics, e.g. leave and holidays.
-
-    'clock in and clock out' stays one question: both parts are attendance.
-    """
     parts = [
         part.strip(" ?.!")
         for part in re.split(r"\s+(?:and|also|plus)\s+|[?;]\s*", question, flags=re.IGNORECASE)
@@ -377,7 +373,8 @@ def split_compound_question(question: str) -> list[str]:
     parts = [part for part in parts if part]
     if len(parts) > 1:
         topics = [_primary_topic(part) for part in parts]
-        if all(topics) and len(set(topics)) > 1:
+        dates = {_date_phrase(part) for part in parts} - {None}
+        if all(topics) and (len(set(topics)) > 1 or len(dates) > 1):
             return _inherit_dates(parts)
     return [question]
 
@@ -2936,6 +2933,15 @@ def _answer_holidays(question, normalized_question, plan, period, employee_id, o
     show_table = wants_list and bool(rows)
     return _result(question, answer, "holiday_lookup", period, show_table, rows, result["data"])
 
+def _combine_periods(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Earliest start and latest end across the parts that carry a period."""
+    starts = [r["period"]["start_date"] for r in results
+              if (r.get("period") or {}).get("start_date")]
+    ends = [r["period"]["end_date"] for r in results
+            if (r.get("period") or {}).get("end_date")]
+    if not starts or not ends:
+        return {"start_date": None, "end_date": None}
+    return {"start_date": min(starts), "end_date": max(ends)}
 
 def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     answer = "\n\n".join(
@@ -2950,7 +2956,7 @@ def _combine_results(question: str, results: list[dict[str, Any]]) -> dict[str, 
         "message": answer,
         "intent": results[0]["intent"],
         "confidence": None,
-        "period": results[0].get("period", {"start_date": None, "end_date": None}),
+        "period": _combine_periods(results),
         "show_table": show_table,
         "raw_data": [
             {"intent": result.get("intent"), "data": result.get("raw_data")}

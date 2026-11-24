@@ -139,8 +139,23 @@ import json
 
 def _route_answer(question, result, plan, period):
     route = choose_route(question, len(result.get("data") or []))
+    actor = get_actor()
+    specs = _entity_specs()
+    entity = str(plan.get("operation_id") or "").partition(".")[0]
+    if (
+        actor is not None
+        and route != "table"
+        and entity != "payroll_summary"
+        and specs.get(entity, {}).get("narratable")
+        and not specs.get(entity, {}).get("sensitive")
+        and narratable_for_role(specs, entity, actor.role)
+    ):
+        result["facts"] = compute_facts(question, plan, period, result, specs, actor.role)
+    if actor is not None and route != "table" and entity != "payroll_summary":
+        result["facts"] = compute_facts(question, plan, period, result, specs, actor.role)
+    route = choose_route(question, len(result.get("data") or []))
     if settings.narration_debug_logging:
-        logger.warning(
+        logger.warning( 
         "Narration entry: intent=%s op=%s rows=%s show_table=%s choose_route=%s",
         result.get("intent"), plan.get("operation_id"),
         len(result.get("data") or []), result.get("show_table"),
@@ -478,12 +493,43 @@ def route_validation(state: ChatState) -> str:
 
 def compound_node(state: ChatState) -> dict[str, Any]:
     from backend.agents.graph import get_chat_graph
+    from backend.services.llm_chat_service import _combine_periods
+    from backend.services.payload.answer_payload import merge_compound_facts
+    from backend.services.answer_writer import write_answer, passes_answer_check, all_parts_covered
 
     graph = get_chat_graph()
     base = {k: state[k] for k in ("session_id", "employee_id", "employee_code", "organization_id")}
+    parts = split_compound_question(state["question"])
     results = []
     with _capture_combined_answers():
-        for part in split_compound_question(state["question"]):
+        for part in parts:
             out = graph.invoke({**base, "question": part})
             results.append(out["result"])
-    return {"result": _combine_results(state["question"], results)}
+
+    logger.warning(
+        "compound parts: %s",
+        [(r.get("intent"), bool(r.get("facts"))) for r in results],
+    )
+
+    combined = _combine_results(state["question"], results)
+    part_facts = [r.get("facts") for r in results if r.get("facts")]
+    if len(part_facts) != len(results) or not settings.llm_narration_enabled:
+        return {"result": combined}
+
+    facts = merge_compound_facts(
+        period=_combine_periods(results),
+        parts=part_facts,
+    )
+    try:
+        answer = write_answer(state["question"], facts)
+        logger.warning("compound facts: %s", json.dumps(facts, default=str))
+    except Exception:
+        logger.exception("Compound LLM answer failed; using joined template")
+        return {"result": combined}
+
+    if passes_answer_check(answer, facts) and all_parts_covered(answer, part_facts):
+        combined["answer"] = answer
+        combined["message"] = answer
+    else:
+        logger.warning("compound answer rejected; joined template kept: %r", answer)
+    return {"result": combined}

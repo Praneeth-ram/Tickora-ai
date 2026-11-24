@@ -296,6 +296,21 @@ def _rows_facts(
         }
     return facts
 
+def merge_compound_facts(period: dict, parts: list[dict]) -> dict:
+    return {
+        "period_text": period_text(period),
+        "compound": True,
+        "parts": [
+            {
+                "order": index + 1,
+                "entity": part.get("entity"),
+                "kind": part.get("kind") or part.get("operation"),
+                **{k: v for k, v in part.items()
+                   if k not in {"question", "period_text", "entity", "kind", "operation"}},
+            }
+            for index, part in enumerate(parts)
+        ],
+    }
 
 def compute_facts(
     question: str,

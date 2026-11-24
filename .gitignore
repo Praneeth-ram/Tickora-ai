@@ -45,3 +45,9 @@ eval_results/
 logs/
 *.csv
 !tests/fixtures/*.csv
+# Personal HR data and evaluation outputs: never commit
+data/
+eval_*.txt
+eval_results/
+logs/
+tests/fixtures/narration_eval.json

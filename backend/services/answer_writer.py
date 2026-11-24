@@ -17,6 +17,10 @@ Rules:
 9. Do not repeat the same figure in more than one sentence.
 10. Never write "the specified period", "the requested period", or "the period".
 11. Use only names and statuses that appear in FACTS. Never write "otherwise", "all", or "other statuses".
+12. If FACTS has compound true, answer every entry in parts, in the order given, one sentence per part.
+13. Name the period once, at the start, using period_text. Do not repeat it in each sentence.
+14. Use each part's entity name. Never move a figure from one part to another.
+15. If two parts have the same entity, answer each separately and keep their periods distinct.
 """
 
 ENTITY_RULES = {
@@ -46,6 +50,11 @@ ENTITY_RULES = {
 
 
 def build_rules(payload: dict) -> str:
+    if payload.get("compound"):
+        return BASE_RULES + (
+            "\nCompound rule: write one sentence per entry in parts, in order. "
+            "Use each entry's own figures only.\n"
+        )
     entity = str(payload.get("entity") or "").lower()
     extra = ENTITY_RULES.get(entity, "")
     fields = [str(f) for f in (payload.get("requested_fields") or []) if str(f).strip()]
@@ -55,6 +64,14 @@ def build_rules(payload: dict) -> str:
     )
     return BASE_RULES + (f"\nEntity rule: {extra}\n" if extra else "") + field_line
 
+def all_parts_covered(answer: str, parts: list[dict]) -> bool:
+    text = answer.lower()
+    for part in parts:
+        entity = str(part.get("entity") or "").lower()
+        stem = entity.split()[0] if entity else ""
+        if stem and stem not in text:
+            return False
+    return True
 
 def write_answer(question: str, payload: dict) -> str:
     facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
