@@ -3625,10 +3625,18 @@ def correct_plan(
     return plan, period
 
 
-def validate_plan(plan: dict[str, Any]) -> tuple[str, str | None]:
-    """Return ('ok', None) or ('missing_info', question). Rules are added in a later step."""
-    return "ok", None
+def validate_plan(
+    plan: dict[str, Any], has_period: bool = True, question: str = ""
+) -> tuple[str, str | None]:
+    """Return ('ok', None) or ('missing_info', question to ask the user)."""
+    from backend.services.ambiguity import missing_period_question
 
+    ask = missing_period_question(
+        plan.get("operation_id"), has_period, question, OPERATION_DATE_FIELDS
+    )
+    if ask is not None:
+        return "missing_info", ask
+    return "ok", None
 
 def run_llm_chat(
     question: str,

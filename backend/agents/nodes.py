@@ -48,7 +48,7 @@ from backend.services.payroll_narration import (
     passes_payroll_answer_check,
 )
 from sqlalchemy.exc import SQLAlchemyError
-
+from backend.services.ambiguity import entity_clarification 
 import logging
 logger = logging.getLogger(__name__)
 
@@ -401,7 +401,10 @@ def correction_node(state: ChatState) -> dict[str, Any]:
 
     if not is_approved_operation(raw_operation):
         logger.warning("Plan operation not approved: %r", raw_operation)
-        return {"status": "invalid", "clarification": None}
+        ask = entity_clarification(state["question"])             # ← new
+        if ask is not None:                                       # ← new
+            return {"status": "missing_info", "clarification": ask}   # ← new
+        return {"status": "invalid", "clarification": None}  
 
     actor = get_actor()
     raw_entity = str(raw_operation or "").split(".", 1)[0]
@@ -440,8 +443,17 @@ def correction_node(state: ChatState) -> dict[str, Any]:
     plan["fields"] = inherit_fields(state["question"], state.get("last_context"), plan.get("operation_id"))
     if reused:
         logger.info("Follow-up reused the period of the previous answer.")
-    status, reason = validate_plan(plan)
+    status, reason = validate_plan(
+    plan, has_period=has_explicit_date or reused, question=state["question"]
+    )
     return {"plan": plan, "period": period, "status": status, "clarification": reason}
+
+def clarify_node(state: ChatState) -> dict[str, Any]:
+    result = _text_result(state["question"], state["clarification"], "unsupported")
+    operation_id = (state.get("plan") or {}).get("operation_id")
+    if operation_id:
+        result["operation_id"] = operation_id
+    return {"result": result, "period": {}}
 
 def execution_node(state: ChatState) -> dict[str, Any]:
     actor = get_actor()

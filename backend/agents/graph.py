@@ -12,6 +12,7 @@ from backend.agents.nodes import (
     route_request,
     route_validation,
     supervisor_node,
+    clarify_node
 )
 from backend.agents.state import ChatState
 
@@ -28,6 +29,7 @@ def get_chat_graph():
     graph.add_node("execution", execution_node)
     graph.add_node("controlled_error", error_node)
     graph.add_node("compound", compound_node)
+    graph.add_node("clarify", clarify_node)
 
     graph.set_entry_point("supervisor")
 
@@ -57,6 +59,7 @@ def get_chat_graph():
             "ok": "execution",
             "invalid": "controlled_error",
             "access_denied": END,
+            "missing_info": "clarify",
         },
     )
 
@@ -64,5 +67,6 @@ def get_chat_graph():
     graph.add_edge("execution", END)
     graph.add_edge("controlled_error", END)
     graph.add_edge("compound", END)
+    graph.add_edge("clarify", END)
 
     return graph.compile()
