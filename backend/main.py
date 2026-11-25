@@ -291,6 +291,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "tickora-ai-api",
+        "model_loaded": model_inference.is_loaded(),
     }
 
 

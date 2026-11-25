@@ -18,6 +18,8 @@ from contextlib import contextmanager
 import re as regex
 import re
 
+from backend.config import get_settings
+from backend.services.context_window import trim_history_to_budget
 from backend.services.model_errors import ModelUnavailableError, PlanRejectedError
 from backend.services.operation_registry import build_operation_registry
 from backend.security.access_policy import set_model_fingerprint
@@ -312,12 +314,24 @@ def generate_plan(question: str) -> dict[str, Any]:
             {"role": "system", "content": _state["system_prompt"]},
             {"role": "user", "content": question},
         ]
+        settings = get_settings()
+        max_new_tokens = settings.model_max_new_tokens_plan
+        input_budget = max(1, settings.model_max_input_tokens - max_new_tokens)
+        messages = trim_history_to_budget(
+            messages,
+            max_tokens=input_budget,
+            tokenizer=tokenizer,
+            max_history_turns=settings.model_max_history_turns,
+        )
         full_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        full_ids = tokenizer(full_text, return_tensors="pt").input_ids.to(device)
+        full_ids = tokenizer(
+            full_text,
+            return_tensors="pt",
+        ).input_ids.to(device)
         prefix_len = prefix["ids"].shape[1]
 
         # Reuse the cached prefix only if the prompt really starts with it.
-        same_prefix = torch.equal(full_ids[:, :prefix_len], prefix["ids"])
+        same_prefix = full_ids.shape[1] >= prefix_len and torch.equal(full_ids[:, :prefix_len], prefix["ids"])
         cache = copy.deepcopy(prefix["cache"]) if same_prefix else None
 
         try:
@@ -325,7 +339,7 @@ def generate_plan(question: str) -> dict[str, Any]:
                 input_ids=full_ids,
                 attention_mask=torch.ones_like(full_ids),
                 past_key_values=cache,
-                max_new_tokens=MAX_NEW_TOKENS,
+                max_new_tokens=max_new_tokens,
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id,
                 max_time=GENERATION_MAX_SECONDS,
@@ -405,12 +419,22 @@ def generate_text(system: str, user: str, max_new_tokens: int = 150) -> str:
     model = _state["model"]
     device = model.get_input_embeddings().weight.device
 
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    settings = get_settings()
+    input_budget = max(1, settings.model_max_input_tokens - max_new_tokens)
+    messages = trim_history_to_budget(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        max_tokens=input_budget,
+        tokenizer=tokenizer,
+        max_history_turns=settings.model_max_history_turns,
+    )
     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
+    inputs = tokenizer(
+        prompt,
+        return_tensors="pt",
+    ).to(device)
 
     with _generation_slot(), torch.inference_mode(), model.disable_adapter():
         output = model.generate(

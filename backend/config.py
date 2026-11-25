@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     narration_debug_logging: bool = False
     model_timeout_seconds: float = 60.0
     model_checkpoint_path: str = "data/artifacts/tickora_intent_model.pt"
+    model_max_input_tokens: int = 8192
+    model_max_history_turns: int = 4
+    model_max_new_tokens_plan: int = 128
+    model_max_new_tokens_answer: int = 150
 
     # Business defaults
     app_timezone: str = "Asia/Kolkata"
