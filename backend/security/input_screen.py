@@ -34,7 +34,6 @@ LENGTH_MESSAGE = (
     f"That question is too long. Please keep it under {MAX_QUESTION_LENGTH} characters."
 )
 
-
 def screen_question(question: str) -> str | None:
     """Return a refusal message if the question should be blocked, otherwise None."""
     if len(question) > MAX_QUESTION_LENGTH:

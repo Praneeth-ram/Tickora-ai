@@ -59,13 +59,27 @@ async def _app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     )
 
 
-async def _http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-    message = exc.detail if isinstance(exc.detail, str) else "Request failed."
+async def _http_exception_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
+
+    if isinstance(exc.detail, str):
+        message = exc.detail
+        details = None
+    else:
+        message = "Request failed."
+        details = jsonable_encoder(exc.detail)
+
     return JSONResponse(
         status_code=exc.status_code,
-        content=error_body(_HTTP_CODES.get(exc.status_code, "http_error"), message),
+        content=error_body(
+            _HTTP_CODES.get(exc.status_code, "http_error"),
+            message,
+            details,
+        ),
         headers=exc.headers,
-    )
+   )
 
 
 async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

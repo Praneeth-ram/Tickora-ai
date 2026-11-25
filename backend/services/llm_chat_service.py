@@ -271,7 +271,7 @@ def rule_based_plan(question: str) -> dict[str, Any]:
         entity = "leave_balance"
     elif re.search(r"\bleave\s+types?\b", q):
         entity = "leave_type"
-    elif re.search(r"\btasks?\b", q):
+    elif re.search(r"\b(?:tasks?|performance\s+scores?)\b", q):
         entity = "task"
     elif _LEAVE_RE.search(q):
         entity = "leave_request"
@@ -318,7 +318,7 @@ def out_of_scope_message() -> str:
 
 _DOMAIN_RE = re.compile(
     r"\b(?:leaves?|wfh|work\s+from\s+home|holidays?|attendance|clock|check\s*(?:in|out)|"
-    r"status|late|absent|present|timesheets?|applied)\b"
+    r"status|late|absent|present|timesheets?|applied|performance\s+scores?)\b"
 )
 
 _TOPIC_PATTERNS = [

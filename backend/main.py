@@ -281,14 +281,71 @@ def login(body: LoginRequest, request: Request):
         },
     }
 
+
 @app.get("/health")
 def health_check():
+    """
+    Liveness check.
+    Confirms that the FastAPI application is running.
+    """
     return {
         "status": "ok",
-        "model_loaded": model_inference.is_loaded(),
-        "model": model_inference.fingerprint(),
+        "service": "tickora-ai-api",
     }
 
+
+@app.get("/health/ready")
+def readiness_check():
+    """
+    Readiness check.
+    Confirms that PostgreSQL and the LLM model are available.
+    """
+
+    database_status = "ok"
+    model_status = "ok"
+
+    # Check PostgreSQL connectivity.
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1")).scalar_one()
+
+    except SQLAlchemyError:
+        database_status = "unavailable"
+        logger.warning(
+            "Readiness check failed: PostgreSQL unavailable."
+        )
+
+    # Check model availability.
+    try:
+        if not model_inference.is_loaded():
+            model_status = "unavailable"
+
+    except Exception:
+        model_status = "unavailable"
+        logger.warning(
+            "Readiness check failed: model unavailable."
+        )
+
+    ready = (
+        database_status == "ok"
+        and model_status == "ok"
+    )
+
+    response = {
+        "status": "ready" if ready else "not_ready",
+        "checks": {
+            "database": database_status,
+            "model": model_status,
+        },
+    }
+
+    if not ready:
+        raise HTTPException(
+            status_code=503,
+            detail=response,
+        )
+
+    return response
 
 @app.get("/v1/models")
 def list_models():
