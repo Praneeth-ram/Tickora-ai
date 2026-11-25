@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BASE_MODEL = "Qwen/Qwen2.5-3B-Instruct"
 ADAPTER_PATH = PROJECT_ROOT / "models"
-DATASET_PATH = PROJECT_ROOT / "data" / "tickora_sft_expanded.jsonl"
+PROMPT_PATH = PROJECT_ROOT / "backend" / "prompts" / "system_prompt.txt"
 CATALOG_PATH = PROJECT_ROOT / "data" / "model_catalog.json"
 MAX_NEW_TOKENS = 128
 PREFIX_CHUNK_SIZE = 128
@@ -118,14 +118,17 @@ def _load_catalog() -> dict[str, dict[str, Any]]:
 
 
 def _build_system_prompt(catalog: dict[str, dict[str, Any]]) -> str:
-    with DATASET_PATH.open("r", encoding="utf-8") as f:
-        first_example = json.loads(next(f))
+    if not PROMPT_PATH.is_file():
+        raise FileNotFoundError(
+            f"System prompt not found: {PROMPT_PATH}"
+        )
 
-    system_prompt = next(
-        item["content"]
-        for item in first_example["messages"]
-        if item["role"] == "system"
-    )
+    system_prompt = PROMPT_PATH.read_text(
+        encoding="utf-8"
+    ).strip()
+
+    if not system_prompt:
+        raise ValueError("System prompt file is empty.")
 
     system_prompt += (
         "\nReturn exactly one valid JSON object. Never output SQL, "
@@ -230,8 +233,6 @@ def load_model() -> None:
         raise RuntimeError("CUDA is unavailable; the model requires a CUDA GPU.")
     if not (ADAPTER_PATH / "adapter_config.json").exists():
         raise FileNotFoundError(f"Adapter not found: {ADAPTER_PATH}")
-    if not DATASET_PATH.exists():
-        raise FileNotFoundError(f"Dataset not found: {DATASET_PATH}")
 
     catalog = _load_catalog()
     system_prompt = _build_system_prompt(catalog)

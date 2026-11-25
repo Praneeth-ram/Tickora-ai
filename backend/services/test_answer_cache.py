@@ -1,5 +1,15 @@
 import time
+import pytest
+from fastapi import HTTPException
 from backend.services import answer_cache as cache
+from backend.main import _build_answer_cache_key
+from backend.security.access_policy import (
+    Actor,
+    set_actor,
+    reset_actor,
+    set_subject,
+    reset_subject,
+)
 
 def test_plan_is_shared_across_users_by_key():
     key = cache.plan_key("show my leave balance", "2026-11-14", "fp1")
@@ -46,3 +56,94 @@ def test_same_question_with_different_topic_has_different_key():
     a = cache.answer_key(11, "employee", "what about november?", "2026-11-14", "attendance")
     b = cache.answer_key(11, "employee", "what about november?", "2026-11-14", "leave balance")
     assert a != b
+
+def test_answer_cache_key_changes_when_employee_role_changes():
+    employee = Actor(
+        employee_id=11,
+        organization_id=1,
+        department_id=2,
+        role="employee",
+        employee_code="EMP011",
+    )
+
+    admin = Actor(
+        employee_id=11,
+        organization_id=1,
+        department_id=2,
+        role="admin",
+        employee_code="EMP011",
+    )
+
+    employee_token = set_actor(employee)
+    try:
+        employee_key = _build_answer_cache_key(
+            11, "show attendance", "2026-11-24", ""
+        )
+    finally:
+        reset_actor(employee_token)
+
+    admin_token = set_actor(admin)
+    try:
+        admin_key = _build_answer_cache_key(
+            11, "show attendance", "2026-11-24", ""
+        )
+    finally:
+        reset_actor(admin_token)
+
+    assert employee_key != admin_key
+
+
+def test_answer_cache_key_changes_when_department_changes():
+    actor_a = Actor(11, 1, 2, "admin", "EMP011")
+    actor_b = Actor(11, 1, 3, "admin", "EMP011")
+
+    token_a = set_actor(actor_a)
+    try:
+        key_a = _build_answer_cache_key(
+            11, "show attendance", "2026-11-24", ""
+        )
+    finally:
+        reset_actor(token_a)
+
+    token_b = set_actor(actor_b)
+    try:
+        key_b = _build_answer_cache_key(
+            11, "show attendance", "2026-11-24", ""
+        )
+    finally:
+        reset_actor(token_b)
+
+    assert key_a != key_b
+
+
+def test_answer_cache_key_changes_when_resolved_subject_changes():
+    actor = Actor(11, 1, 2, "admin", "EMP011")
+
+    actor_token = set_actor(actor)
+    try:
+        subject_token_a = set_subject(21)
+        try:
+            key_a = _build_answer_cache_key(
+                11, "show attendance", "2026-11-24", ""
+            )
+        finally:
+            reset_subject(subject_token_a)
+
+        subject_token_b = set_subject(22)
+        try:
+            key_b = _build_answer_cache_key(
+                11, "show attendance", "2026-11-24", ""
+            )
+        finally:
+            reset_subject(subject_token_b)
+    finally:
+        reset_actor(actor_token)
+
+    assert key_a != key_b
+
+
+def test_answer_cache_key_rejects_missing_actor():
+    with pytest.raises(HTTPException):
+        _build_answer_cache_key(
+            11, "show attendance", "2026-11-24", ""
+        )

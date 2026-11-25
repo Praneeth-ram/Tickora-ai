@@ -8,7 +8,7 @@ from sqlalchemy import text
 from backend.db import engine
 from sqlalchemy.exc import SQLAlchemyError
 from backend.services.followup_context import flatten_fields
-from backend.security.access_policy import load_actor, set_actor, reset_actor
+from backend.security.access_policy import load_actor, set_actor, reset_actor, get_actor
 from backend.repositories.attendance_repository import (
     get_attendance_records,
 )
@@ -46,7 +46,7 @@ from backend.services.chat_memory import load_last_context, load_last_topic, sav
 from backend.services import answer_cache
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 from backend.security.input_screen import screen_question
-from backend.security.access_policy import set_subject, reset_subject
+from backend.security.access_policy import set_subject, reset_subject, get_subject
 from backend.security.log_redaction import install_pii_redaction, register_names
 from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_person_phrases, resolve_subject, names_a_person
 
@@ -71,6 +71,48 @@ logging.basicConfig(
 def _iso(value):
     return value.isoformat() if hasattr(value, "isoformat") else value
 
+def _build_answer_cache_key(
+    employee_id: int,
+    question: str,
+    today_iso: str,
+    context_key: str,
+) -> str:
+    """
+    Build an answer-cache key using the authenticated actor's
+    current authorization context.
+    """
+    actor = get_actor()
+
+    # Fail closed: never build an authorization-sensitive cache key
+    # without a verified actor matching the authenticated employee.
+    if actor is None or actor.employee_id != employee_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Authorization context could not be verified.",
+        )
+
+    authorization_context = {
+        "organization_id": actor.organization_id,
+        "department_id": actor.department_id,
+        "subject_id": get_subject(),
+    }
+
+    combined_context = json.dumps(
+        {
+            "conversation_context": context_key,
+            "authorization_context": authorization_context,
+        },
+        sort_keys=True,
+        default=str,
+    )
+
+    return answer_cache.answer_key(
+        employee_id=employee_id,
+        role=actor.role,
+        normalized_question=question.strip().lower(),
+        today_iso=today_iso,
+        topic=combined_context,
+    )
 
 def _remember_operation(
     operation_id: str | None,
@@ -587,14 +629,13 @@ def _chat(
             json.dumps(last_context, sort_keys=True, default=str)
             if last_context else (last_operation or "")
         )
-        answer_key = answer_cache.answer_key(
-            employee_id,
-            current_employee.get("role", "employee"),
-            body.question.strip().lower(),
-            get_current_date().isoformat(),
-            context_key,
+        answer_key = _build_answer_cache_key(
+            employee_id=employee_id,
+            question=body.question,
+            today_iso=get_current_date().isoformat(),
+            context_key=context_key,
         )
-        cached = answer_cache.get_answer(answer_key)
+        cached = answer_cache.get_answer(answer_key,  {**result, "operation_id": operation_id},)
         if cached is not None:
             logger.info("answer_cache=hit elapsed=%.3fs", perf_counter() - started)
             _remember_operation(cached.pop("operation_id", None), employee_id, body.session_id)
