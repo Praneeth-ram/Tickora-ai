@@ -22,7 +22,7 @@ from backend.repositories.calendar_repository import (
 from pydantic import BaseModel, Field, model_validator
 from backend.services import model_inference
 from backend.errors import register_exception_handlers
-from backend.exceptions import ServiceUnavailableError
+from backend.exceptions import ServiceUnavailableError, AppError
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from backend.services.auth_service import (
@@ -46,7 +46,7 @@ from backend.services.chat_memory import load_last_context, load_last_topic, sav
 from backend.services import answer_cache
 from backend.services.login_rate_limiter import LoginRateLimiter, login_limiter
 from backend.security.input_screen import screen_question
-from backend.security.access_policy import set_subject, reset_subject, get_subject
+from backend.security.access_policy import set_subject, reset_subject, get_subject, AccessDenied
 from backend.security.log_redaction import install_pii_redaction, register_names
 from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_person_phrases, resolve_subject, names_a_person
 
@@ -183,6 +183,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
+CHAT_UNAVAILABLE_MESSAGE = "The assistant is temporarily unavailable. Please try again in a moment."
+CHAT_FAILED_MESSAGE = "Something went wrong while answering that. Please try again or rephrase the question."
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     # Stable per-chat identifier so clarification replies retain context.
@@ -699,7 +701,8 @@ def _chat(
             _remember_operation(cached.pop("operation_id", None), employee_id, body.session_id)
             return jsonable_encoder(cached)
 
-        state = get_chat_graph().invoke({
+        try:
+            state = get_chat_graph().invoke({
             "question": body.question.strip(),
             "session_id": body.session_id,
             "employee_id": employee_id,
@@ -708,6 +711,14 @@ def _chat(
             "last_operation": last_operation,
             "last_context": last_context,
         })
+        except ModelServiceError as exc:
+            logger.warning("Chat unavailable (%s)", type(exc).__name__)
+            return jsonable_encoder(_text_result(body.question, CHAT_UNAVAILABLE_MESSAGE, "unavailable"))
+        except (AccessDenied, HTTPException, AppError):
+            raise
+        except Exception:
+            logger.exception("Chat pipeline failed")
+            return jsonable_encoder(_text_result(body.question, CHAT_FAILED_MESSAGE, "unsupported"))
         operation_id = state["result"].get("operation_id")
         result = jsonable_encoder(_localize(state["result"]))
         if result.get("intent") not in {"access_denied", "unsupported"}:

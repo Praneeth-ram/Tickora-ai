@@ -1,13 +1,13 @@
 
 """Context-window management: token counting, history trimming, and prompt truncation."""
 from __future__ import annotations
-
+from backend.services.model_errors import ModelServiceError
 from typing import Any
 
 CHARS_PER_TOKEN_FALLBACK = 4
 
 
-class ContextWindowExceededError(ValueError):
+class ContextWindowExceededError(ModelServiceError, ValueError):
     """Raised when mandatory prompt messages exceed the token budget."""
 
 
