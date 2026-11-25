@@ -431,7 +431,11 @@ def correction_node(state: ChatState) -> dict[str, Any]:
         }
     has_explicit_date = resolve_date_spec(state["question"], get_current_date()) is not None
     period, reused = apply_context_period(
-        state["question"], period, state.get("last_context"), has_explicit_date,
+    state["question"],
+    period,
+    state.get("last_context"),
+    has_explicit_date,
+    operation_id=plan.get("operation_id"),
     )
     plan["fields"] = inherit_fields(state["question"], state.get("last_context"), plan.get("operation_id"))
     if reused:

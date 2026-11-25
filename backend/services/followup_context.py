@@ -3,8 +3,13 @@ import re
 from datetime import date
 from typing import Any
 
+from backend.services.date_resolver import resolve_date_spec
+
 FOLLOWUP_START_RE = re.compile(
     r"^\s*(?:and|also|what\s+about|how\s+about|same|for|then)\b", re.IGNORECASE
+)
+STANDALONE_OPENER_RE = re.compile(
+    r"^\s*(?:show|list|display|give\s+me|get|tell\s+me)\b", re.IGNORECASE
 )
 MAX_FOLLOWUP_WORDS = 6
 
@@ -56,9 +61,16 @@ def apply_context_period(
     period: dict,
     last_context: dict | None,
     has_explicit_date: bool,
+    operation_id: str | None = None,
 ) -> tuple[dict, bool]:
     """Return (period, reused). Reuse only for date-less follow-up questions."""
     if has_explicit_date or not last_context:
+        return period, False
+    if resolve_date_spec(question, date.today()) is not None:
+        return period, False
+    if operation_id is not None and last_context.get("operation_id") != operation_id:
+        return period, False
+    if STANDALONE_OPENER_RE.search(question) and not FOLLOWUP_START_RE.search(question):
         return period, False
     start = last_context.get("start_date")
     end = last_context.get("end_date")

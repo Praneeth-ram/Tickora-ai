@@ -692,7 +692,7 @@ def _chat(
             today_iso=get_current_date().isoformat(),
             context_key=context_key,
         )
-        cached = answer_cache.get_answer(answer_key,  {**result, "operation_id": operation_id},)
+        cached = answer_cache.get_answer(answer_key)
         if cached is not None:
             logger.info("answer_cache=hit elapsed=%.3fs", perf_counter() - started)
             _remember_operation(cached.pop("operation_id", None), employee_id, body.session_id)
