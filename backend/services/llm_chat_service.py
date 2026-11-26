@@ -705,7 +705,8 @@ def normalize_and_correct_plan(
     q,
     )
 
-    if (is_clock_query or is_status_query) and not is_summary_query:
+    is_punch_query = bool(re.search(r"\bpunch(?:es)?\b", q))
+    if (is_clock_query or is_status_query) and not is_summary_query and not is_punch_query:
         op_id = "attendance.list"
         normalized["operation_id"] = op_id
         for key in ("group_by_field", "aggregate_function", "aggregate_field"):
@@ -1172,6 +1173,8 @@ def normalize_and_correct_plan(
         normalized["fields"] = (
             PAYROLL_IDENTIFIED_FIELDS.copy() if views_others else PAYROLL_SELF_FIELDS.copy()
         )
+    if _SELF_REFERENCE_RE.search(question):
+        normalized["scope"] = "own"
     period = {
         "start_date": date_range[0].isoformat() if date_range else None,
         "end_date": date_range[1].isoformat() if date_range else None,
@@ -2513,6 +2516,9 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
     aspects = requested_aspects(normalized_question)
     asks_work_location = "work_location" in aspects
     requested_fields = fields_for_aspects(aspects)
+    actor = get_actor()
+    is_own = plan.get("scope") == "own" or bool(_SELF_REFERENCE_RE.search(normalized_question))
+    own_scope = "own" if (is_own and actor is not None) else plan.get("scope")
 
     # A list of separately named dates is not a continuous range. Fetch the span
     # once and keep only the requested dates, so dates between them are never returned.
@@ -2524,17 +2530,21 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
                 intent="attendance_records",
             )
         wanted = set(discrete_dates)
+        span_filters: dict[str, Any] = {
+            "attendance_date": {
+                "gte": min(discrete_dates).isoformat(),
+                "lte": max(discrete_dates).isoformat(),
+            }
+        }
+        span_plan: dict[str, Any] = {
+            "operation_id": "attendance.list",
+            "filters": span_filters,
+            "fields": requested_fields,
+        }
+        if own_scope:
+            span_plan["scope"] = own_scope
         span_result = _execute(
-            {
-                "operation_id": "attendance.list",
-                "filters": {
-                    "attendance_date": {
-                        "gte": min(discrete_dates).isoformat(),
-                        "lte": max(discrete_dates).isoformat(),
-                    }
-                },
-                "fields": requested_fields,
-            },
+            span_plan,
             employee_id,
             limit=100,
         )
@@ -2648,12 +2658,15 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
     if not is_single_day and plan.get("filters", {}).get("status"):
         filters["status"] = plan["filters"]["status"]
 
+    exec_plan: dict[str, Any] = {
+        "operation_id": "attendance.list",
+        "filters": filters,
+        "fields": requested_fields,
+    }
+    if own_scope:
+        exec_plan["scope"] = own_scope
     result = _execute(
-        {
-            "operation_id": "attendance.list",
-            "filters": filters,
-            "fields": requested_fields,
-        },
+        exec_plan,
         employee_id,
         limit=5 if is_single_day else 100,
     )
@@ -3207,6 +3220,7 @@ def _answer_leave_balance(question, normalized_question, employee_id, today, org
         filters["leave_type_id"] = selected["id"]
     balance_result = _execute({"operation_id": "leave_balance.list", "filters": filters}, employee_id, limit=100)
     rows = balance_result["data"] if isinstance(balance_result["data"], list) else []
+    print("DEBUG leave rows:", len(rows), [(r.get("leave_type_id"), r.get("year")) for r in rows])
 
     answer = answer_leave_balance(rows, leave_types, year, metric, selected,normalized_question)
     show_table = question_wants_list(normalized_question) and bool(rows)

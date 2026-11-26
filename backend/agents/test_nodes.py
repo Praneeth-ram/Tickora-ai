@@ -1,7 +1,5 @@
 from datetime import date
-
 import pytest
-
 from backend.agents import nodes
 from backend.agents.graph import get_chat_graph
 from backend.security.access_policy import (
@@ -12,7 +10,6 @@ from backend.security.access_policy import (
     set_actor,
 )
 from backend.services import chat_memory
-
 
 @pytest.mark.parametrize(
     "last_operation",
@@ -27,6 +24,7 @@ from backend.services import chat_memory
         "payroll_summary.list",
     ],
 )
+
 def test_period_only_follow_up_reuses_the_previous_operation(
     monkeypatch, last_operation
 ):
@@ -48,11 +46,11 @@ def test_period_only_follow_up_reuses_the_previous_operation(
         "filters": {},
     }
 
-
 @pytest.mark.parametrize(
     ("question", "year"),
     [("in 2025?", 2025), ("in 2026?", 2026)],
 )
+
 def test_period_only_follow_up_applies_year_to_previous_operation(
     monkeypatch, question, year
 ):
@@ -74,13 +72,11 @@ def test_period_only_follow_up_applies_year_to_previous_operation(
         "lte": f"{year}-12-31",
     }
 
-
 def test_unrelated_question_does_not_inherit_the_previous_operation():
     assert nodes.supervisor_node({
         "question": "is 2026 a leap year?",
         "last_operation": "leave_request.list",
     }) == {"request_type": "out_of_scope"}
-
 
 @pytest.mark.parametrize(
     "question",
@@ -89,6 +85,7 @@ def test_unrelated_question_does_not_inherit_the_previous_operation():
         "Show all employees' payroll for September",
     ],
 )
+
 def test_super_admin_can_ask_for_payroll(question):
     token = set_actor(Actor(1, 1, None, SUPER_ADMIN, "EMP001"))
     try:
@@ -98,7 +95,6 @@ def test_super_admin_can_ask_for_payroll(question):
     finally:
         reset_actor(token)
 
-
 def test_non_super_admin_cannot_ask_for_all_employees_payroll():
     token = set_actor(Actor(11, 1, 2, EMPLOYEE, "EMP011"))
     try:
@@ -107,7 +103,6 @@ def test_non_super_admin_cannot_ask_for_all_employees_payroll():
         }) == {"request_type": "third_party"}
     finally:
         reset_actor(token)
-
 
 def test_invalid_date_is_reported_by_chat_graph(monkeypatch):
     monkeypatch.setattr(chat_memory, "load_last_topic", lambda *args: None)
@@ -127,6 +122,5 @@ def test_invalid_date_is_reported_by_chat_graph(monkeypatch):
             "organization_id": 1,
         }
     )
-
     assert "not a valid date" in graph_result["result"]["answer"]
     assert graph_result["result"]["intent"] == "attendance_records"

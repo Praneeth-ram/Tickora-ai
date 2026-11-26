@@ -67,7 +67,7 @@ _EXTENDED_METRIC_RE = re.compile(
 # "submitted" are intentionally excluded — a user can legitimately ask
 # "how many approved leave days do I have left?", which is a balance question.
 REQUEST_WORDS_RE = re.compile(
-    r"\b(?:requests?|applied|apply|cancell?(?:ed|ing)?|cancel)\b",
+    r"\b(?:requests?|cancell?(?:ed|ing)?|cancel)\b",
     re.IGNORECASE,
 )
 

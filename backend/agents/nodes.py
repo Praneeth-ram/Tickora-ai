@@ -291,7 +291,6 @@ def _route_answer(question, result, plan, period):
             logger.warning("answer rejected (%s); template kept.", failure)
     return result
 
-
 def _is_period_only_followup(question: str) -> bool:
     tokens = re.findall(r"[a-z]+|\d+", question.lower())
     if not tokens or any(
@@ -302,7 +301,6 @@ def _is_period_only_followup(question: str) -> bool:
         return resolve_date_spec(question, get_current_date()) is not None
     except InvalidDateError:
         return True
-
 
 def _is_followup(question: str, last_operation: str | None) -> bool:
     return bool(FOLLOWUP_RE.search(question)) or (
@@ -343,7 +341,6 @@ def supervisor_node(state: ChatState) -> dict[str, Any]:
         return {"request_type": "third_party"}
     return {"request_type": "query"}
 
-
 def greeting_node(state: ChatState) -> dict[str, Any]:
     from backend.main import get_greeting_response
 
@@ -382,7 +379,6 @@ def context_node(state: ChatState) -> dict[str, Any]:
         else:
             update["result"] = _text_result(state["question"], FOLLOWUP_CLARIFY, "unsupported")
     return update
-
 
 def route_after_context(state: ChatState) -> str:
     if "result" in state:
@@ -498,23 +494,19 @@ def error_node(state: ChatState) -> dict[str, Any]:
         )}
     return {"result": _text_result(state["question"], UNSUPPORTED_MESSAGE, "unsupported")}
 
-
 def route_request(state: ChatState) -> str:
     return state["request_type"]
 
 def route_validation(state: ChatState) -> str:
     return state["status"]
 
-
 def get_chat_graph():
     from backend.agents.graph import get_chat_graph as _get_chat_graph
     return _get_chat_graph()
 
-
 def compound_node(state: ChatState) -> dict[str, Any]:
     from backend.services.llm_chat_service import _combine_periods
     from backend.services.payload.answer_payload import merge_compound_facts
-
     graph = get_chat_graph()
     base = {k: state[k] for k in ("session_id", "employee_id", "employee_code", "organization_id")}
     parts = split_compound_question(state["question"])

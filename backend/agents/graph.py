@@ -16,7 +16,6 @@ from backend.agents.nodes import (
 )
 from backend.agents.state import ChatState
 
-
 @lru_cache(maxsize=1)
 def get_chat_graph():
     graph = StateGraph(ChatState)

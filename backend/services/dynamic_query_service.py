@@ -1040,17 +1040,12 @@ def execute_query_plan(
 
         child_conditions = [
             (
-                f"{attendance_alias}.{preparer.quote('employee_id')} "
-                "= :authenticated_employee_id"
-            ),
-            (
                 f"{attendance_alias}.{preparer.quote('id')} "
                 f"= {child_alias}.{preparer.quote('attendance_id')}"
             ),
         ]
 
         child_params: dict[str, Any] = {
-            "authenticated_employee_id": employee_id,
             "query_limit": limit,
         }
 
@@ -1062,6 +1057,11 @@ def execute_query_plan(
 
         child_conditions.append(child_scope_clause)
         child_params.update(child_scope_params)
+        if plan.get("scope") == "own":
+            child_conditions.append(
+                f"{attendance_alias}.{preparer.quote('employee_id')} = :self_employee_id"
+            )
+            child_params["self_employee_id"] = employee_id
 
         child_date_field = definition.get("date_field")
         child_date_fields = (
@@ -1226,29 +1226,30 @@ def execute_query_plan(
             "limit": limit if operation == "list" else None,
         }
 
-     # Enforce access scope using authenticated identity.
+    # Enforce access scope using authenticated identity.
     if definition["scope"] in {"employee_id", "employee_task", "employee_manager"}:
         clause, clause_params = scope_clause(
             actor,
             definition["entity"],
             preparer.quote(owner_column(definition["entity"])),
         )
-        if clause:
-            conditions.append(clause)
-            params.update(clause_params)
+        if not clause:
+            raise AccessDenied()
+        conditions.append(clause)
+        params.update(clause_params)
 
-    if definition["entity"] not in {"holiday", "leave_type"}:
-        skip_self_filter = (
-            definition["entity"] == "loan_request"
-            and actor.role == SUPER_ADMIN
-            and plan.get("scope") == "org"
-        )
-        if not skip_self_filter:
-            conditions.append(
-                f"{preparer.quote(owner_column(definition['entity']))} "
-                "= :self_employee_id"
-            )
+        # A "my" question is restricted to the requester for every role.
+        if plan.get("scope") == "own":
+            owner = preparer.quote(owner_column(definition["entity"]))
+            conditions.append(f"{owner} = :self_employee_id")
             params["self_employee_id"] = employee_id
+        else:
+            subject_id = get_subject()
+            if subject_id is not None and plan.get("scope") != "org":
+                owner = preparer.quote(owner_column(definition["entity"]))
+                conditions.append(f"{owner} = :subject_employee_id")
+                params["subject_employee_id"] = subject_id
+
     elif definition["scope"] == "organization_read":
         if organization_id is None:
             raise QueryPlanError(
