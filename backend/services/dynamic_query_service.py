@@ -331,18 +331,17 @@ def execute_query_plan(
             "query_limit": limit,
         }
 
-        if actor.role != SUPER_ADMIN or plan.get("scope") != "org":
-            payroll_conditions.append(
-                f"ps.{preparer.quote('employee_id')} = :authenticated_employee_id"
-            )
-            payroll_params["authenticated_employee_id"] = employee_id
-
-        if subject is not None:
+        if actor.role == SUPER_ADMIN and subject is not None:
             payroll_conditions.append(
                 f"ps.{preparer.quote('employee_id')} "
                 "= :requested_employee_id"
             )
             payroll_params["requested_employee_id"] = subject
+        elif actor.role != SUPER_ADMIN or plan.get("scope") != "org":
+            payroll_conditions.append(
+                f"ps.{preparer.quote('employee_id')} = :authenticated_employee_id"
+            )
+            payroll_params["authenticated_employee_id"] = employee_id
 
         payroll_scope_clause, payroll_scope_params = scope_clause(
             actor,

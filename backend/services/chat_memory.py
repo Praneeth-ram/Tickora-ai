@@ -46,8 +46,9 @@ def save_last_topic(engine, employee_id: int, session_id: str, topic: str) -> No
 
 def save_last_context(engine, employee_id: int, session_id: str,
                       operation_id: str, start_date: str | None, end_date: str | None,
-                      fields: list[str] | None = None) -> None:
-    """Save the operation, its period, and the requested fields for follow-ups."""
+                      fields: list[str] | None = None,
+                      subject_id: int | None = None) -> None:
+    """Save the operation, its period, requested fields, and subject_id for follow-ups."""
     if not session_id or len(session_id) > MAX_SESSION_ID_LENGTH:
         return
     plan = json.dumps({
@@ -55,6 +56,7 @@ def save_last_context(engine, employee_id: int, session_id: str,
         "start_date": start_date,
         "end_date": end_date,
         "fields": list(fields or []),
+        "subject_id": subject_id,
     }, default=str)
     with engine.begin() as connection:
         connection.execute(

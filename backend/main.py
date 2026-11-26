@@ -53,6 +53,7 @@ from backend.security.subject_resolution import NOT_FOUND_MESSAGE, load_non_pers
 chat_limiter = LoginRateLimiter(
     max_attempts=int(os.getenv("CHAT_RATE_LIMIT_PER_MINUTE", "120")),
     window_seconds=60,
+    message="Too many chat requests. Try again later.",
 )
 
 from prometheus_client import Counter, Histogram, make_asgi_app
@@ -120,17 +121,20 @@ def _remember_operation(
     session_id: str,
     period: dict | None = None,
     plan: dict | None = None,
+    subject_id: int | None = None,
 ) -> None:
-    """Save the operation, period, and fields so a follow-up can reuse them. Never fail the answer."""
+    """Save the operation, period, fields, and subject_id so a follow-up can reuse them. Never fail the answer."""
     if not (operation_id and session_id):
         return
     period = period or {}
     fields = flatten_fields((plan or {}).get("fields"))
+    resolved_subject = subject_id if subject_id is not None else get_subject()
     try:
         save_last_context(
             engine, employee_id, session_id, operation_id,
             _iso(period.get("start_date")), _iso(period.get("end_date")),
             fields,
+            subject_id=resolved_subject,
         )
     except SQLAlchemyError:
         logger.warning("Could not save chat memory; answer still returned.")
@@ -266,6 +270,7 @@ def login(body: LoginRequest, request: Request):
         )
 
     login_limiter.reset(email_key)
+    login_limiter.reset(ip_key)
 
     token = create_access_token(
         employee_id=employee["employee_id"],
@@ -608,6 +613,26 @@ def chat_with_tickora(
             return jsonable_encoder(
                 _text_result(body.question, NOT_FOUND_MESSAGE, intent="unsupported")
             )
+        if subject_id is None and not re.search(r"\b(?:my|me|i|myself|mine)\b", body.question, re.IGNORECASE):
+            from backend.services.followup_context import is_followup_question
+            if is_followup_question(body.question):
+                last_ctx = load_last_context(engine, employee_id, body.session_id)
+                saved_subject = last_ctx.get("subject_id") if isinstance(last_ctx, dict) else None
+                if isinstance(saved_subject, int) and saved_subject != actor.employee_id:
+                    if actor.role == "super_admin":
+                        ok = connection.execute(
+                            text("SELECT 1 FROM public.employees WHERE id = :id AND organization_id = :org AND is_active = TRUE"),
+                            {"id": saved_subject, "org": actor.organization_id},
+                        ).scalar_one_or_none()
+                    elif actor.role == "admin" and actor.department_id is not None:
+                        ok = connection.execute(
+                            text("SELECT 1 FROM public.employees WHERE id = :id AND organization_id = :org AND department_id = :dept AND is_active = TRUE"),
+                            {"id": saved_subject, "org": actor.organization_id, "dept": actor.department_id},
+                        ).scalar_one_or_none()
+                    else:
+                        ok = None
+                    if ok:
+                        subject_id = saved_subject
     token = set_actor(actor)
     subject_token = set_subject(subject_id) if subject_id is not None else None
     request_id = str(uuid4())

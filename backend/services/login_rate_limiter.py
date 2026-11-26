@@ -13,9 +13,15 @@ WINDOW_SECONDS = 60
 _CLEANUP_THRESHOLD = 10_000
 
 class LoginRateLimiter:
-    def __init__(self, max_attempts: int, window_seconds: float) -> None:
+    def __init__(
+        self,
+        max_attempts: int,
+        window_seconds: float,
+        message: str = "Too many failed login attempts. Try again later.",
+    ) -> None:
         self._max_attempts = max_attempts
         self._window = window_seconds
+        self._message = message
         self._failures: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
@@ -37,7 +43,7 @@ class LoginRateLimiter:
             if len(attempts) >= self._max_attempts:
                 retry_after = max(1, int(self._window - (now - attempts[0])) + 1)
                 raise RateLimitedError(
-                    "Too many failed login attempts. Try again later.",
+                    self._message,
                     details={"retry_after_seconds": retry_after},
                 )
             
