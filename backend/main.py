@@ -738,12 +738,12 @@ def _chat(
         })
         except ModelServiceError as exc:
             logger.warning("Chat unavailable (%s)", type(exc).__name__)
-            return jsonable_encoder(_text_result(body.question, CHAT_UNAVAILABLE_MESSAGE, "unavailable"))
+            raise ServiceUnavailableError(CHAT_UNAVAILABLE_MESSAGE) from exc
         except (AccessDenied, HTTPException, AppError):
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception("Chat pipeline failed")
-            return jsonable_encoder(_text_result(body.question, CHAT_FAILED_MESSAGE, "unsupported"))
+            raise HTTPException(status_code=500, detail=CHAT_FAILED_MESSAGE) from exc
         operation_id = state["result"].get("operation_id")
         result = jsonable_encoder(_localize(state["result"]))
         if result.get("intent") not in {"access_denied", "unsupported"}:

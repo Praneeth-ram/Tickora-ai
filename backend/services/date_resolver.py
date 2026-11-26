@@ -52,8 +52,10 @@ def _month_number(word: str) -> int:
     return MONTHS[word.lower().rstrip(".")]
 
 def _ordered_or_none(a: date | None, b: date | None):
-    if a is None or b is None or a > b:
+    if a is None or b is None:
         return None
+    if a > b:
+        raise InvalidDateError(f"{a.isoformat()} to {b.isoformat()}")
     return a, b
 
 def _number_word_value(text: str) -> int | None:
