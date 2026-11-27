@@ -2886,18 +2886,17 @@ def _answer_attendance(question, normalized_question, plan, period, employee_id)
     )
 
 def _latest_request_sentence(kind: str, rows: list[dict[str, Any]]) -> str:
-    """Option 1 wording: name the latest request by start date, its date, and its status."""
+    """Name the latest request by start date, its display dates, applied date, and status."""
     label = "leave request" if kind == "leave" else "work-from-home request"
     latest = max(rows, key=lambda r: as_date(r.get("start_date")) or date.min)
     start = as_date(latest.get("start_date"))
     end = as_date(latest.get("end_date")) or start
-    if end and start and end != start:
-        when = f"from {fmt_range(start, end)}"
-    else:
-        when = f"starting {start.day} {start:%B %Y}"
+    dates = fmt_range(start, end) if start and end else "the dates on record"
+    applied = as_date(latest.get("applied_at") or latest.get("requested_at"))
+    applied_note = f" (applied {applied.day} {applied:%B %Y})" if applied else ""
     status = str(latest.get("status") or "unknown").lower().replace("_", " ")
-    verb = "is" if status == "pending" else "was"
-    return f"Your latest {label}, {when}, {verb} {status}."
+    prefix = "Your" if len(rows) == 1 else "Your latest"
+    return f"{prefix} {label} for {dates}{applied_note} is {status}."
 
 def _answer_requests(question, normalized_question, plan, period, employee_id):
     operation_id = plan["operation_id"]

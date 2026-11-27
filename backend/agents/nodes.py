@@ -131,7 +131,7 @@ settings = get_settings()
 def _entity_specs() -> dict:
     return build_specs(build_operation_registry(schema_name="public"))
 
-from backend.services.answer_router import choose_route
+from backend.services.answer_router import LIST_REQUEST_RE, choose_route
 from backend.services.payload.answer_payload import compute_facts
 from backend.services.answer_writer import write_answer, answer_check_failure, compound_answer_check_failure
 from backend.services.fact_verifier import verify_against_facts
@@ -167,6 +167,8 @@ def _route_answer(question, result, plan, period):
     ):
         return result
     if route == "table":
+        return result
+    if result.get("show_table") and LIST_REQUEST_RE.search(question) and not (plan.get("fields") or []):
         return result
     actor = get_actor()
     if actor is None:

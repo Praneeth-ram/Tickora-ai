@@ -68,8 +68,10 @@ def apply_context_period(
         return period, False
     if resolve_date_spec(question, date.today()) is not None:
         return period, False
-    if operation_id is not None and last_context.get("operation_id") != operation_id:
-        return period, False
+    if operation_id is not None:
+        last_op = str(last_context.get("operation_id") or "")
+        if last_op.partition(".")[0] != operation_id.partition(".")[0]:
+            return period, False
     if STANDALONE_OPENER_RE.search(question) and not FOLLOWUP_START_RE.search(question):
         return period, False
     start = last_context.get("start_date")

@@ -27,10 +27,16 @@ ENTITY_RULES = {
     "attendance": (
         "Mention only statuses listed in FACTS. "
         "Use hours and minutes only for time totals, never days. "
+        "Format clock in and clock out times as 12-hour clock time with AM or PM (e.g., 9:29 AM), never as hours and minutes. "
         "For a single record, write one full sentence that starts with 'Your' "
         "and states the value of the field asked. Do not repeat the date more than once."
     ),
-    "leave_request": 'Use the unit "leave requests".',
+    "leave_request": (
+        'Use the unit "leave requests". '
+        "For a single record, write one concise sentence starting with 'Your' that directly answers what was asked (such as status). "
+        "Never output raw ISO timestamps; format any dates in natural readable form (e.g., 8 October 2026). "
+        "Do not mention unrequested fields or add 'No leave requests were found' when records exist."
+    ),
     "leave_balance": (
         "Answer the leave type or total the question asks for, using the "
         "remaining, allocated, used, and pending figures exactly as in FACTS."
@@ -49,9 +55,29 @@ ENTITY_RULES = {
 }
 
 
+def _clean_record_for_llm(record: dict) -> dict:
+    from datetime import datetime
+    cleaned = {}
+    for k, v in record.items():
+        if isinstance(v, str) and "T" in v and len(v) >= 19 and v[4:5] == "-" and v[7:8] == "-":
+            try:
+                dt = datetime.fromisoformat(v)
+                cleaned[k] = f"{dt.day} {dt:%B %Y}"
+                continue
+            except ValueError:
+                pass
+        cleaned[k] = v
+    return cleaned
+
+
 def build_rules(payload: dict) -> str:
+    base = BASE_RULES
+    if payload.get("found") is True:
+        base = "\n".join(
+            line for line in BASE_RULES.splitlines() if not line.startswith("8. ")
+        ) + "\n"
     if payload.get("compound"):
-        return BASE_RULES + (
+        return base + (
             "\nCompound rule: write one sentence per entry in parts, in order. "
             "Use each entry's own figures only.\n"
         )
@@ -62,7 +88,7 @@ def build_rules(payload: dict) -> str:
         f"\nAnswer only about: {', '.join(fields)}. Do not answer with other fields.\n"
         if fields else ""
     )
-    return BASE_RULES + (f"\nEntity rule: {extra}\n" if extra else "") + field_line
+    return base + (f"\nEntity rule: {extra}\n" if extra else "") + field_line
 
 def all_parts_covered(answer: str, parts: list[dict]) -> bool:
     text = answer.lower()
@@ -74,9 +100,12 @@ def all_parts_covered(answer: str, parts: list[dict]) -> bool:
     return True
 
 def write_answer(question: str, payload: dict) -> str:
-    facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
+    llm_payload = payload
+    if isinstance(payload.get("record"), dict):
+        llm_payload = {**payload, "record": _clean_record_for_llm(payload["record"])}
+    facts = json.dumps(llm_payload, ensure_ascii=False, separators=(",", ":"), default=str)
     return generate_text(
-        build_rules(payload),
+        build_rules(llm_payload),
         f"Question: {question}\nFACTS: {facts}",
         max_new_tokens=150,
     ).strip()

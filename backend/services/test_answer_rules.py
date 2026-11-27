@@ -168,3 +168,11 @@ def test_overtime_template_deduplicates_month_and_pluralizes_units():
     assert sum_response("overtime_minutes", 60, span) == (
         "You recorded 1 hour and 0 minutes of overtime in October 2026."
     )
+
+
+def test_leave_request_rules_for_single_record_status():
+    from backend.services.answer_writer import build_rules
+
+    rules = build_rules({"entity": "leave_request", "shape": "single_record"})
+    assert "one concise sentence starting with 'Your'" in rules
+    assert "Never output raw ISO timestamps" in rules
