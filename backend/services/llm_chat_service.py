@@ -2160,30 +2160,52 @@ def _result(
         result["_combined_answer"] = response_text
     return result
 
+# Rewrites apply only outside quoted spans, so quoted data is never altered.
+# Contractions and multi-word phrases come before single words, so "you're"
+# is handled as a whole and not split at the apostrophe.
+_THIRD_PERSON_RULES = [
+    (r"\byou['’]re\b", "{first} is"),
+    (r"\byou['’]ve\b", "{first} has"),
+    (r"\byou['’]ll\b", "{first} will"),
+    (r"\byou['’]d\b", "{first} would"),
+    (r"\byou\s+don['’]t\s+have\b", "{first} doesn't have"),
+    (r"\byou\s+have\b", "{first} has"),
+    (r"\byou\s+were\b", "{first} was"),
+    (r"\byou\s+worked\b", "{first} worked"),
+    (r"\byou\s+are\b", "{first} is"),
+    (r"\byourself\b", "themselves"),
+    (r"\byour\b", "{first}'s"),
+    (r"\byou\b", "{first}"),
+]
+
+_QUOTED_SPAN_RE = re.compile(
+    r"\"[^\"]*\"|(?<!\w)'[^']*'(?!\w)|\u201c[^\u201d]*\u201d|\u2018[^\u2019]*\u2019"
+)
+
+
 def _third_person(answer: str, subject_name: str | None) -> str:
     """When an admin asks about a colleague, speak about that person rather than the requester."""
-    if not subject_name or not answer:
+    if not answer or not subject_name or not subject_name.strip():
         return answer
     first = subject_name.split()[0]
-    replacements = [
-        (r"\bYou don't have\b", f"{first} doesn't have"),
-        (r"\byou don't have\b", f"{first} doesn't have"),
-        (r"\bYou have\b", f"{first} has"),
-        (r"\byou have\b", f"{first} has"),
-        (r"\bYou were\b", f"{first} was"),
-        (r"\byou were\b", f"{first} was"),
-        (r"\bYou worked\b", f"{first} worked"),
-        (r"\byou worked\b", f"{first} worked"),
-        (r"\bYou are\b", f"{first} is"),
-        (r"\byou are\b", f"{first} is"),
-        (r"\bYour\b", f"{first}'s"),
-        (r"\byour\b", f"{first}'s"),
-        (r"\bYou\b", first),
-        (r"\byou\b", first),
+    rules = [
+        (re.compile(pattern, re.IGNORECASE), template.replace("{first}", first))
+        for pattern, template in _THIRD_PERSON_RULES
     ]
-    for pattern, replacement in replacements:
-        answer = re.sub(pattern, replacement, answer)
-    return answer
+
+    def rewrite(segment: str) -> str:
+        for regex, replacement in rules:
+            segment = regex.sub(lambda _m, r=replacement: r, segment)
+        return segment
+
+    pieces = []
+    position = 0
+    for quoted in _QUOTED_SPAN_RE.finditer(answer):
+        pieces.append(rewrite(answer[position:quoted.start()]))
+        pieces.append(quoted.group())
+        position = quoted.end()
+    pieces.append(rewrite(answer[position:]))
+    return "".join(pieces)
 
 def _execute(plan: dict[str, Any], employee_id: int, limit: int, organization_id: int | None = None) -> Any:
     try:

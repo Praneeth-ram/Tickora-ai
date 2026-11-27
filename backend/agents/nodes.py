@@ -202,15 +202,9 @@ def _route_answer(question, result, plan, period):
             result["answer"] = answer
             result["message"] = answer
             if settings.narration_debug_logging:
-                logger.warning("Payroll narration accepted: %s", answer)
+                logger.info("Payroll narration accepted (length=%d).", len(answer))
         else:
-            if settings.narration_debug_logging:
-                logger.warning(
-                    "Payroll narration rejected; template kept. facts=%s answer=%r",
-                    payload, answer,
-                )
-            else:
-                logger.warning("Payroll narration rejected; template kept.")
+            logger.warning("Payroll narration rejected; template kept.")
         return result
 
     specs = _entity_specs()
@@ -266,31 +260,26 @@ def _route_answer(question, result, plan, period):
             result["answer"] = message
             result["message"] = message
             return result
-    facts = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
-    if settings.narration_debug_logging:
-        logger.warning("facts: %s", facts)
     try:
         answer = write_answer(question, payload)
     except Exception:
         logger.exception("LLM answer failed; using template")
         return result
     failure = answer_check_failure(answer, payload)
-    verifier_failure = None
     if settings.narration_debug_logging:
-        verifier_failure = verify_against_facts(answer, payload)
-    if settings.narration_debug_logging:
-        logger.warning(
-            "verifier compare: old=%s new=%s answer=%r",
-            failure, verifier_failure, answer,
+        logger.info(
+            "answer check: fields=%s failure=%s length=%d",
+            sorted(payload.keys()), failure, len(answer),
+        )
+        logger.info(
+            "verifier compare: old=%s new=%s",
+            failure, verify_against_facts(answer, payload),
         )
     if failure is None:
         result["answer"] = answer
         result["message"] = answer
     else:
-        if settings.narration_debug_logging:
-            logger.warning("answer rejected (%s); template kept: %r", failure, answer)
-        else:
-            logger.warning("answer rejected (%s); template kept.", failure)
+        logger.warning("answer rejected (%s); template kept.", failure)
     return result
 
 def _is_period_only_followup(question: str) -> bool:
@@ -534,7 +523,6 @@ def compound_node(state: ChatState) -> dict[str, Any]:
     )
     try:
         answer = write_answer(state["question"], facts)
-        logger.warning("compound facts: %s", json.dumps(facts, default=str))
     except Exception:
         logger.exception("Compound LLM answer failed; using joined template")
         return {"result": combined}
@@ -544,5 +532,5 @@ def compound_node(state: ChatState) -> dict[str, Any]:
         combined["answer"] = answer
         combined["message"] = answer
     else:
-        logger.warning("compound answer rejected (%s); joined template kept: %r", failure, answer)
+        logger.warning("compound answer rejected (%s); joined template kept.", failure)
     return {"result": combined}

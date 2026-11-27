@@ -723,7 +723,13 @@ def _chat(
         cached = answer_cache.get_answer(answer_key)
         if cached is not None:
             logger.info("answer_cache=hit elapsed=%.3fs", perf_counter() - started)
-            _remember_operation(cached.pop("operation_id", None), employee_id, body.session_id)
+            _remember_operation(
+                cached.pop("operation_id", None),
+                employee_id,
+                body.session_id,
+                period=cached.pop("_period", None),
+                plan=cached.pop("_plan", None),
+            )
             return jsonable_encoder(cached)
 
         try:
@@ -747,7 +753,12 @@ def _chat(
         operation_id = state["result"].get("operation_id")
         result = jsonable_encoder(_localize(state["result"]))
         if result.get("intent") not in {"access_denied", "unsupported"}:
-            answer_cache.set_answer(answer_key, {**result, "operation_id": operation_id})
+            answer_cache.set_answer(answer_key, {
+                **result,
+                "operation_id": operation_id,
+                "_period": state.get("period"),
+                "_plan": state.get("plan"),
+            })
         result.pop("operation_id", None)
         _remember_operation(
             operation_id,
